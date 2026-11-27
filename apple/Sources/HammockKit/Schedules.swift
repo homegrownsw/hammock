@@ -220,7 +220,7 @@ extension ScheduleRun.Status {
     /// Over: it won't change again.
     public var ended: Bool {
         switch self {
-        case .unspecified, .running, .waiting: false
+        case .unspecified, .running, .waiting, .queued: false
         default: true
         }
     }
@@ -238,6 +238,7 @@ extension ScheduleRun.Status {
         case .skipped: "Skipped"
         case .missed: "Missed"
         case .stopped: "Stopped"
+        case .queued: "Waiting to go in"
         default: "Unknown"
         }
     }
@@ -252,6 +253,7 @@ extension ScheduleRun.Status {
         case .skipped: "forward.circle"
         case .missed: "moon.circle"
         case .stopped: "stop.circle"
+        case .queued: "clock.arrow.circlepath"
         default: "circle"
         }
     }
@@ -317,6 +319,26 @@ extension Schedule {
     public func runAsWellTitle(now: Date = Date()) -> String {
         let when = nextRunShort(now: now)
         return when.contains(" at ") ? "Run Now and \(when) Too" : "Run Now and at \(when) Too"
+    }
+
+    /// Its runs carry on one session (its own, or one of yours), rather
+    /// than each a new tab and session.
+    public var continuesSession: Bool { session != .new && kind != "command" }
+
+    /// Where its runs go when they carry on a session: "Continues ‹name›",
+    /// "Continues its own session"; nil for a new tab each run.
+    public var sessionText: String? {
+        guard continuesSession else { return nil }
+        let name = sessionName.isEmpty ? String(sessionID.prefix(8)) : sessionName
+        switch session {
+        case .own: return name.isEmpty ? "Continues its own session" : "Continues \(name)"
+        default: return "Continues \(name)"
+        }
+    }
+
+    /// Whether an agent's sessions can be continued (it can resume them).
+    @MainActor public static func canContinue(_ kind: String) -> Bool {
+        kind != "command" && AgentCatalog.kind(kind)?.canResume == true
     }
 
     /// Run tabs kept (the daemon's default for 0).

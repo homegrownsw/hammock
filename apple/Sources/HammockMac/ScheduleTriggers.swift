@@ -911,7 +911,16 @@ enum ScheduleSamples {
             $0.groupName = "Notes"
             $0.timing = .events
             $0.events = [.with { $0.id = "tr_s4"; $0.kind = .calendar(.with { $0.minutesBefore = 10; $0.title = "1:1"; $0.withAttendees = true }) }]
-            $0.runs = [.with { $0.id = "sr_s5"; $0.status = .ready; $0.trigger = "An event in 10 minutes"; $0.kind = "claude"; $0.startedUnixMs = ms(5 * 3600); $0.endedUnixMs = ms(5 * 3600 - 200); $0.note = "Notes are in 1-1 Sam.md." }]
+            // Continues a session of yours, in a tab allowed more than it.
+            $0.session = .picked
+            $0.overlap = .wait
+            $0.sessionID = "0b7c-sample-session"
+            $0.sessionName = "Meeting notes"
+            $0.sessionWarning = "Its tab runs Claude Code with --dangerously-skip-permissions, so runs sent there can do more than this automation allows"
+            $0.runs = [
+                .with { $0.id = "sr_s6"; $0.status = .queued; $0.continued = true; $0.trigger = "An event in 10 minutes"; $0.kind = "claude"; $0.waitingSinceUnixMs = ms(60); $0.note = "Something’s typed in its message box" },
+                .with { $0.id = "sr_s5"; $0.status = .ready; $0.continued = true; $0.borrowed = true; $0.trigger = "An event in 10 minutes"; $0.kind = "claude"; $0.startedUnixMs = ms(5 * 3600); $0.endedUnixMs = ms(5 * 3600 - 200); $0.note = "Notes are in 1-1 Sam.md." },
+            ]
         }
         let morning = Schedule.with {
             $0.id = "sc_sample_morning"

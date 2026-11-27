@@ -55,6 +55,7 @@ final class ScheduleDraft: Identifiable {
             return s.kind == "command" ? "Write the command it runs" : "Write the prompt it runs"
         }
         if s.cwd.trimmingCharacters(in: .whitespaces).isEmpty { return "Choose its folder" }
+        if s.continuesSession, s.session == .picked, s.sessionID.isEmpty { return "Choose the session it continues" }
         if s.timing == .repeat, cronMode, s.cron.trimmingCharacters(in: .whitespaces).isEmpty { return "Write its cron line" }
         if s.timing == .events, s.events.isEmpty { return "Add a trigger" }
         if let m = s.events.lazy.map(\.missing).first(where: { !$0.isEmpty }) { return m }
@@ -213,7 +214,7 @@ struct ScheduleEditor: View {
                     .labelsHidden()
                     .fixedSize()
                 } else {
-                    Text("New tab each run").foregroundStyle(.secondary)
+                    ScheduleSessionPicker(model: model, draft: draft, computerID: computerID)
                 }
                 Text("in").foregroundStyle(.secondary)
                 Button(draft.s.cwd.isEmpty ? "Choose a folder" : draft.s.cwd) { folderShown = true }
@@ -228,6 +229,9 @@ struct ScheduleEditor: View {
                     }
                     .foregroundStyle(.secondary)
                 }
+            }
+            if draft.s.continuesSession, !draft.s.sessionWarning.isEmpty {
+                SessionWarning(text: draft.s.sessionWarning)
             }
         }
     }
@@ -326,9 +330,14 @@ struct ScheduleEditor: View {
                     GridRow {
                         optionLabel("If still running")
                         Picker("If still running", selection: $draft.s.overlap) {
-                            Text(ScheduleText.overlap(.skip)).tag(Schedule.Overlap.skip)
-                            Text(ScheduleText.overlap(.stopPrevious)).tag(Schedule.Overlap.stopPrevious)
-                            Text(ScheduleText.overlap(.runBoth)).tag(Schedule.Overlap.runBoth)
+                            if draft.s.continuesSession {
+                                Text(ScheduleText.overlap(.wait)).tag(Schedule.Overlap.wait)
+                                Text(ScheduleText.overlap(.skip)).tag(Schedule.Overlap.skip)
+                            } else {
+                                Text(ScheduleText.overlap(.skip)).tag(Schedule.Overlap.skip)
+                                Text(ScheduleText.overlap(.stopPrevious)).tag(Schedule.Overlap.stopPrevious)
+                                Text(ScheduleText.overlap(.runBoth)).tag(Schedule.Overlap.runBoth)
+                            }
                         }
                         .labelsHidden()
                         .fixedSize()
@@ -344,7 +353,7 @@ struct ScheduleEditor: View {
                             .help("A run waiting on you this long is stopped. Questions always go to Needs You.")
                         }
                     }
-                    GridRow {
+                    if !draft.s.continuesSession { GridRow {
                         optionLabel("Keep the last")
                         HStack(spacing: 6) {
                             TextField("Keep the last", value: keepBinding, format: .number)
@@ -355,7 +364,7 @@ struct ScheduleEditor: View {
                             Text(draft.s.keptRuns == 1 ? "run" : "runs").foregroundStyle(.secondary)
                         }
                         .help("Older runs’ tabs close as new ones open, except ones you’ve typed in")
-                    }
+                    } }
                     GridRow {
                         optionLabel("Notify me")
                         Picker("Notify me", selection: notifyBinding) {

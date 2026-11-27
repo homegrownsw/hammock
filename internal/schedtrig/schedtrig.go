@@ -804,6 +804,22 @@ func CooldownWords(secs int) string {
 	return plural(secs, "second") + " cooldown"
 }
 
+// SessionWords says where s's runs go when they carry on a session
+// ("Continues ‹name›"), "" for a new tab and session each run.
+func SessionWords(s *pb.Schedule) string {
+	name := cmpOr(s.SessionName, s.SessionId)
+	switch s.Session {
+	case pb.Schedule_SESSION_OWN:
+		if name == "" {
+			return "Continues its own session (from its first run)"
+		}
+		return "Continues its own session, " + name
+	case pb.Schedule_SESSION_PICKED:
+		return "Continues " + name
+	}
+	return ""
+}
+
 func plural(n int, unit string) string {
 	if n == 1 {
 		return "1 " + unit

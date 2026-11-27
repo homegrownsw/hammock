@@ -93,6 +93,10 @@ type schedState struct {
 	// noteChecked).
 	checkSaved map[string]int64
 	workHours  workHours // the config file's working-hours (schedcalendar.go)
+	// Sessions continued (schedcontinue.go): each queued run's message,
+	// kept ("schedule_queued") until it's sent, and the runs being typed in.
+	queued  map[string]string
+	sending map[string]bool
 }
 
 // schedMaker is the agent that made a schedule: its pane, and which agent
@@ -105,9 +109,13 @@ type schedMaker struct {
 }
 
 func (d *Daemon) loadSchedules() {
-	d.sched = schedState{list: map[string]*pb.Schedule{}, sawWork: map[string]bool{}, sawProc: map[string]bool{}, madeBy: map[string]schedMaker{}}
+	d.sched = schedState{list: map[string]*pb.Schedule{}, sawWork: map[string]bool{}, sawProc: map[string]bool{}, madeBy: map[string]schedMaker{},
+		queued: map[string]string{}, sending: map[string]bool{}}
 	if json.Unmarshal([]byte(d.store.Setting("schedule_makers")), &d.sched.madeBy) != nil {
 		d.sched.madeBy = map[string]schedMaker{} // (an earlier build's, by pane alone: they ask again)
+	}
+	if json.Unmarshal([]byte(d.store.Setting("schedule_queued")), &d.sched.queued) != nil || d.sched.queued == nil {
+		d.sched.queued = map[string]string{}
 	}
 	if name := d.store.Setting("schedule_zone"); name != "" {
 		if loc, err := time.LoadLocation(name); err == nil {
@@ -181,6 +189,10 @@ func (d *Daemon) checkSchedules(now time.Time) {
 	for _, s := range d.sched.list {
 		changed := d.followRuns(s, now)
 		if d.refreshScheduleGroup(s) {
+			changed = true
+		}
+		// Runs waiting to go into a session: given up on, or sent.
+		if d.followQueued(s, now, awake && !d.sched.off) {
 			changed = true
 		}
 		switch {
@@ -413,9 +425,10 @@ func runActive(r *pb.ScheduleRun) bool {
 // Callers hold d.mu.
 func (d *Daemon) noteRun(s *pb.Schedule, r *pb.ScheduleRun) {
 	s.Runs = append([]*pb.ScheduleRun{r}, s.Runs...)
-	// The oldest go first, but never one under way (it's still followed).
+	// The oldest go first, but never one under way (it's still followed),
+	// or waiting to be sent.
 	for i := len(s.Runs) - 1; i >= 0 && len(s.Runs) > maxRunRecords; i-- {
-		if !runActive(s.Runs[i]) {
+		if !runActive(s.Runs[i]) && s.Runs[i].Status != pb.ScheduleRun_STATUS_QUEUED {
 			s.Runs = slices.Delete(s.Runs, i, i+1)
 		}
 	}
@@ -452,6 +465,9 @@ func (d *Daemon) startRunFor(s *pb.Schedule, due time.Time, manual bool, evs []*
 			return r, nil
 		}
 	}
+	if continued(s) {
+		return d.startContinued(s, r, manual, evs), nil
+	}
 	var active []*pb.ScheduleRun
 	for _, x := range s.Runs {
 		if runActive(x) {
@@ -484,15 +500,6 @@ func (d *Daemon) startRunFor(s *pb.Schedule, due time.Time, manual bool, evs []*
 	if st, err := os.Stat(cwd); err != nil || !st.IsDir() {
 		return fail(fmt.Errorf("there's no folder %s", s.Cwd))
 	}
-	g := d.groups[s.GroupId]
-	made := g == nil
-	if made {
-		// Closed since: brought back, as it was named.
-		g = d.createGroupQuiet(s.GroupName)
-		g.Icon, g.Folder = s.GroupIcon, cwd
-		d.persist(d.store.PutGroup(g))
-		s.GroupId = g.Id
-	}
 	spec := &pb.PaneSpec{Cwd: cwd}
 	var typed, later string // later: a first message typed once it's at its prompt
 	if s.Kind == "command" {
@@ -510,6 +517,30 @@ func (d *Daemon) startRunFor(s *pb.Schedule, due time.Time, manual bool, evs []*
 	} else {
 		return fail(fmt.Errorf("unknown kind %q", s.Kind))
 	}
+	p, err := d.openRunTab(s, r, now, spec, typed)
+	if err != nil {
+		return fail(err)
+	}
+	d.noteRun(s, r)
+	d.audit("schedule:"+s.Id, "schedule-run", r.TabId, s.Name)
+	d.closeOldRuns(s)
+	d.typeFirstPrompt(p, later)
+	return r, nil
+}
+
+// openRunTab opens r's tab in s's Group (made again if it's been closed),
+// running spec, or the agent's command line typed, and marks it r's (the
+// schedule's, with r under way in it). Callers hold d.mu.
+func (d *Daemon) openRunTab(s *pb.Schedule, r *pb.ScheduleRun, now time.Time, spec *pb.PaneSpec, typed string) (*pane, error) {
+	g := d.groups[s.GroupId]
+	made := g == nil
+	if made {
+		// Closed since: brought back, as it was named.
+		g = d.createGroupQuiet(s.GroupName)
+		g.Icon, g.Folder = s.GroupIcon, spec.Cwd
+		d.persist(d.store.PutGroup(g))
+		s.GroupId = g.Id
+	}
 	if typed != "" {
 		// Started as the pane's command (as a resumed agent is), not typed
 		// into its shell (agentShellCommand: a long tool list would be cut
@@ -522,11 +553,11 @@ func (d *Daemon) startRunFor(s *pb.Schedule, due time.Time, manual bool, evs []*
 			d.dropQuietGroup(g.Id)
 			s.GroupId = ""
 		}
-		return fail(err)
+		return nil, err
 	}
 	p := d.panes[t.FocusedPaneId]
 	if p == nil {
-		return fail(errors.New("the run's tab has no pane"))
+		return nil, errors.New("the run's tab has no pane")
 	}
 	s.Error = ""
 	r.Status, r.TabId, r.PaneId = pb.ScheduleRun_STATUS_RUNNING, t.Id, p.id
@@ -538,11 +569,7 @@ func (d *Daemon) startRunFor(s *pb.Schedule, due time.Time, manual bool, evs []*
 	p.mu.Unlock()
 	d.persist(d.store.PutPane(p.snapshotInfo()))
 	d.paneChanged(p)
-	d.noteRun(s, r)
-	d.audit("schedule:"+s.Id, "schedule-run", t.Id, s.Name)
-	d.closeOldRuns(s)
-	d.typeFirstPrompt(p, later)
-	return r, nil
+	return p, nil
 }
 
 // runTabName names a run's tab: the schedule and when it started.
@@ -552,9 +579,12 @@ func runTabName(s *pb.Schedule, t time.Time) string {
 }
 
 // stopRun ends a run under way: Esc to an agent, ^C to a command. Its
-// pane stays. Callers hold d.mu.
+// pane stays. A run in a tab of yours (borrowed) is only marked: the
+// agent there is yours. Callers hold d.mu.
 func (d *Daemon) stopRun(s *pb.Schedule, r *pb.ScheduleRun, status pb.ScheduleRun_Status, note string) {
-	if p := d.panes[r.PaneId]; p != nil {
+	if r.Status == pb.ScheduleRun_STATUS_QUEUED {
+		d.dropQueued(r)
+	} else if p := d.panes[r.PaneId]; p != nil && !r.Borrowed {
 		key := "\x1b"
 		if commandRun(s, r) {
 			key = "\x03"
@@ -620,6 +650,7 @@ func (d *Daemon) followRun(s *pb.Schedule, r *pb.ScheduleRun, now time.Time) boo
 	}
 	if a.SessionId != "" && r.SessionId != a.SessionId {
 		r.SessionId = a.SessionId
+		d.followSession(s, p)
 	}
 	// Its process gone (crashed, killed) with no hook to say so: ended.
 	p.mu.Lock()
@@ -649,6 +680,12 @@ func (d *Daemon) followRun(s *pb.Schedule, r *pb.ScheduleRun, now time.Time) boo
 		}
 		giveUp := time.Duration(cmpOrInt(s.GiveUpMinutes, defaultGiveUp)) * time.Minute
 		if now.Sub(time.UnixMilli(r.WaitingSinceUnixMs)) >= giveUp {
+			if r.Continued {
+				// A session carried on: the run is only marked. The agent
+				// still asks, in a session that goes on after the run.
+				d.endRun(s, r, pb.ScheduleRun_STATUS_GAVE_UP, "Gave up after waiting "+humanMinutes(giveUp)+" for you")
+				return true
+			}
 			d.stopRun(s, r, pb.ScheduleRun_STATUS_GAVE_UP, "Gave up after waiting "+humanMinutes(giveUp)+" for you")
 			d.audit("schedule:"+s.Id, "schedule-gave-up", r.TabId, s.Name)
 			return true
@@ -685,30 +722,51 @@ func (d *Daemon) endRun(s *pb.Schedule, r *pb.ScheduleRun, status pb.ScheduleRun
 // scheduleTurnDone notes that a run's agent finished a turn (so idle now
 // means done, even if it was never seen working). Callers hold d.mu.
 func (d *Daemon) scheduleTurnDone(p *pane) {
+	if _, r := d.paneRun(p); r != nil {
+		d.sched.sawWork[r.Id] = true // (not for one ended: nothing would clear it)
+	}
+}
+
+// paneRun is the run under way in p: the one it's marked with (a run's own
+// tab), else one sent into it as a tab of yours (borrowed). Callers hold d.mu.
+func (d *Daemon) paneRun(p *pane) (*pb.Schedule, *pb.ScheduleRun) {
 	info := p.snapshotInfo()
 	if s := d.sched.list[info.ScheduleId]; s != nil {
 		for _, r := range s.Runs {
 			if r.Id == info.ScheduleRunId && runActive(r) {
-				d.sched.sawWork[r.Id] = true // (not for one ended: nothing would clear it)
+				return s, r
 			}
 		}
 	}
+	for _, s := range d.sched.list {
+		for _, r := range s.Runs {
+			if r.Borrowed && r.PaneId == p.id && runActive(r) {
+				return s, r
+			}
+		}
+	}
+	return nil, nil
 }
 
 // scheduleAgentChanged follows a run's agent as soon as its state changes
-// (not at the next tick). Callers hold d.mu.
+// (not at the next tick), and a session runs go into to a new one in its
+// tab; a run waiting for that agent goes in as soon as it's free. Callers
+// hold d.mu.
 func (d *Daemon) scheduleAgentChanged(p *pane) {
-	info := p.snapshotInfo()
-	s := d.sched.list[info.ScheduleId]
-	if s == nil {
-		return
+	for _, s := range d.sched.list {
+		if continued(s) {
+			d.followSession(s, p)
+		}
 	}
-	for _, r := range s.Runs {
-		if r.Id == info.ScheduleRunId && runActive(r) {
-			if d.followRun(s, r, schedTime()) {
+	s, r := d.paneRun(p)
+	if s != nil && d.followRun(s, r, schedTime()) {
+		d.saveSchedule(s)
+	}
+	for _, s := range d.sched.list {
+		if continued(s) && slices.ContainsFunc(s.Runs, func(r *pb.ScheduleRun) bool { return r.Status == pb.ScheduleRun_STATUS_QUEUED }) {
+			if d.followQueued(s, schedTime(), schedAwake() && !d.sched.off) {
 				d.saveSchedule(s)
 			}
-			return
 		}
 	}
 }
@@ -748,7 +806,7 @@ func (d *Daemon) keepRun(p *pane) {
 	tab := p.tabID()
 	for _, s := range d.sched.list {
 		for _, r := range s.Runs {
-			if r.TabId == tab && !r.TabClosed {
+			if r.TabId == tab && !r.TabClosed && !r.Borrowed { // (a tab of yours stays anyway)
 				if !r.Kept {
 					r.Kept = true
 					d.saveSchedule(s)
@@ -781,10 +839,13 @@ func (d *Daemon) runOwnsTab(s *pb.Schedule, r *pb.ScheduleRun) bool {
 // closeOldRuns closes run tabs beyond keep_runs (oldest first), leaving
 // runs under way and ones you've typed into. Callers hold d.mu.
 func (d *Daemon) closeOldRuns(s *pb.Schedule) {
+	if continued(s) {
+		return // its runs share the session's tab: nothing to close
+	}
 	keep := int(cmpOrInt(s.KeepRuns, defaultKeepRuns))
 	n := 0
 	for _, r := range s.Runs {
-		if r.TabId == "" || r.TabClosed || r.Kept {
+		if r.TabId == "" || r.TabClosed || r.Kept || r.Borrowed {
 			continue
 		}
 		if d.tabs[r.TabId] == nil {
@@ -963,6 +1024,9 @@ func (d *Daemon) cleanSchedule(in *pb.Schedule) (*pb.Schedule, error) {
 	if err := d.cleanEvents(s, d.sched.list[s.Id]); err != nil {
 		return nil, err
 	}
+	if err := d.cleanSession(s, d.sched.list[s.Id]); err != nil {
+		return nil, err
+	}
 	// The Group: the one named, else the one working in that folder, else
 	// a new one for it (named after the folder).
 	if s.GroupId != "" && d.groups[s.GroupId] == nil {
@@ -1047,6 +1111,15 @@ func (d *Daemon) scheduleSummary(s *pb.Schedule) string {
 	if len(s.AllowedTools) > 0 {
 		out += fmt.Sprintf(" (allowed: %s)", strings.Join(s.AllowedTools, ", "))
 	}
+	switch s.Session {
+	case pb.Schedule_SESSION_OWN:
+		out += ", each run carrying on its own session"
+	case pb.Schedule_SESSION_PICKED:
+		out += ", each run sent into your session " + cmpOr(shownText(s.SessionName), s.SessionId)
+	}
+	if s.SessionWarning != "" {
+		out += ". Note: " + shownText(s.SessionWarning)
+	}
 	out += ": " + shownText(s.Prompt) // whole: every client shows all of a request
 	return out
 }
@@ -1103,6 +1176,9 @@ func (d *Daemon) deleteSchedule(id string) error {
 		d.saveScheduleMakers()
 	}
 	d.persist(d.store.DeleteRecord("schedule", id))
+	for _, r := range s.Runs {
+		d.dropQueued(r)
+	}
 	delete(d.sched.pending, id)
 	delete(d.sched.lastEvent, id)
 	d.triggersChanged()

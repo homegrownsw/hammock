@@ -2725,6 +2725,10 @@ message Schedule {
     OVERLAP_SKIP = 0;             // the last run is still going: skip this one
     OVERLAP_STOP_PREVIOUS = 1;    // stop the last run, start this one
     OVERLAP_RUN_BOTH = 2;
+    // A session continued (session): this run waits for the last to finish,
+    // then goes into the session after it. The only other choice there is
+    // OVERLAP_SKIP.
+    OVERLAP_WAIT = 3;
   }
   Overlap overlap = 13;
   enum Notify {
@@ -2767,6 +2771,27 @@ message Schedule {
   // on a trigger) is skipped unless all of these hold; its record says
   // which didn't. Run Now isn't held to them.
   repeated Condition only_if = 32;
+  // Continue a session (schedcontinue.go): each run goes into one agent
+  // session, not a new tab and session of its own. Only for an agent
+  // whose sessions resume (Agent.can_resume). The run is typed into the
+  // session's tab once its agent is free and nothing's typed in its
+  // message box, or, its tab closed, the session is resumed in a new tab
+  // of the schedule's Group with the schedule's own options.
+  enum Session {
+    SESSION_NEW = 0;              // a new tab, and session, each run
+    SESSION_OWN = 1;              // the session its first run started (session_id, the daemon's), carried on
+    SESSION_PICKED = 2;           // session_id: a session of yours (on the schedule's computer)
+  }
+  Session session = 33;
+  // The session runs go into: SESSION_PICKED's, given; SESSION_OWN's, the
+  // daemon's (empty until its first run's agent says), following its tab
+  // to a new session (/clear).
+  string session_id = 34;
+  // Read only, the daemon's: what the session is called (its tab's name,
+  // or its title), and why sending runs there needs care ("" when it
+  // doesn't): its tab lets its agent do more than this schedule would.
+  string session_name = 35;
+  string session_warning = 36;
 }
 
 // A condition a run must meet to start (Schedule.only_if).
@@ -2805,6 +2830,9 @@ message ScheduleRun {
     STATUS_SKIPPED = 6;           // the last run was still going, or skipped by you
     STATUS_MISSED = 7;            // the computer was asleep or off
     STATUS_STOPPED = 8;           // stopped for a newer run, or by you
+    // A session continued: waiting to be sent into it (its agent is busy,
+    // something's typed in its message box, or the last run is still going).
+    STATUS_QUEUED = 9;
   }
   Status status = 5;
   string tab_id = 6;
@@ -2823,6 +2851,12 @@ message ScheduleRun {
   // What started it, in words ("CI failed on #42", "Webhook"): an event
   // (EventTrigger), or hmk trigger. Empty: its time, or Run Now.
   string trigger = 19;
+  // It went into a tab of yours (a session you picked, open): the tab stays
+  // yours. It's never closed, kept, stopped (giving up only marks the run)
+  // or counted as an automation's, so what happens in it can still start
+  // automations. Its turn ends when the agent next finishes.
+  bool borrowed = 20;
+  bool continued = 21;            // it went into a session carried on (Schedule.session), not a new one
 }
 
 // Something that happening starts a run of a schedule (schedtriggers.go).

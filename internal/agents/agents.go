@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -228,6 +229,82 @@ func (a *Agent) ScheduleCommand(s *pb.Schedule) string {
 		return a.Schedule(c)
 	}
 	return a.StartCommand(s.Prompt)
+}
+
+// ScheduleResume is the command line that resumes session id for a
+// scheduled run (a session it carries on, its tab closed), with the
+// schedule's own options for the agent (Claude Code's allowed tools,
+// Codex's sandbox and approval), not the ones the session last ran with.
+// "": a can't resume.
+func (a *Agent) ScheduleResume(s *pb.Schedule, id string) string {
+	if a.Resume == nil {
+		return ""
+	}
+	cmd := a.Resume(id)
+	switch a.ID {
+	case "claude":
+		if len(s.AllowedTools) > 0 {
+			cmd += " --allowedTools " + Quote(strings.Join(s.AllowedTools, ","))
+		}
+	case "codex":
+		if s.CodexSandbox != "" {
+			cmd += " --sandbox " + Quote(s.CodexSandbox)
+		}
+		if s.CodexApproval != "" {
+			cmd += " --ask-for-approval " + Quote(s.CodexApproval)
+		}
+	}
+	return cmd
+}
+
+// WiderThan is the option on argv (the command line an agent's running
+// with, its program first) that lets it do more than a scheduled run of s
+// may ("--dangerously-skip-permissions"), "" if there's none: a run sent
+// into that session can do what the session can, not what s says.
+func WiderThan(argv []string, s *pb.Schedule) string {
+	if len(argv) < 2 {
+		return ""
+	}
+	args := argv[1:]
+	val := func(i int, a, name string) (string, bool) {
+		if v, ok := strings.CutPrefix(a, name+"="); ok {
+			return v, true
+		}
+		if a == name && i+1 < len(args) {
+			return args[i+1], true
+		}
+		return "", false
+	}
+	for i, a := range args {
+		switch a {
+		case "--dangerously-skip-permissions", "--allow-dangerously-skip-permissions",
+			"--dangerously-bypass-approvals-and-sandbox", "--yolo", "--full-auto":
+			return a
+		}
+		if v, ok := val(i, a, "--permission-mode"); ok && (v == "bypassPermissions" || v == "acceptEdits") {
+			return "--permission-mode " + v
+		}
+		for _, name := range []string{"--sandbox", "-s"} {
+			if v, ok := val(i, a, name); ok && v == "danger-full-access" && s.CodexSandbox != v {
+				return name + " " + v
+			}
+		}
+		for _, name := range []string{"--ask-for-approval", "-a"} {
+			if v, ok := val(i, a, name); ok && v == "never" && s.CodexApproval != v {
+				return name + " " + v
+			}
+		}
+		for _, name := range []string{"--allowedTools", "--allowed-tools"} {
+			if v, ok := val(i, a, name); ok {
+				for _, t := range strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' }) {
+					if !slices.Contains(s.AllowedTools, t) {
+						return name + " " + t
+					}
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // Codec is a's session codec for switching to or from it, if it has one.

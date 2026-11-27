@@ -446,6 +446,8 @@ func (a *App) runStatus(r *pb.ScheduleRun) (glyph, string) {
 		return glyph{"–", a.th.dim, false}, "missed"
 	case pb.ScheduleRun_STATUS_STOPPED:
 		return glyph{"■", a.th.dim, false}, "stopped"
+	case pb.ScheduleRun_STATUS_QUEUED:
+		return glyph{"…", a.th.dim, false}, "waiting to go in"
 	}
 	return glyph{"·", a.th.faint, false}, ""
 }
@@ -1020,6 +1022,12 @@ func (v *scheduleView) draw(a *App) {
 		}
 		if l.whenW == 0 {
 			more = append(more, scheduleWhen(sc))
+		}
+		if w := schedtrig.SessionWords(sc); w != "" {
+			if sc.SessionWarning != "" {
+				w += " (its tab allows more)"
+			}
+			more = append(more, w)
 		}
 		if sc.CreatedBy != "" {
 			more = append(more, "made by "+sc.CreatedBy)

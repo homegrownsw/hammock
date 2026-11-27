@@ -114,6 +114,16 @@ final class ScheduleUI {
         new(model, groupID: tab.groupID, cwd: pane?.cwd, kind: agent?.agent.harness ?? "command")
         guard let agent, let draft = editing else { return }
         let name = !tab.name.isEmpty ? tab.name : tab.autoKey.hasPrefix("agent:") ? tab.autoName : ""
+        if continuing {
+            // Its runs go into this tab's session: a prompt of their own.
+            continuing = false
+            draft.s.session = .picked
+            draft.s.overlap = .wait
+            draft.s.sessionID = agent.agent.sessionID
+            draft.s.sessionName = model.title(of: tab)
+            draft.s.sessionWarning = SessionPickList.warning(agent, kind: agent.agent.harness)
+            return
+        }
         // Shown at once, the prompt filled in when the session's been read
         // (unless you've started typing one).
         draft.s.name = name
@@ -124,6 +134,22 @@ final class ScheduleUI {
             if draft.s.name == original.name, name.isEmpty, let t = start.title, !t.isEmpty { draft.s.name = t }
             if draft.s.prompt.isEmpty, draft.s.kind != "command" { draft.s.prompt = start.prompt }
         }
+    }
+
+    /// Send Runs to This Tab's Agent…: Automate This…, each run going into
+    /// the tab's session rather than a new tab.
+    func sendRunsHere(_ model: AppModel, _ tab: WorkspaceTab) {
+        continuing = true
+        scheduleThis(model, tab)
+        continuing = false
+    }
+    @ObservationIgnored private var continuing = false
+
+    /// Whether a tab's agent can take an automation's runs: its session is
+    /// known and its agent can resume.
+    static func canSendRuns(_ model: AppModel, _ tab: WorkspaceTab) -> Bool {
+        guard canSchedule(model, tab), let p = model.shownAgentPane(of: tab) else { return false }
+        return !p.agent.sessionID.isEmpty && Schedule.canContinue(p.agent.harness)
     }
 
     /// Whether a tab can be automated: one in a Group of this computer's.
@@ -476,6 +502,7 @@ enum ScheduleText {
         switch o {
         case .stopPrevious: "Stop the last run, start fresh"
         case .runBoth: "Run both"
+        case .wait: "Wait for it to finish"
         default: "Skip this run"
         }
     }

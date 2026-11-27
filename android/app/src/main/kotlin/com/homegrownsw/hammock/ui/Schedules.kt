@@ -103,16 +103,16 @@ import java.util.Locale
 // ran and is ready, what's coming up, Run Now, Skip and Pause. Making and
 // editing them is the computer's (or hmk schedule's).
 
-val Status.ended get() = this !in setOf(Status.STATUS_UNSPECIFIED, Status.STATUS_RUNNING, Status.STATUS_WAITING)
+val Status.ended get() = this !in setOf(Status.STATUS_UNSPECIFIED, Status.STATUS_RUNNING, Status.STATUS_WAITING, Status.STATUS_QUEUED)
 val Status.label get() = when (this) {
     Status.STATUS_RUNNING -> "Running"; Status.STATUS_WAITING -> "Waiting for you"; Status.STATUS_READY -> "Ready"
     Status.STATUS_FAILED -> "Failed"; Status.STATUS_GAVE_UP -> "Gave up"; Status.STATUS_SKIPPED -> "Skipped"
-    Status.STATUS_MISSED -> "Missed"; Status.STATUS_STOPPED -> "Stopped"; else -> "Unknown"
+    Status.STATUS_MISSED -> "Missed"; Status.STATUS_STOPPED -> "Stopped"; Status.STATUS_QUEUED -> "Waiting to go in"; else -> "Unknown"
 }
 val Status.icon: ImageVector get() = when (this) {
     Status.STATUS_RUNNING -> Icons.Default.Sync; Status.STATUS_WAITING -> Icons.Default.Error; Status.STATUS_READY -> Icons.Default.CheckCircle
     Status.STATUS_FAILED -> Icons.Default.Cancel; Status.STATUS_GAVE_UP -> Icons.Default.HourglassBottom; Status.STATUS_SKIPPED -> Icons.Default.SkipNext
-    Status.STATUS_MISSED -> Icons.Default.Bedtime; Status.STATUS_STOPPED -> Icons.Default.Block; else -> Icons.Default.RadioButtonUnchecked
+    Status.STATUS_MISSED -> Icons.Default.Bedtime; Status.STATUS_STOPPED -> Icons.Default.Block; Status.STATUS_QUEUED -> Icons.Default.HourglassBottom; else -> Icons.Default.RadioButtonUnchecked
 }
 @Composable fun Status.color(): Color = when (this) {
     Status.STATUS_RUNNING -> StatusPalette.indigo(); Status.STATUS_WAITING -> StatusPalette.amber(); Status.STATUS_READY -> StatusPalette.green()
@@ -127,6 +127,17 @@ fun Schedule.runsEarlyFirst(now: Long) = canRunEarly && nextRunUnixMs - now <= 1
 object ScheduleWords {
     fun kindName(kind: String, kinds: List<Hammock.AgentKind>) = when (kind) {
         "command" -> "Command"; "" -> "Claude Code"; else -> AgentCatalog.name(kind, kinds)
+    }
+
+    /** Where its runs go when they carry on a session ("Continues Inbox"); null for a new tab each run. */
+    fun session(s: Schedule): String? {
+        if (s.kind == "command") return null
+        val name = s.sessionName.ifEmpty { s.sessionId.take(8) }
+        return when (s.session) {
+            Schedule.Session.SESSION_OWN -> if (name.isEmpty()) "Continues its own session" else "Continues $name"
+            Schedule.Session.SESSION_PICKED -> "Continues $name"
+            else -> null
+        }
     }
 
     fun time(ms: Long, ctx: android.content.Context): String =
@@ -782,6 +793,7 @@ fun ScheduleScreen(model: AppModel, id: String, nav: Nav, showBack: Boolean) {
                         add(Triple(if (s.kind == "command") "Command" else "Prompt", s.prompt.ifEmpty { "None" }, s.kind == "command"))
                         add(Triple("Folder", s.cwd.replace(Regex("^/(Users|home)/[^/]+"), "~"), true))
                         add(Triple("Group", ScheduleWords.group(w, s), false))
+                        ScheduleWords.session(s)?.let { add(Triple("Each Run", it, false)) }
                         if (s.kind == "claude" && s.allowedToolsCount > 0) add(Triple("Always Allowed", s.allowedToolsList.joinToString(", "), false))
                         ScheduleWords.onlyIf(s).takeIf { it.isNotEmpty() }?.let { add(Triple("Only If", it.replaceFirstChar { c -> c.uppercase() }, false)) }
                         add(Triple("Made By", s.createdBy.ifEmpty { "You" } + if (s.createdUnixMs > 0) " · " + ScheduleWords.date(s.createdUnixMs, now, ctx) else "", false))

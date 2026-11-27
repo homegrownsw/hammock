@@ -20,9 +20,12 @@ import (
 // time, and the newer GitHub events.
 const featureAutomations2 = "automations-2"
 
+// featureSessions: automations that carry on a session (Schedule.session).
+const featureSessions = "automation-sessions"
+
 // features are what this computer's Hammock can do that an older one
 // can't (Computer.features).
-var features = []string{featureAutomations2}
+var features = []string{featureAutomations2, featureSessions}
 
 // needsAutomations2 says what of s an older Hammock wouldn't know ("" if
 // nothing).
@@ -50,12 +53,18 @@ func needsAutomations2(s *pb.Schedule) string {
 // peerCanSave refuses s for the linked computer uid when it uses what
 // that computer's Hammock is too old for. Callers hold d.mu.
 func (d *Daemon) peerCanSave(uid string, s *pb.Schedule) error {
-	what := needsAutomations2(s)
-	if what == "" {
+	l := d.comp.links[uid]
+	if l == nil {
 		return nil
 	}
-	l := d.comp.links[uid]
-	if l == nil || slices.Contains(l.GetRecord().GetFeatures(), featureAutomations2) {
+	has := l.GetRecord().GetFeatures()
+	what := ""
+	switch {
+	case !slices.Contains(has, featureAutomations2) && needsAutomations2(s) != "":
+		what = needsAutomations2(s)
+	case !slices.Contains(has, featureSessions) && s.GetSession() != pb.Schedule_SESSION_NEW:
+		what = "automations that carry on a session"
+	default:
 		return nil
 	}
 	name := strings.TrimSuffix(cmpOr(l.GetRecord().GetName(), "That computer"), ".local")

@@ -259,6 +259,11 @@ struct CommandPalette: View {
             action("schedule-this", "Automate This Tab…", "clock.arrow.circlepath", .indigo, "automate automation schedule this scheduled task cron timer recurring") {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { ScheduleUI.shared.scheduleThis(model, tab) }
             }
+            if ScheduleUI.canSendRuns(model, tab) {
+                action("schedule-send-here", "Send Automation Runs to This Tab’s Agent…", "arrow.turn.down.right", .indigo, "automate automation continue session this agent scheduled task") {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { ScheduleUI.shared.sendRunsHere(model, tab) }
+                }
+            }
         }
         for sc in model.sortedSchedules {
             action("schedule-run:" + sc.id, "Run “\(sc.name)” Now", "play.circle", .indigo, "automation scheduled task start") { ScheduleActions.runNow(model, sc) }

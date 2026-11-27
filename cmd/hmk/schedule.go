@@ -47,7 +47,12 @@ options:
   --dir DIR  --group GROUP  --name NAME     where it runs and is shown (default: here)
   --notify ready|problems|never|default     when to tell you (default: agents when ready,
                                             commands only about problems)
-  --overlap skip|stop|both                  if the last run is still going (default skip)
+  --overlap skip|stop|both|wait             if the last run is still going (default skip;
+                                            carrying on a session: wait or skip, default wait)
+  --continue                                each run carries on this automation's own session
+  --session ID                              each run goes into your agent session ID (its tab, or
+                                            resumed in a new one if it's closed)
+  --new-session                             a new tab and session each run (the default)
   --give-up MINUTES  --keep N               stop a run waiting on you; run tabs to keep
   --close-on-success | --keep-open          commands: close the tab after a clean exit
   --allow RULE (repeatable)  --no-allow     Claude: tools allowed in every run (--allowedTools rules)
@@ -344,12 +349,20 @@ func scheduleFlags(w *world, s *pb.Schedule, args []string, adding bool) error {
 			}
 		case "--overlap":
 			if v, err = val(); err == nil {
-				o, ok := map[string]pb.Schedule_Overlap{"skip": pb.Schedule_OVERLAP_SKIP, "stop": pb.Schedule_OVERLAP_STOP_PREVIOUS, "both": pb.Schedule_OVERLAP_RUN_BOTH}[v]
+				o, ok := map[string]pb.Schedule_Overlap{"skip": pb.Schedule_OVERLAP_SKIP, "stop": pb.Schedule_OVERLAP_STOP_PREVIOUS, "both": pb.Schedule_OVERLAP_RUN_BOTH, "wait": pb.Schedule_OVERLAP_WAIT}[v]
 				if !ok {
-					err = fmt.Errorf("--overlap %q: skip, stop or both", v)
+					err = fmt.Errorf("--overlap %q: skip, stop, both or wait", v)
 				}
 				s.Overlap = o
 			}
+		case "--continue":
+			s.Session, s.SessionId = pb.Schedule_SESSION_OWN, ""
+		case "--session":
+			if v, err = val(); err == nil {
+				s.Session, s.SessionId, s.SessionName = pb.Schedule_SESSION_PICKED, v, ""
+			}
+		case "--new-session":
+			s.Session, s.SessionId, s.SessionName = pb.Schedule_SESSION_NEW, "", ""
 		case "--give-up", "--keep":
 			if v, err = val(); err == nil {
 				var n int
@@ -577,7 +590,11 @@ var runStatusWords = map[pb.ScheduleRun_Status]string{
 	pb.ScheduleRun_STATUS_READY: "ready", pb.ScheduleRun_STATUS_FAILED: "failed",
 	pb.ScheduleRun_STATUS_GAVE_UP: "gave up", pb.ScheduleRun_STATUS_SKIPPED: "skipped",
 	pb.ScheduleRun_STATUS_MISSED: "missed", pb.ScheduleRun_STATUS_STOPPED: "stopped",
+	pb.ScheduleRun_STATUS_QUEUED: "waiting to go in",
 }
+
+// sessionWords says where a schedule's runs go: "" for a new tab each.
+func sessionWords(s *pb.Schedule) string { return schedtrig.SessionWords(s) }
 
 func printSchedules(w *world) {
 	if len(w.schedules) == 0 {
@@ -633,6 +650,15 @@ func printSchedule(w *world, s *pb.Schedule) {
 	for _, c := range s.OnlyIf {
 		printfSafe("  only if  %s  (%s)\n", schedtrig.DescribeCondition(c), schedtrig.SpecCondition(c))
 	}
+	if w := sessionWords(s); w != "" {
+		printfSafe("  session  %s\n", w)
+		if s.SessionId != "" && s.SessionName != "" {
+			printfSafe("           id %s\n", s.SessionId)
+		}
+		if s.SessionWarning != "" {
+			printfSafe("           ! %s\n", s.SessionWarning)
+		}
+	}
 	printfSafe("  group    %s\n", cmpOr(s.GroupName, s.GroupId))
 	if c := w.scheduleComputer(s.ComputerId); c != "" {
 		printfSafe("  computer %s\n", c)
@@ -670,7 +696,11 @@ func printSchedule(w *world, s *pb.Schedule) {
 			extra = append(extra, (time.Duration(r.EndedUnixMs-r.StartedUnixMs) * time.Millisecond).Round(time.Second).String())
 		}
 		if r.TabId != "" && !r.TabClosed {
-			extra = append(extra, "tab "+r.TabId)
+			if r.Borrowed {
+				extra = append(extra, "in your tab "+r.TabId)
+			} else {
+				extra = append(extra, "tab "+r.TabId)
+			}
 		}
 		if r.Output != "" {
 			extra = append(extra, "showed "+r.Output)

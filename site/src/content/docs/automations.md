@@ -13,7 +13,7 @@ Claude Code by default, or any agent with a tick in the Schedules column of [Sup
 
 ## Making one in the app
 
-Choose File ▸ New Automation… (⌥⇧⌘N), or right-click a tab in the sidebar and choose **Automate This…** to start from what it's doing. It opens in the Automations window, where you edit it in place, then **Save** (⌘S) or **Cancel**. Under its name are the **Group** where its tabs open, what it runs, and the **folder** it runs in. Then:
+Choose File ▸ New Automation… (⌥⇧⌘N), or right-click a tab in the sidebar and choose **Automate This…** to start from what it's doing. It opens in the Automations window, where you edit it in place, then **Save** (⌘S) or **Cancel**. Under its name are the **Group** where its tabs open, what it runs, where each run goes ([a new tab, or a session it continues](#continuing-a-session)), and the **folder** it runs in. Then:
 
 - **When:** its times and triggers. **Add Trigger** adds one: **Schedule…** (days and a time, or a cron line) and **Once…** (a date and time) are under Time and Place. Triggers alike but for what they watch (repositories, calendars, apps, drives, displays, Wi-Fi networks) share a row: click the token (**16 repositories**) to add or remove one. **At most once every** sets the [cooldown](#triggers).
 - **Only If:** [conditions](#only-if) a run must meet.
@@ -28,6 +28,17 @@ Under **Options**:
 - For Claude Code, **Remembered tools**, allowed in every run: **Always Allow for This Automation** in Needs You adds to them (a command by its first word or two, but never one that runs whatever follows it, like `bash -c`, `python3 -c`, `sudo`, `find` or `awk`: allow those once). For Codex, its sandbox and approval policy.
 
 A run that asks you something goes to Needs You, like any agent.
+
+### Continuing a session
+
+Instead of a new tab and session each run, an agent's runs can carry on one conversation, so the agent remembers what earlier runs did. Choose it in the pop-up after the agent:
+
+- **Continue this automation's session:** the first run starts a session, and each run after goes into it. It follows its tab to a new session if you `/clear` there.
+- **Continue a Session…:** pick a tab whose agent is open, or a recent session. Right-click a tab and choose **Send Automation Runs to This Tab's Agent…** to start from it.
+
+Only agents that can resume a session offer these. Each run's prompt is typed into the session's tab, after a line saying which automation sent it. It waits while the agent is working or asking you, or while something's typed in its message box, which it never clears; **Give up after** limits the wait. If the tab's been closed, the session is resumed in a new tab of the automation's Group with the automation's own permissions. A session already open on one of your linked computers isn't opened again here: the run fails and says where it is. A run's turn ends when the agent next finishes, and your tab is marked like any finished agent's.
+
+**If still running** is then **Wait for it to finish** (the default) or **Skip this run**, and **Keep the last** doesn't apply. A tab of yours stays yours: a run never closes it, stops its agent (giving up only marks the run), or clears its Needs You items. If the tab lets its agent do more than the automation would, such as Claude Code started with `--dangerously-skip-permissions`, the automation says so.
 
 ## Making one with hmk
 
@@ -52,7 +63,8 @@ It runs in the current folder and Group unless you give `--dir` or `--group`. Qu
 | `--command` | Run a command instead of an agent. |
 | `--dir DIR`, `--group GROUP`, `--name NAME` | Where it runs, and where its tabs open. |
 | `--notify ready\|problems\|never\|default` | When to tell you. |
-| `--overlap skip\|stop\|both` | If the last run is still going. |
+| `--overlap skip\|stop\|both\|wait` | If the last run is still going (`wait` or `skip` when it continues a session). |
+| `--continue`, `--session ID`, `--new-session` | [Continue](#continuing-a-session) this automation's own session, or your session `ID`; or a new tab each run. |
 | `--give-up MINUTES`, `--keep N` | Stop a run that waits on you this long; how many runs' tabs to keep. |
 | `--close-on-success`, `--keep-open` | Commands: close the tab after a clean exit, or don't. |
 | `--allow RULE`, `--no-allow` | Claude Code: tools allowed in every run, as `--allowedTools` rules. |
@@ -126,7 +138,7 @@ GitHub triggers watch the folder's GitHub repository (`gh repo set-default`'s, e
 
 This Mac triggers work with the app closed, except Wi-Fi, apps and displays: the app watches those, so their row says **Needs Hammock open** when it isn't. To watch those with the app closed, use a [Shortcuts automation](#from-shortcuts) instead. Wi-Fi triggers need Location access, which the app asks for (macOS gives the network's name only to apps with it). Free space is what the Finder shows as available. A drive is one you connect, not a disk image or a Time Machine backup. You're away once the Mac is locked or hasn't been touched for 2 minutes, or you've used Hammock on your phone or another computer since. A disk or battery trigger fires once as it falls below its mark, and again only after it's been back above it.
 
-Nothing that's already so when you add a trigger starts a run. Under each trigger in the Automations window (and in `hmk automation show`), a line says when it last checked and fired, or what's holding back a run it started, such as its cooldown. What happens in an automation's run, or in panes a run opened, never triggers an automation, so automations can't set each other off in a loop.
+Nothing that's already so when you add a trigger starts a run. Under each trigger in the Automations window (and in `hmk automation show`), a line says when it last checked and fired, or what's holding back a run it started, such as its cooldown. What happens in an automation's run, or in panes a run opened, never triggers an automation, so automations can't set each other off in a loop. A run sent into a [session of yours](#continuing-a-session) is the exception: the tab is yours, so it still can, but not an automation that continues a session.
 
 ### What the run gets
 
@@ -158,7 +170,7 @@ A **command** gets the same details in environment variables: `$HMK_EVENT_URL`, 
 The run's record says what started it, such as **CI failed on #42**.
 
 :::caution
-What a trigger passes on is written by other people: a pull request's title, a comment, a log line, a webhook's body, the text a shortcut sends, such as a message you were sent. Hammock gives it to the agent marked as data, not instructions, but write the prompt so the automation does nothing harmful whatever that text says, and keep the tools it may use to what it needs.
+What a trigger passes on is written by other people: a pull request's title, a comment, a log line, a webhook's body, the text a shortcut sends, such as a message you were sent. Hammock gives it to the agent marked as data, not instructions, but write the prompt so the automation does nothing harmful whatever that text says, and keep the tools it may use to what it needs. A run that continues a session of yours can do whatever that session's agent may, and the text stays in that conversation.
 :::
 
 ### Bursts

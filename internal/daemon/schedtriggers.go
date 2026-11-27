@@ -184,6 +184,11 @@ func (d *Daemon) heldWhy(s *pb.Schedule, now time.Time) string {
 	if s.Overlap == pb.Schedule_OVERLAP_SKIP && slices.ContainsFunc(s.Runs, runActive) {
 		return "waiting for the last run to end"
 	}
+	// A session carried on takes one run at a time: what comes meanwhile
+	// goes in together after.
+	if continued(s) && slices.ContainsFunc(s.Runs, func(r *pb.ScheduleRun) bool { return runActive(r) || r.Status == pb.ScheduleRun_STATUS_QUEUED }) {
+		return "waiting for the last run to end"
+	}
 	return ""
 }
 
@@ -878,7 +883,7 @@ func (d *Daemon) fromAutomation(p *pane) bool {
 	runTabs := map[string]bool{}
 	for _, s := range d.sched.list {
 		for _, r := range s.Runs {
-			if r.TabId != "" && !r.TabClosed {
+			if r.TabId != "" && !r.TabClosed && !r.Borrowed { // (a tab of yours a run went into stays yours)
 				runTabs[r.TabId] = true
 			}
 		}
@@ -917,7 +922,11 @@ func (d *Daemon) schedAgentEvent(p *pane, item *pb.AttentionItem) {
 	if !finished && !needs || !d.anyTrigger(func(t *pb.EventTrigger) bool { return t.GetAgent() != nil }) || d.fromAutomation(p) {
 		return
 	}
+	borrowed := d.borrowedRunIn(p)
 	for _, s := range d.sched.list {
+		if borrowed && continued(s) {
+			continue // (schedcontinue.go: borrowedRunIn)
+		}
 		for _, t := range d.eventsOf(s) {
 			a := t.GetAgent()
 			if a == nil || !(finished && a.Finished || needs && a.NeedsYou) || !d.paneMatches(p, a.PaneId, a.GroupId) {

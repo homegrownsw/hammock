@@ -548,6 +548,9 @@ struct ScheduleDetailScreen: View {
                         .truncationMode(.middle)
                 }
                 LabeledContent("Group", value: ScheduleWords.group(model, s))
+                if let session = s.sessionText {
+                    LabeledContent("Each Run", value: session)
+                }
                 if let c = model.computer(of: s) {
                     LabeledContent("Computer") {
                         HStack(spacing: 5) { ComputerBadge(c, size: 13); Text(c.name) }

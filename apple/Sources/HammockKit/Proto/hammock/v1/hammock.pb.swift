@@ -10011,6 +10011,32 @@ public nonisolated struct Hammock_V1_Schedule: @unchecked Sendable {
     set {_uniqueStorage()._onlyIf = newValue}
   }
 
+  public var session: Hammock_V1_Schedule.Session {
+    get {_storage._session}
+    set {_uniqueStorage()._session = newValue}
+  }
+
+  /// The session runs go into: SESSION_PICKED's, given; SESSION_OWN's, the
+  /// daemon's (empty until its first run's agent says), following its tab
+  /// to a new session (/clear).
+  public var sessionID: String {
+    get {_storage._sessionID}
+    set {_uniqueStorage()._sessionID = newValue}
+  }
+
+  /// Read only, the daemon's: what the session is called (its tab's name,
+  /// or its title), and why sending runs there needs care ("" when it
+  /// doesn't): its tab lets its agent do more than this schedule would.
+  public var sessionName: String {
+    get {_storage._sessionName}
+    set {_uniqueStorage()._sessionName = newValue}
+  }
+
+  public var sessionWarning: String {
+    get {_storage._sessionWarning}
+    set {_uniqueStorage()._sessionWarning = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum Overlap: SwiftProtobuf.Enum, Swift.CaseIterable {
@@ -10022,6 +10048,11 @@ public nonisolated struct Hammock_V1_Schedule: @unchecked Sendable {
     /// stop the last run, start this one
     case stopPrevious // = 1
     case runBoth // = 2
+
+    /// A session continued (session): this run waits for the last to finish,
+    /// then goes into the session after it. The only other choice there is
+    /// OVERLAP_SKIP.
+    case wait // = 3
     case UNRECOGNIZED(Int)
 
     public init() {
@@ -10033,6 +10064,7 @@ public nonisolated struct Hammock_V1_Schedule: @unchecked Sendable {
       case 0: self = .skip
       case 1: self = .stopPrevious
       case 2: self = .runBoth
+      case 3: self = .wait
       default: self = .UNRECOGNIZED(rawValue)
       }
     }
@@ -10042,6 +10074,7 @@ public nonisolated struct Hammock_V1_Schedule: @unchecked Sendable {
       case .skip: return 0
       case .stopPrevious: return 1
       case .runBoth: return 2
+      case .wait: return 3
       case .UNRECOGNIZED(let i): return i
       }
     }
@@ -10051,6 +10084,7 @@ public nonisolated struct Hammock_V1_Schedule: @unchecked Sendable {
       .skip,
       .stopPrevious,
       .runBoth,
+      .wait,
     ]
 
   }
@@ -10140,6 +10174,56 @@ public nonisolated struct Hammock_V1_Schedule: @unchecked Sendable {
       .repeat,
       .once,
       .events,
+    ]
+
+  }
+
+  /// Continue a session (schedcontinue.go): each run goes into one agent
+  /// session, not a new tab and session of its own. Only for an agent
+  /// whose sessions resume (Agent.can_resume). The run is typed into the
+  /// session's tab once its agent is free and nothing's typed in its
+  /// message box, or, its tab closed, the session is resumed in a new tab
+  /// of the schedule's Group with the schedule's own options.
+  public nonisolated enum Session: SwiftProtobuf.Enum, Swift.CaseIterable {
+    public typealias RawValue = Int
+
+    /// a new tab, and session, each run
+    case new // = 0
+
+    /// the session its first run started (session_id, the daemon's), carried on
+    case own // = 1
+
+    /// session_id: a session of yours (on the schedule's computer)
+    case picked // = 2
+    case UNRECOGNIZED(Int)
+
+    public init() {
+      self = .new
+    }
+
+    public init?(rawValue: Int) {
+      switch rawValue {
+      case 0: self = .new
+      case 1: self = .own
+      case 2: self = .picked
+      default: self = .UNRECOGNIZED(rawValue)
+      }
+    }
+
+    public var rawValue: Int {
+      switch self {
+      case .new: return 0
+      case .own: return 1
+      case .picked: return 2
+      case .UNRECOGNIZED(let i): return i
+      }
+    }
+
+    // The compiler won't synthesize support with the UNRECOGNIZED case.
+    public static let allCases: [Hammock_V1_Schedule.Session] = [
+      .new,
+      .own,
+      .picked,
     ]
 
   }
@@ -10364,6 +10448,21 @@ public nonisolated struct Hammock_V1_ScheduleRun: @unchecked Sendable {
     set {_uniqueStorage()._trigger = newValue}
   }
 
+  /// It went into a tab of yours (a session you picked, open): the tab stays
+  /// yours. It's never closed, kept, stopped (giving up only marks the run)
+  /// or counted as an automation's, so what happens in it can still start
+  /// automations. Its turn ends when the agent next finishes.
+  public var borrowed: Bool {
+    get {_storage._borrowed}
+    set {_uniqueStorage()._borrowed = newValue}
+  }
+
+  /// it went into a session carried on (Schedule.session), not a new one
+  public var continued: Bool {
+    get {_storage._continued}
+    set {_uniqueStorage()._continued = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum Status: SwiftProtobuf.Enum, Swift.CaseIterable {
@@ -10391,6 +10490,10 @@ public nonisolated struct Hammock_V1_ScheduleRun: @unchecked Sendable {
 
     /// stopped for a newer run, or by you
     case stopped // = 8
+
+    /// A session continued: waiting to be sent into it (its agent is busy,
+    /// something's typed in its message box, or the last run is still going).
+    case queued // = 9
     case UNRECOGNIZED(Int)
 
     public init() {
@@ -10408,6 +10511,7 @@ public nonisolated struct Hammock_V1_ScheduleRun: @unchecked Sendable {
       case 6: self = .skipped
       case 7: self = .missed
       case 8: self = .stopped
+      case 9: self = .queued
       default: self = .UNRECOGNIZED(rawValue)
       }
     }
@@ -10423,6 +10527,7 @@ public nonisolated struct Hammock_V1_ScheduleRun: @unchecked Sendable {
       case .skipped: return 6
       case .missed: return 7
       case .stopped: return 8
+      case .queued: return 9
       case .UNRECOGNIZED(let i): return i
       }
     }
@@ -10438,6 +10543,7 @@ public nonisolated struct Hammock_V1_ScheduleRun: @unchecked Sendable {
       .skipped,
       .missed,
       .stopped,
+      .queued,
     ]
 
   }
@@ -29374,7 +29480,7 @@ nonisolated extension Hammock_V1_SshSetupReply: SwiftProtobuf.Message, SwiftProt
 
 nonisolated extension Hammock_V1_Schedule: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Schedule"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{1}name\0\u{3}group_id\0\u{3}group_name\0\u{3}group_icon\0\u{1}kind\0\u{1}prompt\0\u{1}cwd\0\u{1}weekdays\0\u{3}minute_of_day\0\u{1}cron\0\u{1}paused\0\u{1}overlap\0\u{1}notify\0\u{3}keep_runs\0\u{3}give_up_minutes\0\u{3}close_on_success\0\u{3}allowed_tools\0\u{3}codex_sandbox\0\u{3}codex_approval\0\u{3}next_run_unix_ms\0\u{3}skip_until_unix_ms\0\u{1}runs\0\u{3}computer_id\0\u{3}created_by\0\u{3}created_unix_ms\0\u{1}error\0\u{1}timing\0\u{3}once_unix_ms\0\u{1}events\0\u{3}cooldown_seconds\0\u{3}only_if\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{1}name\0\u{3}group_id\0\u{3}group_name\0\u{3}group_icon\0\u{1}kind\0\u{1}prompt\0\u{1}cwd\0\u{1}weekdays\0\u{3}minute_of_day\0\u{1}cron\0\u{1}paused\0\u{1}overlap\0\u{1}notify\0\u{3}keep_runs\0\u{3}give_up_minutes\0\u{3}close_on_success\0\u{3}allowed_tools\0\u{3}codex_sandbox\0\u{3}codex_approval\0\u{3}next_run_unix_ms\0\u{3}skip_until_unix_ms\0\u{1}runs\0\u{3}computer_id\0\u{3}created_by\0\u{3}created_unix_ms\0\u{1}error\0\u{1}timing\0\u{3}once_unix_ms\0\u{1}events\0\u{3}cooldown_seconds\0\u{3}only_if\0\u{1}session\0\u{3}session_id\0\u{3}session_name\0\u{3}session_warning\0")
 
   fileprivate class _StorageClass {
     var _id: String = String()
@@ -29409,6 +29515,10 @@ nonisolated extension Hammock_V1_Schedule: SwiftProtobuf.Message, SwiftProtobuf.
     var _events: [Hammock_V1_EventTrigger] = []
     var _cooldownSeconds: Int32? = nil
     var _onlyIf: [Hammock_V1_Condition] = []
+    var _session: Hammock_V1_Schedule.Session = .new
+    var _sessionID: String = String()
+    var _sessionName: String = String()
+    var _sessionWarning: String = String()
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -29451,6 +29561,10 @@ nonisolated extension Hammock_V1_Schedule: SwiftProtobuf.Message, SwiftProtobuf.
       _events = source._events
       _cooldownSeconds = source._cooldownSeconds
       _onlyIf = source._onlyIf
+      _session = source._session
+      _sessionID = source._sessionID
+      _sessionName = source._sessionName
+      _sessionWarning = source._sessionWarning
     }
   }
 
@@ -29501,6 +29615,10 @@ nonisolated extension Hammock_V1_Schedule: SwiftProtobuf.Message, SwiftProtobuf.
         case 30: try { try decoder.decodeRepeatedMessageField(value: &_storage._events) }()
         case 31: try { try decoder.decodeSingularInt32Field(value: &_storage._cooldownSeconds) }()
         case 32: try { try decoder.decodeRepeatedMessageField(value: &_storage._onlyIf) }()
+        case 33: try { try decoder.decodeSingularEnumField(value: &_storage._session) }()
+        case 34: try { try decoder.decodeSingularStringField(value: &_storage._sessionID) }()
+        case 35: try { try decoder.decodeSingularStringField(value: &_storage._sessionName) }()
+        case 36: try { try decoder.decodeSingularStringField(value: &_storage._sessionWarning) }()
         default: break
         }
       }
@@ -29609,6 +29727,18 @@ nonisolated extension Hammock_V1_Schedule: SwiftProtobuf.Message, SwiftProtobuf.
       if !_storage._onlyIf.isEmpty {
         try visitor.visitRepeatedMessageField(value: _storage._onlyIf, fieldNumber: 32)
       }
+      if _storage._session != .new {
+        try visitor.visitSingularEnumField(value: _storage._session, fieldNumber: 33)
+      }
+      if !_storage._sessionID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._sessionID, fieldNumber: 34)
+      }
+      if !_storage._sessionName.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._sessionName, fieldNumber: 35)
+      }
+      if !_storage._sessionWarning.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._sessionWarning, fieldNumber: 36)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -29650,6 +29780,10 @@ nonisolated extension Hammock_V1_Schedule: SwiftProtobuf.Message, SwiftProtobuf.
         if _storage._events != rhs_storage._events {return false}
         if _storage._cooldownSeconds != rhs_storage._cooldownSeconds {return false}
         if _storage._onlyIf != rhs_storage._onlyIf {return false}
+        if _storage._session != rhs_storage._session {return false}
+        if _storage._sessionID != rhs_storage._sessionID {return false}
+        if _storage._sessionName != rhs_storage._sessionName {return false}
+        if _storage._sessionWarning != rhs_storage._sessionWarning {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -29660,7 +29794,7 @@ nonisolated extension Hammock_V1_Schedule: SwiftProtobuf.Message, SwiftProtobuf.
 }
 
 nonisolated extension Hammock_V1_Schedule.Overlap: SwiftProtobuf._ProtoNameProviding {
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0OVERLAP_SKIP\0\u{1}OVERLAP_STOP_PREVIOUS\0\u{1}OVERLAP_RUN_BOTH\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0OVERLAP_SKIP\0\u{1}OVERLAP_STOP_PREVIOUS\0\u{1}OVERLAP_RUN_BOTH\0\u{1}OVERLAP_WAIT\0")
 }
 
 nonisolated extension Hammock_V1_Schedule.Notify: SwiftProtobuf._ProtoNameProviding {
@@ -29669,6 +29803,10 @@ nonisolated extension Hammock_V1_Schedule.Notify: SwiftProtobuf._ProtoNameProvid
 
 nonisolated extension Hammock_V1_Schedule.Timing: SwiftProtobuf._ProtoNameProviding {
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0TIMING_REPEAT\0\u{1}TIMING_ONCE\0\u{1}TIMING_EVENTS\0")
+}
+
+nonisolated extension Hammock_V1_Schedule.Session: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0SESSION_NEW\0\u{1}SESSION_OWN\0\u{1}SESSION_PICKED\0")
 }
 
 nonisolated extension Hammock_V1_Condition: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
@@ -29737,7 +29875,7 @@ nonisolated extension Hammock_V1_Condition.Kind: SwiftProtobuf._ProtoNameProvidi
 
 nonisolated extension Hammock_V1_ScheduleRun: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ScheduleRun"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}due_unix_ms\0\u{3}started_unix_ms\0\u{3}ended_unix_ms\0\u{1}status\0\u{3}tab_id\0\u{3}pane_id\0\u{3}exit_code\0\u{1}note\0\u{1}kept\0\u{3}catch_up\0\u{1}manual\0\u{1}output\0\u{3}session_id\0\u{3}tab_closed\0\u{3}waiting_since_unix_ms\0\u{1}kind\0\u{1}early\0\u{1}trigger\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}due_unix_ms\0\u{3}started_unix_ms\0\u{3}ended_unix_ms\0\u{1}status\0\u{3}tab_id\0\u{3}pane_id\0\u{3}exit_code\0\u{1}note\0\u{1}kept\0\u{3}catch_up\0\u{1}manual\0\u{1}output\0\u{3}session_id\0\u{3}tab_closed\0\u{3}waiting_since_unix_ms\0\u{1}kind\0\u{1}early\0\u{1}trigger\0\u{1}borrowed\0\u{1}continued\0")
 
   fileprivate class _StorageClass {
     var _id: String = String()
@@ -29759,6 +29897,8 @@ nonisolated extension Hammock_V1_ScheduleRun: SwiftProtobuf.Message, SwiftProtob
     var _kind: String = String()
     var _early: Bool = false
     var _trigger: String = String()
+    var _borrowed: Bool = false
+    var _continued: Bool = false
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -29788,6 +29928,8 @@ nonisolated extension Hammock_V1_ScheduleRun: SwiftProtobuf.Message, SwiftProtob
       _kind = source._kind
       _early = source._early
       _trigger = source._trigger
+      _borrowed = source._borrowed
+      _continued = source._continued
     }
   }
 
@@ -29825,6 +29967,8 @@ nonisolated extension Hammock_V1_ScheduleRun: SwiftProtobuf.Message, SwiftProtob
         case 17: try { try decoder.decodeSingularStringField(value: &_storage._kind) }()
         case 18: try { try decoder.decodeSingularBoolField(value: &_storage._early) }()
         case 19: try { try decoder.decodeSingularStringField(value: &_storage._trigger) }()
+        case 20: try { try decoder.decodeSingularBoolField(value: &_storage._borrowed) }()
+        case 21: try { try decoder.decodeSingularBoolField(value: &_storage._continued) }()
         default: break
         }
       }
@@ -29890,6 +30034,12 @@ nonisolated extension Hammock_V1_ScheduleRun: SwiftProtobuf.Message, SwiftProtob
       if !_storage._trigger.isEmpty {
         try visitor.visitSingularStringField(value: _storage._trigger, fieldNumber: 19)
       }
+      if _storage._borrowed != false {
+        try visitor.visitSingularBoolField(value: _storage._borrowed, fieldNumber: 20)
+      }
+      if _storage._continued != false {
+        try visitor.visitSingularBoolField(value: _storage._continued, fieldNumber: 21)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -29918,6 +30068,8 @@ nonisolated extension Hammock_V1_ScheduleRun: SwiftProtobuf.Message, SwiftProtob
         if _storage._kind != rhs_storage._kind {return false}
         if _storage._early != rhs_storage._early {return false}
         if _storage._trigger != rhs_storage._trigger {return false}
+        if _storage._borrowed != rhs_storage._borrowed {return false}
+        if _storage._continued != rhs_storage._continued {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -29928,7 +30080,7 @@ nonisolated extension Hammock_V1_ScheduleRun: SwiftProtobuf.Message, SwiftProtob
 }
 
 nonisolated extension Hammock_V1_ScheduleRun.Status: SwiftProtobuf._ProtoNameProviding {
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0STATUS_UNSPECIFIED\0\u{1}STATUS_RUNNING\0\u{1}STATUS_WAITING\0\u{1}STATUS_READY\0\u{1}STATUS_FAILED\0\u{1}STATUS_GAVE_UP\0\u{1}STATUS_SKIPPED\0\u{1}STATUS_MISSED\0\u{1}STATUS_STOPPED\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0STATUS_UNSPECIFIED\0\u{1}STATUS_RUNNING\0\u{1}STATUS_WAITING\0\u{1}STATUS_READY\0\u{1}STATUS_FAILED\0\u{1}STATUS_GAVE_UP\0\u{1}STATUS_SKIPPED\0\u{1}STATUS_MISSED\0\u{1}STATUS_STOPPED\0\u{1}STATUS_QUEUED\0")
 }
 
 nonisolated extension Hammock_V1_EventTrigger: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {

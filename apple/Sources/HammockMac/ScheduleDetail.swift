@@ -50,6 +50,9 @@ struct ScheduleDetail: View {
                     Chip(ScheduleText.eachRun(schedule))
                     if let c = model.computer(of: schedule) { Chip("On \(c.name)") }
                 }
+                if schedule.continuesSession, !schedule.sessionWarning.isEmpty {
+                    SessionWarning(text: schedule.sessionWarning)
+                }
                 TimelineView(.periodic(from: .now, by: 60)) { tl in
                     Text(lastAndNext(now: tl.date))
                         .font(.callout)
@@ -181,10 +184,12 @@ struct ScheduleDetail: View {
             HStack(alignment: .firstTextBaseline) {
                 Text("Runs").font(.headline)
                 Spacer()
-                Text("Keeps the last \(schedule.keptRuns)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .help("Older runs’ tabs close as new ones open, except ones you’ve typed in")
+                if !schedule.continuesSession {
+                    Text("Keeps the last \(schedule.keptRuns)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .help("Older runs’ tabs close as new ones open, except ones you’ve typed in")
+                }
             }
             .padding(.bottom, 6)
             Divider()
@@ -244,7 +249,9 @@ struct ScheduleDetail: View {
                     if schedule.kind != "command" {
                         optionRow("Give up after", Schedule.durationText(minutes: schedule.givesUpAfter) + " waiting for you")
                     }
-                    optionRow("Keep", "The last \(schedule.keptRuns) run\(schedule.keptRuns == 1 ? "" : "s")")
+                    if !schedule.continuesSession {
+                        optionRow("Keep", "The last \(schedule.keptRuns) run\(schedule.keptRuns == 1 ? "" : "s")")
+                    }
                     optionRow("Notify me", ScheduleText.notify(schedule.effectiveNotify))
                     if schedule.kind == "codex" {
                         optionRow("Codex sandbox", schedule.codexSandbox.isEmpty ? "Your Codex settings" : schedule.codexSandbox)
@@ -285,10 +292,11 @@ struct ScheduleDetail: View {
         switch schedule.overlap {
         case .stopPrevious: out.append("Stops the last run if still running")
         case .runBoth: out.append("Runs alongside the last")
+        case .skip where schedule.continuesSession: out.append("Skips a run while the last is going")
         default: break
         }
         if schedule.kind != "command", schedule.givesUpAfter != 240 { out.append("Gives up after \(Schedule.durationText(minutes: schedule.givesUpAfter))") }
-        if schedule.keptRuns != 7 { out.append("Keeps \(schedule.keptRuns)") }
+        if schedule.keptRuns != 7, !schedule.continuesSession { out.append("Keeps \(schedule.keptRuns)") }
         if schedule.notify != .default { out.append("Notifies " + ScheduleText.notify(schedule.notify).lowercased()) }
         if schedule.kind == "codex", !schedule.codexSandbox.isEmpty || !schedule.codexApproval.isEmpty { out.append("Codex permissions set") }
         return out
@@ -426,6 +434,7 @@ struct RunRow: View {
 
     /// Its note, else its status (with a command's exit code).
     private var note: String {
+        if run.status == .queued { return run.note.isEmpty ? run.status.label : "\(run.status.label): \(run.note)" }
         if !run.note.isEmpty { return run.note }
         if schedule.kind == "command", run.status == .failed { return "Exit code \(run.exitCode)" }
         return run.status.label
@@ -448,6 +457,7 @@ struct RunRow: View {
 extension ScheduleText {
     /// What each run does with tabs.
     static func eachRun(_ s: Schedule) -> String {
-        s.kind == "command" && s.closeOnSuccess ? "New tab each run, closed if it succeeds" : "New tab each run"
+        if let text = s.sessionText { return text }
+        return s.kind == "command" && s.closeOnSuccess ? "New tab each run, closed if it succeeds" : "New tab each run"
     }
 }

@@ -31,7 +31,8 @@ type scheduleSaveArgs struct {
 	Days          string      `json:"days,omitempty" jsonschema:"with at: 'daily' (default), 'weekdays', 'weekends' or days like 'mon,wed,fri'"`
 	Cron          string      `json:"cron,omitempty" jsonschema:"instead of at/days: a 5-field cron expression in local time, e.g. '0 */2 * * *'"`
 	Notify        string      `json:"notify,omitempty" jsonschema:"'ready', 'problems', 'never' or 'default' (agents when ready, commands only about problems)"`
-	Overlap       string      `json:"overlap,omitempty" jsonschema:"if the last run is still going: 'skip' (default), 'stop' (stop it, start fresh) or 'both'"`
+	Overlap       string      `json:"overlap,omitempty" jsonschema:"if the last run is still going: 'skip' (default), 'stop' (stop it, start fresh) or 'both'; carrying on a session, 'wait' (default) or 'skip'"`
+	Session       string      `json:"session,omitempty" jsonschema:"where runs go: 'new' (a new tab and session each run, the default), 'continue' (carry on this automation's own session) or a session id of the user's (its tab, or resumed if closed). Only agents that can resume"`
 	GiveUpMinutes int         `json:"give_up_minutes,omitempty" jsonschema:"stop a run waiting on the user this long (default 240)"`
 	KeepRuns      int         `json:"keep_runs,omitempty" jsonschema:"run tabs to keep (default 7)"`
 	AllowedTools  []string    `json:"allowed_tools,omitempty" jsonschema:"claude: tools allowed in every run, as --allowedTools rules, e.g. 'Read', 'Bash(gh pr view:*)', 'mcp__slack__read'"`
@@ -123,6 +124,15 @@ func viewSchedule(w *world, s *pb.Schedule) scheduleView {
 		Group: s.GroupName, Computer: w.scheduleComputer(s.ComputerId), Allowed: s.AllowedTools, Error: s.Error, CreatedBy: s.CreatedBy,
 		Extra: map[string]any{"notify": strings.ToLower(strings.TrimPrefix(s.Notify.String(), "NOTIFY_")),
 			"overlap": strings.ToLower(strings.TrimPrefix(s.Overlap.String(), "OVERLAP_")), "give_up_minutes": s.GiveUpMinutes, "keep_runs": s.KeepRuns}}
+	if w := sessionWords(s); w != "" {
+		v.Extra["session"] = w
+		if s.SessionId != "" {
+			v.Extra["session_id"] = s.SessionId
+		}
+		if s.SessionWarning != "" {
+			v.Extra["session_warning"] = s.SessionWarning
+		}
+	}
 	if s.NextRunUnixMs > 0 {
 		v.NextRun = time.UnixMilli(s.NextRunUnixMs).Format(time.RFC3339)
 	}
@@ -282,6 +292,15 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 		}
 		if a.Notify != "" {
 			args = append(args, "--notify", a.Notify)
+		}
+		switch a.Session {
+		case "":
+		case "new":
+			args = append(args, "--new-session")
+		case "continue":
+			args = append(args, "--continue")
+		default:
+			args = append(args, "--session", a.Session)
 		}
 		if a.Overlap != "" {
 			args = append(args, "--overlap", a.Overlap)
