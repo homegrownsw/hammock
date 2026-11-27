@@ -32,6 +32,9 @@ var (
 	// macFresh is how old a look may be for an Only If condition; older,
 	// it looks again.
 	macFresh = 45 * time.Second
+	// macAwayStale is how old the watcher's look at you being away may be
+	// for an Only If condition when it can't look again (macFreshSample).
+	macAwayStale = 90 * time.Second
 	// What the looks use (tests replace them).
 	macVolumesNow = hostVolumes
 	macPowerNow   = hostPower
@@ -447,17 +450,27 @@ func diskFreeWords(v macVolume) string {
 	return fmt.Sprintf("%.0f GB (%d%%)", float64(v.Avail)/1e9, pct)
 }
 
-// macFresh is a look at the Mac no older than macFresh with what need
-// says, for Only If conditions: the watcher's last, else a new one.
-// Callers hold d.mu (a new look runs ioreg under it: rare, as the watcher
-// looks every macTick while a condition needs it).
+// macFreshSample is a look at the Mac no older than macFresh with what
+// need says, for Only If conditions: the watcher's last, else a new one.
+// Callers hold d.mu, so a new look asks IOKit for power and volumes (in
+// this process) but never runs ioreg for you being away: that's the
+// watcher's last look, if it's no older than macAwayStale (the watcher
+// looks every macTick while a condition needs it, so an older one is rare:
+// just after a wake, or the condition being added), else not known
+// (lookedAway false), and the watcher's asked to look now.
 func (d *Daemon) macFreshSample(now time.Time, need macNeed) macSample {
-	sm := d.sched.mac.sample
-	if now.Sub(sm.at) <= macFresh && (!need.power || sm.lookedPower) && (!need.volumes || sm.lookedVolumes) && (!need.away || sm.lookedAway) {
-		return sm
+	last := d.sched.mac.sample
+	if now.Sub(last.at) <= macFresh && (!need.power || last.lookedPower) && (!need.volumes || last.lookedVolumes) && (!need.away || last.lookedAway) {
+		return last
 	}
-	sm = d.sampleMac(now, need)
-	d.finishSample(&sm, need)
+	sm := d.sampleMac(now, macNeed{power: need.power, volumes: need.volumes})
+	if need.away {
+		if last.lookedAway && now.Sub(last.at) <= macAwayStale {
+			sm.idle, sm.away, sm.lookedAway = last.idle, last.away, true
+		} else {
+			d.wakeMacWatcher()
+		}
+	}
 	return sm
 }
 
@@ -503,6 +516,16 @@ func (d *Daemon) macAppState(c *conn, m *pb.MacAppState) {
 	if d.sched.mac.appConn != c {
 		prev = nil // another connection: news only from what this one says next
 		d.sched.mac.places = nil
+	}
+	if m.Idle {
+		// It's stopped watching: what changes meanwhile isn't seen, so what
+		// it says when it starts again is a first look, not news.
+		d.sched.mac.app, d.sched.mac.appConn, d.sched.mac.places = nil, c, nil
+		d.macAppErrors()
+		return
+	}
+	if len(m.Places) == 0 {
+		d.sched.mac.places = nil // places aren't watched now: likewise
 	}
 	arrived, left, places := placeEdges(d.sched.mac.places, m)
 	d.sched.mac.app, d.sched.mac.appConn, d.sched.mac.places = m, c, places
@@ -669,8 +692,11 @@ func (d *Daemon) macAppErrors() {
 			}
 			msg := ""
 			switch {
-			case app == nil:
+			case app == nil && d.sched.mac.appConn == nil:
 				msg = "Needs Hammock open"
+			case app == nil:
+				// Open, but not watching (its automations were off): it
+				// starts as one comes on.
 			case (m.Event == pb.MacTrigger_EVENT_WIFI_JOINED || m.Event == pb.MacTrigger_EVENT_WIFI_LEFT) && (app.LocationDenied || !app.WifiKnown):
 				msg = "No Location access: Hammock needs it to see the Wi-Fi network's name (System Settings ▸ Privacy & Security ▸ Location Services)"
 			case schedtrig.IsPlace(m.Event) && app.LocationDenied:

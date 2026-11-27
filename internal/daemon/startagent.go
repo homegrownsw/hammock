@@ -158,7 +158,7 @@ func (d *Daemon) agentStarted(p *pane, harness, creator, later, id string) *pb.S
 	p.mu.Lock()
 	p.info.Agent = &pb.Agent{Harness: harness, State: pb.AgentState_AGENT_STATE_STARTING, StateSinceUnixMs: time.Now().UnixMilli(), Heuristic: true}
 	p.mu.Unlock()
-	d.typeFirstPrompt(p, later)
+	d.typeFirstPrompt(p, later, nil)
 	d.mu.Lock()
 	d.paneChangedIfLive(p)
 	d.mu.Unlock()

@@ -31,6 +31,8 @@ import (
 var (
 	// checkTick is how often checks are looked at to see which are due.
 	checkTick = 15 * time.Second
+	// checkWakeGrace is how long checks wait after the computer wakes.
+	checkWakeGrace = 75 * time.Second
 	// maxCheckOutput is how much of a check's output is read (the rest is
 	// counted, not kept); maxCheckKept how much is kept for its trigger,
 	// and goes into a run.
@@ -66,6 +68,7 @@ func (d *Daemon) watchChecks() {
 	d.mu.Unlock()
 	t := time.NewTicker(checkTick)
 	defer t.Stop()
+	prev := time.Now()
 	for {
 		select {
 		case <-d.done:
@@ -73,6 +76,9 @@ func (d *Daemon) watchChecks() {
 		case <-t.C:
 		case <-wake:
 		}
+		now := time.Now()
+		d.noteChecksWake(schedNow(), slept(now.Round(0).Sub(prev.Round(0)), now.Sub(prev)) || !schedAwake())
+		prev = now
 		for _, j := range d.dueChecks(schedNow()) {
 			go d.runCheck(j)
 		}
@@ -80,6 +86,35 @@ func (d *Daemon) watchChecks() {
 			go d.runURL(j)
 		}
 	}
+}
+
+// noteChecksWake notes that the computer has just woken, or isn't fully
+// awake (woke), so checks wait a while: a Mac's network is often still
+// coming back as it wakes, and a check then would say it's failing. Takes
+// d.mu.
+func (d *Daemon) noteChecksWake(now time.Time, woke bool) {
+	if !woke {
+		return
+	}
+	d.mu.Lock()
+	d.sched.checksWoke = now
+	d.mu.Unlock()
+}
+
+// checksHeld: checks wait now, the computer having just woken. Callers
+// hold d.mu.
+func (d *Daemon) checksHeld(now time.Time) bool {
+	w := d.sched.checksWoke
+	return !w.IsZero() && now.Sub(w) < checkWakeGrace
+}
+
+// checkSlept: a check that began at start (schedNow's, and the monotonic
+// clock's monoStart) went on across a sleep: what it found is the network
+// going or coming back, not the thing it checks, so it doesn't count (the
+// trigger checks again once the wake's grace is over). Callers hold d.mu.
+func (d *Daemon) checkSlept(start, monoStart time.Time) bool {
+	now := time.Now()
+	return slept(now.Round(0).Sub(monoStart.Round(0)), now.Sub(monoStart)) || d.sched.checksWoke.After(start)
 }
 
 // checkKey is what a check watches: a change starts it afresh.
@@ -92,7 +127,7 @@ func checkKey(s *pb.Schedule, c *pb.CommandCheckTrigger) string {
 func (d *Daemon) dueChecks(now time.Time) []checkJob {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.stopped || !d.sched.ready || !schedAwake() {
+	if d.stopped || !d.sched.ready || !schedAwake() || d.checksHeld(now) {
 		return nil
 	}
 	var jobs []checkJob
@@ -158,11 +193,18 @@ var runCheckCommand = func(ctx context.Context, j checkJob, out *checkOutput) (c
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 	cmd.WaitDelay = 2 * time.Second
 	err := cmd.Run()
+	if cmd.Process != nil {
+		// What it left running (in the background, still holding its
+		// output) is ended with it: a check is over when its command is.
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
 	var exit *exec.ExitError
 	switch {
 	case ctx.Err() != nil:
 		return -1, "timed out"
-	case err == nil:
+	case err == nil, errors.Is(err, exec.ErrWaitDelay) && cmd.ProcessState != nil && cmd.ProcessState.Success():
+		// (ErrWaitDelay: it passed, but something it started held its
+		// output open after it ended.)
 		return 0, ""
 	case errors.As(err, &exit) && exit.ExitCode() >= 0:
 		return exit.ExitCode(), fmt.Sprintf("exit %d", exit.ExitCode())
@@ -173,12 +215,19 @@ var runCheckCommand = func(ctx context.Context, j checkJob, out *checkOutput) (c
 // runCheck runs one check, then fires its trigger if it should.
 func (d *Daemon) runCheck(j checkJob) {
 	out := &checkOutput{n: maxCheckOutput, sum: sha256.New()}
+	start, mono := schedNow(), time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), j.timeout)
 	code, why := runCheckCommand(ctx, j, out)
 	cancel()
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	delete(d.sched.checking, j.trigger)
+	if d.checkSlept(start, mono) {
+		if st := d.sched.trig[j.trigger]; st != nil && st.Key == j.key && st.Check != nil {
+			st.Check.Started = 0 // (again once the wake's grace is over)
+		}
+		return
+	}
 	d.checkDone(j, code, why, out.buf.String(), out.dropped > 0, hex.EncodeToString(out.sum.Sum(nil)))
 }
 

@@ -5,7 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -136,6 +139,21 @@ func TestCommandCheckTrigger(t *testing.T) {
 		t.Fatalf("timeout: %d %q after %v", code, why, time.Since(began))
 	}
 
+	// One that passes, leaving something running that holds its output,
+	// passes; what it left is ended with it.
+	pidFile := filepath.Join(work, "bg.pid")
+	code, why = runCheckCommand(context.Background(), checkJob{command: "sleep 30 & echo $! > bg.pid; echo done", dir: work}, &checkOutput{n: 100, sum: nopHash{}})
+	if code != 0 || why != "" {
+		t.Fatalf("a check leaving a child: %d %q", code, why)
+	}
+	if b, err := os.ReadFile(pidFile); err != nil {
+		t.Fatal(err)
+	} else if pid, _ := strconv.Atoi(strings.TrimSpace(string(b))); pid <= 0 {
+		t.Fatalf("pid %q", b)
+	} else {
+		waitFor(t, "its child to be ended", func() bool { return syscall.Kill(pid, 0) != nil })
+	}
+
 	// Bad ones aren't saved.
 	for _, bad := range []*pb.CommandCheckTrigger{{Command: ""}, {Command: "a\nb"}, {Command: "x", EveryMinutes: -1}, {Command: "x", TimeoutSeconds: 99999}} {
 		if _, err := try(c, &pb.ClientMessage{Msg: &pb.ClientMessage_SaveSchedule{SaveSchedule: &pb.SaveSchedule{Schedule: &pb.Schedule{
@@ -236,6 +254,20 @@ func TestTriggerReplyStatus(t *testing.T) {
 	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_SetSchedulePaused{SetSchedulePaused: &pb.SetSchedulePaused{ScheduleId: id, Paused: false}}})
 	if r, err := try(c, &pb.ClientMessage{Msg: &pb.ClientMessage_RunSchedule{RunSchedule: &pb.RunSchedule{ScheduleId: id, Trigger: true}}}); err != nil || r.GetTriggerReply() != nil {
 		t.Fatalf("plain: %v %v", r, err)
+	}
+	// An Only If that doesn't hold: skipped, saying why (not started).
+	for deadline := time.Now().Add(10 * time.Second); slices.ContainsFunc(schedOf(d, id).Runs, runActive); time.Sleep(20 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the plain run never ended")
+		}
+	}
+	clock.set(start.Add(30 * time.Minute))
+	s := schedOf(d, id)
+	other := int32((schedTime().Weekday() + 1) % 7)
+	s.OnlyIf = []*pb.Condition{{Kind: pb.Condition_KIND_DAYS, Weekdays: []int32{other}}}
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_SaveSchedule{SaveSchedule: &pb.SaveSchedule{Schedule: s}}})
+	if r, err = run("skipped"); err != nil || r.Status != pb.TriggerReply_STATUS_SKIPPED || !strings.HasPrefix(r.Reason, "Only if: not ") || r.TabId != "" {
+		t.Fatalf("skipped: %v %v", r, err)
 	}
 	_ = proto.Int32
 }

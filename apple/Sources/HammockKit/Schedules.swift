@@ -136,6 +136,20 @@ extension AppModel {
         /// Waiting to run, and why ("waiting for its cooldown, until 14:05";
         /// "" from an older Hammock, which doesn't say).
         case queued(String)
+        /// Skipped, and why ("Only if: not plugged in").
+        case skipped(String)
+
+        /// Shortcuts' result line: "Started", "Queued: why", "Skipped: why",
+        /// saying when only the first 64 KB of the text went in.
+        public func line(cut: Bool) -> String {
+            var line = switch self {
+            case .started: "Started"
+            case .queued(let why): why.isEmpty ? "Queued" : "Queued: " + why
+            case .skipped(let why): why.isEmpty ? "Skipped" : "Skipped: " + why
+            }
+            if cut { line += " (only the first 64 KB of the text went in)" }
+            return line
+        }
     }
 
     /// The most a trigger sends: the rest is cut (and the caller told).
@@ -174,7 +188,11 @@ extension AppModel {
         }
         switch r.msg {
         case .triggerReply(let t):
-            return (t.status == .queued ? .queued(t.reason) : .started, cut || t.cut)
+            switch t.status {
+            case .queued: return (.queued(t.reason), cut || t.cut)
+            case .skipped: return (.skipped(t.reason), cut || t.cut)
+            default: return (.started, cut || t.cut)
+            }
         case .created:
             return (.started, cut)
         default:

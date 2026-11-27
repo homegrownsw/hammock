@@ -2415,9 +2415,13 @@ message SlackLink {
 // then keeps them on that computer; again with new ones: Change Tokens.
 // DISCONNECT: forgets them.
 // MOVE_HERE: takes the connection from from_computer_id, another of your
-// computers, which forgets it (HAND_OVER).
+// computers (HAND_OVER), checks and keeps its tokens, then has that one
+// forget them (RELEASE); if they don't work here, that one keeps them.
 // HAND_OVER: from a linked computer of yours only: its reply has the
-// tokens, and this one forgets them.
+// tokens (this one keeps them until RELEASE).
+// RELEASE: from a linked computer of yours only, once it has kept the
+// tokens HAND_OVER gave it: this one forgets them, if it still has
+// team_id's.
 message SlackCommand {
   enum Action {
     ACTION_UNSPECIFIED = 0;
@@ -2426,18 +2430,21 @@ message SlackCommand {
     ACTION_DISCONNECT = 3;
     ACTION_MOVE_HERE = 4;
     ACTION_HAND_OVER = 5;
+    ACTION_RELEASE = 6;
   }
   Action action = 1;
   string computer_id = 2;
   string user_token = 3;
   string app_token = 4;
   string from_computer_id = 5;
+  string team_id = 6;             // RELEASE: the workspace whose tokens to forget
 }
 message SlackReply {
   SlackLink link = 1;             // as it is now (none: not connected)
   string manifest_url = 2;        // makes your Slack app from Hammock's manifest (api.slack.com)
   string user_token = 3;          // HAND_OVER only
   string app_token = 4;
+  string team_id = 5;             // HAND_OVER: the tokens' workspace
 }
 
 // A computer this one is linked with, as kept here (not sent).
@@ -3070,7 +3077,11 @@ message MacAppState {
   // (Location is still finding where it is, or has no access).
   repeated string places_in = 6;
   repeated string places_out = 7;
-  repeated string places = 8;     // all the Mac's Places, by name
+  repeated string places = 8;     // all the Mac's Places, by name (none: places aren't watched now)
+  // The app has stopped watching (no automation that's on wants it): the
+  // rest is empty, and what it said before is forgotten, so what it says
+  // when it starts again is a first look, not news.
+  bool idle = 9;
 }
 message MacApp {
   string name = 1;
@@ -3219,13 +3230,16 @@ message RunSchedule {
   bool status_reply = 8;
 }
 // What a trigger did: started a run (tab_id), or queued it (reason: its
-// cooldown, the last run still going, Hammock starting, the Mac asleep).
-// A trigger that can't run is an error instead (Automations are off…).
+// cooldown, the last run still going, Hammock starting, the Mac asleep),
+// or its run was skipped (reason: an Only If that didn't hold, a run
+// already waiting to go into its session). A trigger that can't run is an
+// error instead (Automations are off…).
 message TriggerReply {
   enum Status {
     STATUS_UNSPECIFIED = 0;
     STATUS_STARTED = 1;
     STATUS_QUEUED = 2;
+    STATUS_SKIPPED = 3;
   }
   Status status = 1;
   string reason = 2;

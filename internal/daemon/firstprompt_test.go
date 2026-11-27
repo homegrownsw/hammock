@@ -30,7 +30,7 @@ func TestFirstPromptTypedOnceIdle(t *testing.T) {
 	p.hookAt = time.Now()
 	p.mu.Unlock()
 
-	d.typeFirstPrompt(p, "tidy the hangar")
+	d.typeFirstPrompt(p, "tidy the hangar", nil)
 	time.Sleep(1500 * time.Millisecond)
 	if strings.Contains(p.text(false), "tidy the hangar") {
 		t.Fatal("typed before the agent was at its prompt")

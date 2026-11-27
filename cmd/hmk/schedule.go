@@ -965,11 +965,14 @@ func runTrigger(args []string) error {
 		return err
 	}
 	if tr := r.GetTriggerReply(); tr != nil {
-		if tr.Status == pb.TriggerReply_STATUS_STARTED {
+		switch tr.Status {
+		case pb.TriggerReply_STATUS_STARTED:
 			fmt.Println(tr.TabId)
-			return nil
+		case pb.TriggerReply_STATUS_SKIPPED:
+			printfSafe("Skipped: %s didn't run (%s)\n", s.Name, cmpOr(tr.Reason, "skipped"))
+		default:
+			printfSafe("Queued: %s runs once it may (%s)\n", s.Name, cmpOr(tr.Reason, "waiting"))
 		}
-		printfSafe("Queued: %s runs once it may (%s)\n", s.Name, cmpOr(tr.Reason, "waiting"))
 		return nil
 	}
 	// (A computer with an older Hammock.)

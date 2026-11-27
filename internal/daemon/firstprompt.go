@@ -28,8 +28,9 @@ func startCommand(ag *agents.Agent, prompt string, scheduled *pb.Schedule) (cmd,
 }
 
 // typeFirstPrompt types text into p once its agent is at its prompt (idle,
-// by its hooks or its screen), giving up after firstPromptWait.
-func (d *Daemon) typeFirstPrompt(p *pane, text string) {
+// by its hooks or its screen), giving up after firstPromptWait (then
+// gaveUp, if given, is called, off d.mu).
+func (d *Daemon) typeFirstPrompt(p *pane, text string, gaveUp func()) {
 	if text == "" {
 		return
 	}
@@ -53,6 +54,9 @@ func (d *Daemon) typeFirstPrompt(p *pane, text string) {
 			return
 		}
 		d.log.Info("first message not typed: the agent never reached its prompt", "pane", p.id)
+		if gaveUp != nil {
+			gaveUp()
+		}
 	}()
 }
 

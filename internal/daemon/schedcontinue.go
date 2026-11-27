@@ -372,7 +372,28 @@ func (d *Daemon) openContinued(s *pb.Schedule, q *pb.ScheduleRun, msg, id string
 		p.mu.Unlock()
 	}
 	d.audit("schedule:"+s.Id, "schedule-run", q.TabId, s.Name)
-	d.typeFirstPrompt(p, later)
+	sid, rid := s.Id, q.Id
+	d.typeFirstPrompt(p, later, func() {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		d.continuedNeverTyped(sid, rid)
+	})
+}
+
+// continuedNeverTyped fails a continued run whose message couldn't be
+// typed (its agent never reached its prompt), if it's still under way and
+// its agent hasn't been seen working. Callers hold d.mu.
+func (d *Daemon) continuedNeverTyped(scheduleID, runID string) {
+	s := d.sched.list[scheduleID]
+	if s == nil {
+		return
+	}
+	r := runByID(s, runID)
+	if r == nil || !runActive(r) || d.sched.sawWork[r.Id] {
+		return
+	}
+	d.endRun(s, r, pb.ScheduleRun_STATUS_FAILED, "Its message never went in: the agent didn't reach its prompt")
+	d.saveSchedule(s)
 }
 
 // cleanDir is dir if it's a folder that's there, else "".

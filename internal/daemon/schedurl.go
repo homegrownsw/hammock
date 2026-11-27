@@ -36,12 +36,14 @@ var (
 
 // urlState is what a URL check last saw (in its trigState).
 type urlState struct {
-	Started  int64  `json:"started"` // when its last fetch began (ms)
-	Seen     bool   `json:"seen"`    // it's had a first fetch
-	Failed   bool   `json:"failed"`
-	Status   int    `json:"status"`             // its HTTP status (0: no answer)
-	Hash     string `json:"hash,omitempty"`     // of the body read
-	Contains bool   `json:"contains,omitempty"` // the body had the trigger's text
+	Started int64 `json:"started"` // when its last fetch began (ms)
+	Seen    bool  `json:"seen"`    // it's had a first fetch
+	Failed  bool  `json:"failed"`
+	// Of its last fetch that passed (0: none yet): its HTTP status, a hash
+	// of the body read, and whether the body had the trigger's text.
+	Status   int    `json:"status"`
+	Hash     string `json:"hash,omitempty"`
+	Contains bool   `json:"contains,omitempty"`
 }
 
 // urlJob is one fetch, as its trigger was when it began.
@@ -61,7 +63,7 @@ func urlKey(u *pb.UrlCheckTrigger) string {
 func (d *Daemon) dueURLs(now time.Time) []urlJob {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.stopped || !d.sched.ready || !schedAwake() {
+	if d.stopped || !d.sched.ready || !schedAwake() || d.checksHeld(now) {
 		return nil
 	}
 	var jobs []urlJob
@@ -151,12 +153,19 @@ func shortNetErr(err error) string {
 
 // runURL fetches one URL check, then fires its trigger if it should.
 func (d *Daemon) runURL(j urlJob) {
+	start, mono := schedNow(), time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), j.timeout)
 	r := fetchURL(ctx, j)
 	cancel()
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	delete(d.sched.checking, j.trigger)
+	if d.checkSlept(start, mono) {
+		if st := d.sched.trig[j.trigger]; st != nil && st.Key == j.key && st.URL != nil {
+			st.URL.Started = 0 // (again once the wake's grace is over)
+		}
+		return
+	}
 	d.urlDone(j, r)
 }
 
@@ -178,11 +187,17 @@ func (d *Daemon) urlDone(j urlJob, r urlResult) {
 	case failed:
 		result = "Failed (" + r.why + ")"
 	}
-	sum := sha256.Sum256(r.body)
-	hash := hex.EncodeToString(sum[:])
-	contains := r.status > 0 && u.Text != "" && strings.Contains(strings.ToLower(string(r.body)), strings.ToLower(u.Text))
 	prev := *st.URL
-	st.URL.Seen, st.URL.Failed, st.URL.Status, st.URL.Hash, st.URL.Contains = true, failed, r.status, hash, contains
+	st.URL.Seen, st.URL.Failed = true, failed
+	// A failed fetch says nothing of the page: what it last had is kept, so
+	// a blip neither counts as a change nor arms contains to fire again.
+	hash, contains := prev.Hash, prev.Contains
+	if !failed {
+		sum := sha256.Sum256(r.body)
+		hash = hex.EncodeToString(sum[:])
+		contains = u.Text != "" && strings.Contains(strings.ToLower(string(r.body)), strings.ToLower(u.Text))
+		st.URL.Status, st.URL.Hash, st.URL.Contains = r.status, hash, contains
+	}
 	d.saveTrigState()
 	if due := d.noteChecked(t, schedNow()); due || u.LastResult != result {
 		u.LastResult = result
@@ -198,11 +213,11 @@ func (d *Daemon) urlDone(j urlJob, r urlResult) {
 			what = "started failing (" + r.why + ")"
 		}
 	case pb.UrlCheckTrigger_ON_CHANGE:
-		if hash != prev.Hash || r.status != prev.Status {
+		if !failed && prev.Status != 0 && (hash != prev.Hash || r.status != prev.Status) {
 			what = "changed: " + result
 		}
 	case pb.UrlCheckTrigger_ON_CONTAINS:
-		if contains && !prev.Contains {
+		if !failed && prev.Status != 0 && contains && !prev.Contains {
 			what = "now contains “" + u.Text + "”"
 		}
 	}

@@ -140,6 +140,9 @@ func (d *Daemon) conditionFails(c *pb.Condition, now time.Time, sm macSample) st
 			return "not plugged in"
 		}
 	case pb.Condition_KIND_AWAY:
+		if !sm.lookedAway && !sm.at.IsZero() {
+			return "Hammock can't tell yet whether you're away"
+		}
 		if !sm.away {
 			return "you're not away"
 		}

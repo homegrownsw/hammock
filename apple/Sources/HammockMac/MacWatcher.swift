@@ -86,6 +86,7 @@ final class MacWatcher: NSObject, CLLocationManagerDelegate {
 
     /// Watches this Mac's places while wanted (and Location is allowed), or stops.
     private func syncPlaces(_ want: Bool) {
+        // (A Mac's only grant: When In Use is unavailable in macOS.)
         let allowed = location.authorizationStatus == .authorizedAlways
         let places = want && allowed ? AppConfig.shared.places : []
         let target = Dictionary(places.map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a })
@@ -198,7 +199,16 @@ final class MacWatcher: NSObject, CLLocationManagerDelegate {
         guard let model, model.connected else { return }
         let want = wanted
         syncPlaces(want.places)
-        guard want.any else { lastSent = nil; return }
+        guard want.any else {
+            // Says it's stopped, so the daemon forgets what it was told: what
+            // changes meanwhile isn't seen, and mustn't look like news later.
+            if lastSent?.idle != true {
+                let idle = Hammock_V1_MacAppState.with { $0.idle = true }
+                lastSent = idle
+                Task { try? await model.sendMacAppState(idle) }
+            }
+            return
+        }
         observe()
         var msg = Hammock_V1_MacAppState()
         if want.places {

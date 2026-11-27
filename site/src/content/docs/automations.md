@@ -209,7 +209,7 @@ hmk automation add "Big build" --trigger mac:away=20 --only-if power --only-if h
   --command -- 'make release'
 ```
 
-An automation with This Mac triggers, places, URL checks, Slack triggers or Only If can't be added on a linked computer with an older Hammock: update it first.
+An automation that continues a session, or has This Mac triggers, places, URL checks, Slack triggers or Only If, can't be added on a linked computer with an older Hammock: update it first.
 
 ### Places
 
@@ -219,7 +219,7 @@ Places need Location access, which the app asks for. A Mac knows where it is onl
 
 ### Command checks
 
-A command check runs a command in the automation's folder every few minutes (at least one), with no tab, and starts a run when it starts failing (exits with an error, or runs past its time limit), when its output changes, or when it passes again. A check still going when the next is due isn't started twice. The run gets the command's last output. In the app choose **Add Trigger ▸ Command Check…**; with `hmk`, give the options after `--check-cmd`:
+A command check runs a command in the automation's folder every few minutes (at least one), with no tab, and starts a run when it starts failing (exits with an error, or runs past its time limit), when its output changes, or when it passes again. A check still going when the next is due isn't started twice. Command and URL checks wait a minute or so after the Mac wakes, while its network comes back. What a check leaves running is ended with it. The run gets the command's last output. In the app choose **Add Trigger ▸ Command Check…**; with `hmk`, give the options after `--check-cmd`:
 
 ```sh
 hmk automation add "Site down" --check-cmd 'curl -fsS https://example.com/health' \
@@ -230,7 +230,7 @@ hmk automation add "Site down" --check-cmd 'curl -fsS https://example.com/health
 
 ### URL checks
 
-A URL check fetches a page every few minutes (at least one) and starts a run when it starts failing (an answer other than 2xx, none, or none in its time limit), when the page changes, or when it starts containing a text (in any case). The run gets the answer's status and the start of the page. Any change counts, so `change` suits an API or a plain page: on a page with a clock or a token in it, use `contains`. In the app choose **Add Trigger ▸ URL Check…**; with `hmk`, give the options after `--url`:
+A URL check fetches a page every few minutes (at least one) and starts a run when it starts failing (an answer other than 2xx, none, or none in its time limit), when the page changes, or when it starts containing a text (in any case). The run gets the answer's status and the start of the page. A fetch that fails doesn't count as the page changing. Any change counts, so `change` suits an API or a plain page: on a page with a clock or a token in it, use `contains`. In the app choose **Add Trigger ▸ URL Check…**; with `hmk`, give the options after `--url`:
 
 ```sh
 hmk automation add "Release is out" --url https://example.com/status --url-on contains --url-text deployed \
@@ -289,7 +289,7 @@ make test 2>&1 | tail -50 | hmk trigger "Fix the tests" --data -
 
 ### From Shortcuts
 
-The **Run Hammock Automation** action in Shortcuts runs an automation on your Mac, or from your iPhone on a paired Mac (over [remote access](/hammock/docs/remote/)). Give it the automation, and optionally the **Text** of what happened (such as a message's content, up to 64 KB: the rest is cut, and the result says so) and a short **What Happened** label; on the Mac, files too. Its result is **Started**, **Queued** and why (its cooldown, or its last run still going), or **Failed** and why (Automations are off, it's paused, the Mac can't be reached). It only runs automations: it can't add, change or delete them.
+The **Run Hammock Automation** action in Shortcuts runs an automation on your Mac, or from your iPhone on a paired Mac (over [remote access](/hammock/docs/remote/)). Give it the automation, and optionally the **Text** of what happened (such as a message's content, up to 64 KB: the rest is cut, and the result says so) and a short **What Happened** label; on the Mac, files too. Its result is **Started**, **Queued** and why (its cooldown, or its last run still going), **Skipped** and why (an Only If that didn't hold), or **Failed** and why (Automations are off, it's paused, the Mac can't be reached). It only runs automations: it can't add, change or delete them.
 
 This lets Shortcuts' own automations start Hammock's: when a message or email arrives, a Focus starts, an alarm goes off, or a Bluetooth device connects. In the shortcut's automation, turn off **Confirm Before Run** and turn on **Allow Running When Locked**. Add the **Shortcuts** trigger to an automation that runs on nothing else.
 

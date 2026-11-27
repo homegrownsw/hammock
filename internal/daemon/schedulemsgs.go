@@ -81,6 +81,11 @@ func (d *Daemon) handleSchedule(c *conn, msg *pb.ClientMessage) (*pb.ServerMessa
 			case early:
 				verb = "run the automation %s now, instead of at its next time"
 			}
+			if agent && (rs.Source != "" || rs.Label != "" || len(rs.Files) > 0) {
+				// Only your apps say it's from Shortcuts or Tasker, and with
+				// what label and files: none of it is in what you'd approve.
+				return nil, errors.New("an agent can't set a trigger's source, label or files")
+			}
 			if len(data) > maxHookBody && rs.Source == "" { // (Shortcuts': cut)
 				return nil, fmt.Errorf("the data is over %d KB", maxHookBody>>10)
 			}

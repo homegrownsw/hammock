@@ -945,6 +945,7 @@ const (
 	SlackCommand_ACTION_DISCONNECT  SlackCommand_Action = 3
 	SlackCommand_ACTION_MOVE_HERE   SlackCommand_Action = 4
 	SlackCommand_ACTION_HAND_OVER   SlackCommand_Action = 5
+	SlackCommand_ACTION_RELEASE     SlackCommand_Action = 6
 )
 
 // Enum value maps for SlackCommand_Action.
@@ -956,6 +957,7 @@ var (
 		3: "ACTION_DISCONNECT",
 		4: "ACTION_MOVE_HERE",
 		5: "ACTION_HAND_OVER",
+		6: "ACTION_RELEASE",
 	}
 	SlackCommand_Action_value = map[string]int32{
 		"ACTION_UNSPECIFIED": 0,
@@ -964,6 +966,7 @@ var (
 		"ACTION_DISCONNECT":  3,
 		"ACTION_MOVE_HERE":   4,
 		"ACTION_HAND_OVER":   5,
+		"ACTION_RELEASE":     6,
 	}
 )
 
@@ -1786,6 +1789,7 @@ const (
 	TriggerReply_STATUS_UNSPECIFIED TriggerReply_Status = 0
 	TriggerReply_STATUS_STARTED     TriggerReply_Status = 1
 	TriggerReply_STATUS_QUEUED      TriggerReply_Status = 2
+	TriggerReply_STATUS_SKIPPED     TriggerReply_Status = 3
 )
 
 // Enum value maps for TriggerReply_Status.
@@ -1794,11 +1798,13 @@ var (
 		0: "STATUS_UNSPECIFIED",
 		1: "STATUS_STARTED",
 		2: "STATUS_QUEUED",
+		3: "STATUS_SKIPPED",
 	}
 	TriggerReply_Status_value = map[string]int32{
 		"STATUS_UNSPECIFIED": 0,
 		"STATUS_STARTED":     1,
 		"STATUS_QUEUED":      2,
+		"STATUS_SKIPPED":     3,
 	}
 )
 
@@ -21631,9 +21637,13 @@ func (x *SlackLink) GetIdle() bool {
 // then keeps them on that computer; again with new ones: Change Tokens.
 // DISCONNECT: forgets them.
 // MOVE_HERE: takes the connection from from_computer_id, another of your
-// computers, which forgets it (HAND_OVER).
+// computers (HAND_OVER), checks and keeps its tokens, then has that one
+// forget them (RELEASE); if they don't work here, that one keeps them.
 // HAND_OVER: from a linked computer of yours only: its reply has the
-// tokens, and this one forgets them.
+// tokens (this one keeps them until RELEASE).
+// RELEASE: from a linked computer of yours only, once it has kept the
+// tokens HAND_OVER gave it: this one forgets them, if it still has
+// team_id's.
 type SlackCommand struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Action         SlackCommand_Action    `protobuf:"varint,1,opt,name=action,proto3,enum=hammock.v1.SlackCommand_Action" json:"action,omitempty"`
@@ -21641,6 +21651,7 @@ type SlackCommand struct {
 	UserToken      string                 `protobuf:"bytes,3,opt,name=user_token,json=userToken,proto3" json:"user_token,omitempty"`
 	AppToken       string                 `protobuf:"bytes,4,opt,name=app_token,json=appToken,proto3" json:"app_token,omitempty"`
 	FromComputerId string                 `protobuf:"bytes,5,opt,name=from_computer_id,json=fromComputerId,proto3" json:"from_computer_id,omitempty"`
+	TeamId         string                 `protobuf:"bytes,6,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"` // RELEASE: the workspace whose tokens to forget
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -21710,12 +21721,20 @@ func (x *SlackCommand) GetFromComputerId() string {
 	return ""
 }
 
+func (x *SlackCommand) GetTeamId() string {
+	if x != nil {
+		return x.TeamId
+	}
+	return ""
+}
+
 type SlackReply struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Link          *SlackLink             `protobuf:"bytes,1,opt,name=link,proto3" json:"link,omitempty"`                                  // as it is now (none: not connected)
 	ManifestUrl   string                 `protobuf:"bytes,2,opt,name=manifest_url,json=manifestUrl,proto3" json:"manifest_url,omitempty"` // makes your Slack app from Hammock's manifest (api.slack.com)
 	UserToken     string                 `protobuf:"bytes,3,opt,name=user_token,json=userToken,proto3" json:"user_token,omitempty"`       // HAND_OVER only
 	AppToken      string                 `protobuf:"bytes,4,opt,name=app_token,json=appToken,proto3" json:"app_token,omitempty"`
+	TeamId        string                 `protobuf:"bytes,5,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"` // HAND_OVER: the tokens' workspace
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -21774,6 +21793,13 @@ func (x *SlackReply) GetUserToken() string {
 func (x *SlackReply) GetAppToken() string {
 	if x != nil {
 		return x.AppToken
+	}
+	return ""
+}
+
+func (x *SlackReply) GetTeamId() string {
+	if x != nil {
+		return x.TeamId
 	}
 	return ""
 }
@@ -26060,9 +26086,13 @@ type MacAppState struct {
 	// Places (by name only; where they are stays in the app): those the Mac
 	// is in now, and those it's out of. One in neither isn't known now
 	// (Location is still finding where it is, or has no access).
-	PlacesIn      []string `protobuf:"bytes,6,rep,name=places_in,json=placesIn,proto3" json:"places_in,omitempty"`
-	PlacesOut     []string `protobuf:"bytes,7,rep,name=places_out,json=placesOut,proto3" json:"places_out,omitempty"`
-	Places        []string `protobuf:"bytes,8,rep,name=places,proto3" json:"places,omitempty"` // all the Mac's Places, by name
+	PlacesIn  []string `protobuf:"bytes,6,rep,name=places_in,json=placesIn,proto3" json:"places_in,omitempty"`
+	PlacesOut []string `protobuf:"bytes,7,rep,name=places_out,json=placesOut,proto3" json:"places_out,omitempty"`
+	Places    []string `protobuf:"bytes,8,rep,name=places,proto3" json:"places,omitempty"` // all the Mac's Places, by name (none: places aren't watched now)
+	// The app has stopped watching (no automation that's on wants it): the
+	// rest is empty, and what it said before is forgotten, so what it says
+	// when it starts again is a first look, not news.
+	Idle          bool `protobuf:"varint,9,opt,name=idle,proto3" json:"idle,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -26151,6 +26181,13 @@ func (x *MacAppState) GetPlaces() []string {
 		return x.Places
 	}
 	return nil
+}
+
+func (x *MacAppState) GetIdle() bool {
+	if x != nil {
+		return x.Idle
+	}
+	return false
 }
 
 type MacApp struct {
@@ -27143,8 +27180,10 @@ func (x *RunSchedule) GetStatusReply() bool {
 }
 
 // What a trigger did: started a run (tab_id), or queued it (reason: its
-// cooldown, the last run still going, Hammock starting, the Mac asleep).
-// A trigger that can't run is an error instead (Automations are off…).
+// cooldown, the last run still going, Hammock starting, the Mac asleep),
+// or its run was skipped (reason: an Only If that didn't hold, a run
+// already waiting to go into its session). A trigger that can't run is an
+// error instead (Automations are off…).
 type TriggerReply struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Status        TriggerReply_Status    `protobuf:"varint,1,opt,name=status,proto3,enum=hammock.v1.TriggerReply_Status" json:"status,omitempty"`
@@ -32502,7 +32541,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x04user\x18\x05 \x01(\tR\x04user\x12\x1c\n" +
 	"\tlistening\x18\x06 \x01(\bR\tlistening\x12\x18\n" +
 	"\aproblem\x18\a \x01(\tR\aproblem\x12\x12\n" +
-	"\x04idle\x18\b \x01(\bR\x04idle\"\xdb\x02\n" +
+	"\x04idle\x18\b \x01(\bR\x04idle\"\x88\x03\n" +
 	"\fSlackCommand\x127\n" +
 	"\x06action\x18\x01 \x01(\x0e2\x1f.hammock.v1.SlackCommand.ActionR\x06action\x12\x1f\n" +
 	"\vcomputer_id\x18\x02 \x01(\tR\n" +
@@ -32510,21 +32549,24 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\n" +
 	"user_token\x18\x03 \x01(\tR\tuserToken\x12\x1b\n" +
 	"\tapp_token\x18\x04 \x01(\tR\bappToken\x12(\n" +
-	"\x10from_computer_id\x18\x05 \x01(\tR\x0efromComputerId\"\x8a\x01\n" +
+	"\x10from_computer_id\x18\x05 \x01(\tR\x0efromComputerId\x12\x17\n" +
+	"\ateam_id\x18\x06 \x01(\tR\x06teamId\"\x9e\x01\n" +
 	"\x06Action\x12\x16\n" +
 	"\x12ACTION_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rACTION_STATUS\x10\x01\x12\x12\n" +
 	"\x0eACTION_CONNECT\x10\x02\x12\x15\n" +
 	"\x11ACTION_DISCONNECT\x10\x03\x12\x14\n" +
 	"\x10ACTION_MOVE_HERE\x10\x04\x12\x14\n" +
-	"\x10ACTION_HAND_OVER\x10\x05\"\x96\x01\n" +
+	"\x10ACTION_HAND_OVER\x10\x05\x12\x12\n" +
+	"\x0eACTION_RELEASE\x10\x06\"\xaf\x01\n" +
 	"\n" +
 	"SlackReply\x12)\n" +
 	"\x04link\x18\x01 \x01(\v2\x15.hammock.v1.SlackLinkR\x04link\x12!\n" +
 	"\fmanifest_url\x18\x02 \x01(\tR\vmanifestUrl\x12\x1d\n" +
 	"\n" +
 	"user_token\x18\x03 \x01(\tR\tuserToken\x12\x1b\n" +
-	"\tapp_token\x18\x04 \x01(\tR\bappToken\"\xa8\x02\n" +
+	"\tapp_token\x18\x04 \x01(\tR\bappToken\x12\x17\n" +
+	"\ateam_id\x18\x05 \x01(\tR\x06teamId\"\xa8\x02\n" +
 	"\n" +
 	"StoredLink\x12,\n" +
 	"\x06record\x18\x01 \x01(\v2\x14.hammock.v1.ComputerR\x06record\x12\x1f\n" +
@@ -32991,7 +33033,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x0eEVENT_APP_QUIT\x10\f\x12\x11\n" +
 	"\rEVENT_DISPLAY\x10\r\x12\x16\n" +
 	"\x12EVENT_PLACE_ARRIVE\x10\x0e\x12\x15\n" +
-	"\x11EVENT_PLACE_LEAVE\x10\x0f\"\x99\x02\n" +
+	"\x11EVENT_PLACE_LEAVE\x10\x0f\"\xad\x02\n" +
 	"\vMacAppState\x12\x1d\n" +
 	"\n" +
 	"wifi_known\x18\x01 \x01(\bR\twifiKnown\x12'\n" +
@@ -33002,7 +33044,8 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\tplaces_in\x18\x06 \x03(\tR\bplacesIn\x12\x1d\n" +
 	"\n" +
 	"places_out\x18\a \x03(\tR\tplacesOut\x12\x16\n" +
-	"\x06places\x18\b \x03(\tR\x06places\"9\n" +
+	"\x06places\x18\b \x03(\tR\x06places\x12\x12\n" +
+	"\x04idle\x18\t \x01(\bR\x04idle\"9\n" +
 	"\x06MacApp\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1b\n" +
 	"\tbundle_id\x18\x02 \x01(\tR\bbundleId\"0\n" +
@@ -33097,16 +33140,17 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x06source\x18\x05 \x01(\tR\x06source\x12\x14\n" +
 	"\x05label\x18\x06 \x01(\tR\x05label\x12\x14\n" +
 	"\x05files\x18\a \x03(\tR\x05files\x12!\n" +
-	"\fstatus_reply\x18\b \x01(\bR\vstatusReply\"\xd1\x01\n" +
+	"\fstatus_reply\x18\b \x01(\bR\vstatusReply\"\xe5\x01\n" +
 	"\fTriggerReply\x127\n" +
 	"\x06status\x18\x01 \x01(\x0e2\x1f.hammock.v1.TriggerReply.StatusR\x06status\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\x12\x15\n" +
 	"\x06tab_id\x18\x03 \x01(\tR\x05tabId\x12\x10\n" +
-	"\x03cut\x18\x04 \x01(\bR\x03cut\"G\n" +
+	"\x03cut\x18\x04 \x01(\bR\x03cut\"[\n" +
 	"\x06Status\x12\x16\n" +
 	"\x12STATUS_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eSTATUS_STARTED\x10\x01\x12\x11\n" +
-	"\rSTATUS_QUEUED\x10\x02\"L\n" +
+	"\rSTATUS_QUEUED\x10\x02\x12\x12\n" +
+	"\x0eSTATUS_SKIPPED\x10\x03\"L\n" +
 	"\x11SetSchedulePaused\x12\x1f\n" +
 	"\vschedule_id\x18\x01 \x01(\tR\n" +
 	"scheduleId\x12\x16\n" +

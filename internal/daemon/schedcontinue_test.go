@@ -360,3 +360,40 @@ func TestContinueNoSecondCopy(t *testing.T) {
 		t.Fatalf("opened a second copy: %v", r)
 	}
 }
+
+// A run sent into a session whose agent never takes it up (still at its
+// prompt a few minutes on, or never reaching it) fails, so it doesn't stay
+// under way, holding later runs back and taking your next turn for its own.
+func TestContinuedRunNeverTakenUp(t *testing.T) {
+	d, _, paneID := limitPane(t, "")
+	start := time.Now()
+	r := &pb.ScheduleRun{Id: "r1", PaneId: paneID, Status: pb.ScheduleRun_STATUS_RUNNING, StartedUnixMs: start.UnixMilli(), Continued: true, Borrowed: true, SessionId: "s1"}
+	s := &pb.Schedule{Id: "s1", Kind: "claude", Name: "Nightly", Runs: []*pb.ScheduleRun{r}}
+	d.mu.Lock()
+	p := d.panes[paneID]
+	p.mu.Lock()
+	p.info.Agent = &pb.Agent{Harness: "claude", SessionId: "s1", State: pb.AgentState_AGENT_STATE_IDLE}
+	p.mu.Unlock()
+	d.followRun(s, r, start.Add(time.Minute))
+	under := r.Status
+
+	d.followRun(s, r, start.Add(continuedNoWork))
+	d.mu.Unlock()
+	if under != pb.ScheduleRun_STATUS_RUNNING {
+		t.Fatalf("a minute on: %v", under)
+	}
+	if r.Status != pb.ScheduleRun_STATUS_FAILED || !strings.Contains(r.Note, "never went into") {
+		t.Fatalf("minutes on: %v %q", r.Status, r.Note)
+	}
+
+	// Its agent never at its prompt to type it into: failed too.
+	r2 := &pb.ScheduleRun{Id: "r2", PaneId: paneID, Status: pb.ScheduleRun_STATUS_RUNNING, StartedUnixMs: start.UnixMilli(), Continued: true}
+	s2 := &pb.Schedule{Id: "s2", Kind: "claude", Name: "Hourly", Runs: []*pb.ScheduleRun{r2}}
+	d.mu.Lock()
+	d.sched.list[s2.Id] = s2
+	d.continuedNeverTyped(s2.Id, r2.Id)
+	d.mu.Unlock()
+	if r2.Status != pb.ScheduleRun_STATUS_FAILED || !strings.Contains(r2.Note, "didn't reach its prompt") {
+		t.Fatalf("never typed: %v %q", r2.Status, r2.Note)
+	}
+}

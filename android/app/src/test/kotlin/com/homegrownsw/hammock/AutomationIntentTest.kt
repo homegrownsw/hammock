@@ -70,6 +70,8 @@ class AutomationIntentTest {
         assertEquals("Started", AutomationIntent.outcome(reply(Hammock.TriggerReply.Status.STATUS_STARTED)).text)
         assertEquals("Queued: waiting for its cooldown",
             AutomationIntent.outcome(reply(Hammock.TriggerReply.Status.STATUS_QUEUED, "waiting for its cooldown")).text)
+        assertEquals("Skipped: Only if: not plugged in",
+            AutomationIntent.outcome(reply(Hammock.TriggerReply.Status.STATUS_SKIPPED, "Only if: not plugged in")).text)
         // An older computer: Created when it started, Ok when it waits.
         assertEquals("Started", AutomationIntent.outcome(ServerMessage.newBuilder().setCreated(Hammock.Created.newBuilder().setId("tb_1")).build()).text)
         assertEquals("Queued", AutomationIntent.outcome(ServerMessage.newBuilder().setOk(Hammock.Ok.getDefaultInstance()).build()).text)

@@ -41,7 +41,7 @@ struct AutomationQuery: EntityStringQuery {
 
 struct RunAutomationIntent: AppIntent {
     static let title: LocalizedStringResource = "Run Hammock Automation"
-    static let description = IntentDescription("Runs one of your Hammock automations, with what happened. Its result is Started, Queued (and why) or Failed (and why).")
+    static let description = IntentDescription("Runs one of your Hammock automations, with what happened. Its result is Started, Queued (and why), Skipped (and why) or Failed (and why).")
     static let openAppWhenRun = false
 
     @Parameter(title: "Automation")
@@ -93,7 +93,7 @@ enum AutomationHooks {
         throw NotReady()
     }
 
-    /// The result line: "Started", "Queued: why", "Failed: why".
+    /// The result line: "Started", "Queued: why", "Skipped: why", "Failed: why".
     static func run(_ id: String, _ text: String, _ label: String, _ files: [String]) async -> String {
         for _ in 0..<50 {
             if let t = await trigger { return await t(id, text, label, files) }

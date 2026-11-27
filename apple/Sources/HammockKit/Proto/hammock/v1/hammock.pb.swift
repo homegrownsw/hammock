@@ -8827,9 +8827,13 @@ public nonisolated struct Hammock_V1_SlackLink: Sendable {
 /// then keeps them on that computer; again with new ones: Change Tokens.
 /// DISCONNECT: forgets them.
 /// MOVE_HERE: takes the connection from from_computer_id, another of your
-/// computers, which forgets it (HAND_OVER).
+/// computers (HAND_OVER), checks and keeps its tokens, then has that one
+/// forget them (RELEASE); if they don't work here, that one keeps them.
 /// HAND_OVER: from a linked computer of yours only: its reply has the
-/// tokens, and this one forgets them.
+/// tokens (this one keeps them until RELEASE).
+/// RELEASE: from a linked computer of yours only, once it has kept the
+/// tokens HAND_OVER gave it: this one forgets them, if it still has
+/// team_id's.
 public nonisolated struct Hammock_V1_SlackCommand: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -8845,6 +8849,9 @@ public nonisolated struct Hammock_V1_SlackCommand: Sendable {
 
   public var fromComputerID: String = String()
 
+  /// RELEASE: the workspace whose tokens to forget
+  public var teamID: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum Action: SwiftProtobuf.Enum, Swift.CaseIterable {
@@ -8855,6 +8862,7 @@ public nonisolated struct Hammock_V1_SlackCommand: Sendable {
     case disconnect // = 3
     case moveHere // = 4
     case handOver // = 5
+    case release // = 6
     case UNRECOGNIZED(Int)
 
     public init() {
@@ -8869,6 +8877,7 @@ public nonisolated struct Hammock_V1_SlackCommand: Sendable {
       case 3: self = .disconnect
       case 4: self = .moveHere
       case 5: self = .handOver
+      case 6: self = .release
       default: self = .UNRECOGNIZED(rawValue)
       }
     }
@@ -8881,6 +8890,7 @@ public nonisolated struct Hammock_V1_SlackCommand: Sendable {
       case .disconnect: return 3
       case .moveHere: return 4
       case .handOver: return 5
+      case .release: return 6
       case .UNRECOGNIZED(let i): return i
       }
     }
@@ -8893,6 +8903,7 @@ public nonisolated struct Hammock_V1_SlackCommand: Sendable {
       .disconnect,
       .moveHere,
       .handOver,
+      .release,
     ]
 
   }
@@ -8922,6 +8933,9 @@ public nonisolated struct Hammock_V1_SlackReply: Sendable {
   public var userToken: String = String()
 
   public var appToken: String = String()
+
+  /// HAND_OVER: the tokens' workspace
+  public var teamID: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -11345,8 +11359,13 @@ public nonisolated struct Hammock_V1_MacAppState: Sendable {
 
   public var placesOut: [String] = []
 
-  /// all the Mac's Places, by name
+  /// all the Mac's Places, by name (none: places aren't watched now)
   public var places: [String] = []
+
+  /// The app has stopped watching (no automation that's on wants it): the
+  /// rest is empty, and what it said before is forgotten, so what it says
+  /// when it starts again is a first look, not news.
+  public var idle: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -11827,8 +11846,10 @@ public nonisolated struct Hammock_V1_RunSchedule: Sendable {
 }
 
 /// What a trigger did: started a run (tab_id), or queued it (reason: its
-/// cooldown, the last run still going, Hammock starting, the Mac asleep).
-/// A trigger that can't run is an error instead (Automations are off…).
+/// cooldown, the last run still going, Hammock starting, the Mac asleep),
+/// or its run was skipped (reason: an Only If that didn't hold, a run
+/// already waiting to go into its session). A trigger that can't run is an
+/// error instead (Automations are off…).
 public nonisolated struct Hammock_V1_TriggerReply: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -11850,6 +11871,7 @@ public nonisolated struct Hammock_V1_TriggerReply: Sendable {
     case unspecified // = 0
     case started // = 1
     case queued // = 2
+    case skipped // = 3
     case UNRECOGNIZED(Int)
 
     public init() {
@@ -11861,6 +11883,7 @@ public nonisolated struct Hammock_V1_TriggerReply: Sendable {
       case 0: self = .unspecified
       case 1: self = .started
       case 2: self = .queued
+      case 3: self = .skipped
       default: self = .UNRECOGNIZED(rawValue)
       }
     }
@@ -11870,6 +11893,7 @@ public nonisolated struct Hammock_V1_TriggerReply: Sendable {
       case .unspecified: return 0
       case .started: return 1
       case .queued: return 2
+      case .skipped: return 3
       case .UNRECOGNIZED(let i): return i
       }
     }
@@ -11879,6 +11903,7 @@ public nonisolated struct Hammock_V1_TriggerReply: Sendable {
       .unspecified,
       .started,
       .queued,
+      .skipped,
     ]
 
   }
@@ -28106,7 +28131,7 @@ nonisolated extension Hammock_V1_SlackLink: SwiftProtobuf.Message, SwiftProtobuf
 
 nonisolated extension Hammock_V1_SlackCommand: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SlackCommand"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}action\0\u{3}computer_id\0\u{3}user_token\0\u{3}app_token\0\u{3}from_computer_id\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}action\0\u{3}computer_id\0\u{3}user_token\0\u{3}app_token\0\u{3}from_computer_id\0\u{3}team_id\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -28119,6 +28144,7 @@ nonisolated extension Hammock_V1_SlackCommand: SwiftProtobuf.Message, SwiftProto
       case 3: try { try decoder.decodeSingularStringField(value: &self.userToken) }()
       case 4: try { try decoder.decodeSingularStringField(value: &self.appToken) }()
       case 5: try { try decoder.decodeSingularStringField(value: &self.fromComputerID) }()
+      case 6: try { try decoder.decodeSingularStringField(value: &self.teamID) }()
       default: break
       }
     }
@@ -28140,6 +28166,9 @@ nonisolated extension Hammock_V1_SlackCommand: SwiftProtobuf.Message, SwiftProto
     if !self.fromComputerID.isEmpty {
       try visitor.visitSingularStringField(value: self.fromComputerID, fieldNumber: 5)
     }
+    if !self.teamID.isEmpty {
+      try visitor.visitSingularStringField(value: self.teamID, fieldNumber: 6)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -28149,18 +28178,19 @@ nonisolated extension Hammock_V1_SlackCommand: SwiftProtobuf.Message, SwiftProto
     if lhs.userToken != rhs.userToken {return false}
     if lhs.appToken != rhs.appToken {return false}
     if lhs.fromComputerID != rhs.fromComputerID {return false}
+    if lhs.teamID != rhs.teamID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
 }
 
 nonisolated extension Hammock_V1_SlackCommand.Action: SwiftProtobuf._ProtoNameProviding {
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0ACTION_UNSPECIFIED\0\u{1}ACTION_STATUS\0\u{1}ACTION_CONNECT\0\u{1}ACTION_DISCONNECT\0\u{1}ACTION_MOVE_HERE\0\u{1}ACTION_HAND_OVER\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0ACTION_UNSPECIFIED\0\u{1}ACTION_STATUS\0\u{1}ACTION_CONNECT\0\u{1}ACTION_DISCONNECT\0\u{1}ACTION_MOVE_HERE\0\u{1}ACTION_HAND_OVER\0\u{1}ACTION_RELEASE\0")
 }
 
 nonisolated extension Hammock_V1_SlackReply: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SlackReply"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}link\0\u{3}manifest_url\0\u{3}user_token\0\u{3}app_token\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}link\0\u{3}manifest_url\0\u{3}user_token\0\u{3}app_token\0\u{3}team_id\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -28172,6 +28202,7 @@ nonisolated extension Hammock_V1_SlackReply: SwiftProtobuf.Message, SwiftProtobu
       case 2: try { try decoder.decodeSingularStringField(value: &self.manifestURL) }()
       case 3: try { try decoder.decodeSingularStringField(value: &self.userToken) }()
       case 4: try { try decoder.decodeSingularStringField(value: &self.appToken) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self.teamID) }()
       default: break
       }
     }
@@ -28194,6 +28225,9 @@ nonisolated extension Hammock_V1_SlackReply: SwiftProtobuf.Message, SwiftProtobu
     if !self.appToken.isEmpty {
       try visitor.visitSingularStringField(value: self.appToken, fieldNumber: 4)
     }
+    if !self.teamID.isEmpty {
+      try visitor.visitSingularStringField(value: self.teamID, fieldNumber: 5)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -28202,6 +28236,7 @@ nonisolated extension Hammock_V1_SlackReply: SwiftProtobuf.Message, SwiftProtobu
     if lhs.manifestURL != rhs.manifestURL {return false}
     if lhs.userToken != rhs.userToken {return false}
     if lhs.appToken != rhs.appToken {return false}
+    if lhs.teamID != rhs.teamID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -31311,7 +31346,7 @@ nonisolated extension Hammock_V1_MacTrigger.Event: SwiftProtobuf._ProtoNameProvi
 
 nonisolated extension Hammock_V1_MacAppState: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".MacAppState"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}wifi_known\0\u{3}location_denied\0\u{1}wifi\0\u{1}apps\0\u{1}displays\0\u{3}places_in\0\u{3}places_out\0\u{1}places\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}wifi_known\0\u{3}location_denied\0\u{1}wifi\0\u{1}apps\0\u{1}displays\0\u{3}places_in\0\u{3}places_out\0\u{1}places\0\u{1}idle\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -31327,6 +31362,7 @@ nonisolated extension Hammock_V1_MacAppState: SwiftProtobuf.Message, SwiftProtob
       case 6: try { try decoder.decodeRepeatedStringField(value: &self.placesIn) }()
       case 7: try { try decoder.decodeRepeatedStringField(value: &self.placesOut) }()
       case 8: try { try decoder.decodeRepeatedStringField(value: &self.places) }()
+      case 9: try { try decoder.decodeSingularBoolField(value: &self.idle) }()
       default: break
       }
     }
@@ -31357,6 +31393,9 @@ nonisolated extension Hammock_V1_MacAppState: SwiftProtobuf.Message, SwiftProtob
     if !self.places.isEmpty {
       try visitor.visitRepeatedStringField(value: self.places, fieldNumber: 8)
     }
+    if self.idle != false {
+      try visitor.visitSingularBoolField(value: self.idle, fieldNumber: 9)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -31369,6 +31408,7 @@ nonisolated extension Hammock_V1_MacAppState: SwiftProtobuf.Message, SwiftProtob
     if lhs.placesIn != rhs.placesIn {return false}
     if lhs.placesOut != rhs.placesOut {return false}
     if lhs.places != rhs.places {return false}
+    if lhs.idle != rhs.idle {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -32049,7 +32089,7 @@ nonisolated extension Hammock_V1_TriggerReply: SwiftProtobuf.Message, SwiftProto
 }
 
 nonisolated extension Hammock_V1_TriggerReply.Status: SwiftProtobuf._ProtoNameProviding {
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0STATUS_UNSPECIFIED\0\u{1}STATUS_STARTED\0\u{1}STATUS_QUEUED\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0STATUS_UNSPECIFIED\0\u{1}STATUS_STARTED\0\u{1}STATUS_QUEUED\0\u{1}STATUS_SKIPPED\0")
 }
 
 nonisolated extension Hammock_V1_SetSchedulePaused: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {

@@ -1252,8 +1252,12 @@ func (d *Daemon) triggerRun(s *pb.Schedule, m *pb.RunSchedule) (*pb.ServerMessag
 	}
 	if m.StatusReply {
 		tr := &pb.TriggerReply{Status: pb.TriggerReply_STATUS_STARTED, TabId: r.GetTabId(), Cut: cut}
-		if queued {
+		switch {
+		case queued:
 			tr.Status, tr.Reason = pb.TriggerReply_STATUS_QUEUED, d.heldWhy(s, schedNow())
+		case r.GetStatus() == pb.ScheduleRun_STATUS_SKIPPED:
+			// (Only If didn't hold, or a run was already waiting.)
+			tr.Status, tr.Reason, tr.TabId = pb.TriggerReply_STATUS_SKIPPED, r.Note, ""
 		}
 		return &pb.ServerMessage{Msg: &pb.ServerMessage_TriggerReply{TriggerReply: tr}}, nil
 	}

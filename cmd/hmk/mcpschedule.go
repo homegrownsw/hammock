@@ -366,7 +366,7 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 
 	addTool(s, server, &mcp.Tool{
 		Name:        "automation_run",
-		Description: "Run an automation now, in a new tab of its Group. Returns the tab id. With early, it runs instead of at its next time (which moves on to the one after), rather than as well. With trigger, it runs as an event, given data (its cooldown applies: it may be queued). One you didn't save yourself asks the user first (waits for their answer).",
+		Description: "Run an automation now, in a new tab of its Group. Returns the tab id. With early, it runs instead of at its next time (which moves on to the one after), rather than as well. With trigger, it runs as an event, given data (its cooldown applies: it may be queued; an Only If that doesn't hold skips it). One you didn't save yourself asks the user first (waits for their answer).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a scheduleRunArgs) (*mcp.CallToolResult, any, error) {
 		if a.Data != "" && !a.Trigger {
 			return nil, nil, errors.New("data goes with trigger")
@@ -376,8 +376,11 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 			return nil, nil, err
 		}
 		if tr := r.GetTriggerReply(); tr != nil {
-			if tr.Status == pb.TriggerReply_STATUS_QUEUED {
+			switch tr.Status {
+			case pb.TriggerReply_STATUS_QUEUED:
 				return textResult(map[string]any{"queued": true, "why": tr.Reason}), nil, nil
+			case pb.TriggerReply_STATUS_SKIPPED:
+				return textResult(map[string]any{"skipped": true, "why": tr.Reason}), nil, nil
 			}
 			return textResult(map[string]string{"tab_id": tr.TabId}), nil, nil
 		}

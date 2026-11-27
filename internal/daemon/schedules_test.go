@@ -709,6 +709,17 @@ func TestAgentSchedulesAsk(t *testing.T) {
 	if _, err := try(agent, &pb.ClientMessage{Msg: &pb.ClientMessage_SetSchedulePaused{SetSchedulePaused: &pb.SetSchedulePaused{ScheduleId: s.Id, Paused: true}}}); err != nil {
 		t.Fatal(err)
 	}
+	// Even of one it made, it can't say a trigger's from Shortcuts, or give
+	// it a label or files: only your apps do.
+	for _, rs := range []*pb.RunSchedule{
+		{ScheduleId: s.Id, Trigger: true, Source: "shortcuts", Data: strings.Repeat("x", maxHookBody+1)},
+		{ScheduleId: s.Id, Trigger: true, Label: "From Sam"},
+		{ScheduleId: s.Id, Trigger: true, Files: []string{"/etc/hosts"}},
+	} {
+		if _, err := try(agent, &pb.ClientMessage{Msg: &pb.ClientMessage_RunSchedule{RunSchedule: rs}}); err == nil || !strings.Contains(err.Error(), "can't set") {
+			t.Fatalf("an agent's trigger with %v: %v", rs, err)
+		}
+	}
 	// Another agent later in the same pane didn't make it.
 	d.mu.Lock()
 	maker := d.sched.madeBy[s.Id]

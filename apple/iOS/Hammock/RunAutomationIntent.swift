@@ -60,7 +60,7 @@ struct PhoneAutomationQuery: EntityStringQuery {
 
 struct RunAutomationIntent: AppIntent {
     static let title: LocalizedStringResource = "Run Hammock Automation"
-    static let description = IntentDescription("Runs one of your Hammock automations on a paired Mac, with what happened. Its result is Started, Queued (and why) or Failed (and why).")
+    static let description = IntentDescription("Runs one of your Hammock automations on a paired Mac, with what happened. Its result is Started, Queued (and why), Skipped (and why) or Failed (and why).")
     static let openAppWhenRun = false
 
     @Parameter(title: "Mac", description: "The Mac to choose its automations from (all of them, if none).")
@@ -150,7 +150,7 @@ enum PhoneAutomations {
         return out
     }
 
-    /// The result line: "Started", "Queued: why", "Failed: why".
+    /// The result line: "Started", "Queued: why", "Skipped: why", "Failed: why".
     static func run(_ id: String, text: String, label: String) async -> String {
         guard let (host, schedule) = split(id) else { return "Failed: choose the automation again" }
         let running = BackgroundTime("Run a Hammock automation")
@@ -160,13 +160,7 @@ enum PhoneAutomations {
         defer { if conn.brief { conn.model.stop() } }
         do {
             let r = try await conn.model.triggerSchedule(schedule, source: "shortcuts", text: text, label: label)
-            var line: String
-            switch r.outcome {
-            case .started: line = "Started"
-            case .queued(let why): line = why.isEmpty ? "Queued" : "Queued: " + why
-            }
-            if r.cut { line += " (only the first 64 KB of the text went in)" }
-            return line
+            return r.outcome.line(cut: r.cut)
         } catch {
             return "Failed: " + error.localizedDescription
         }

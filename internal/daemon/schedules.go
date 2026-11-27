@@ -38,6 +38,9 @@ const (
 	// agentStartGrace: a run's agent not in its pane this long after it
 	// started has failed to start (or, having worked, has gone).
 	agentStartGrace = time.Minute
+	// continuedNoWork: a run sent into a session whose agent isn't seen
+	// working on it this long after has failed (its message never went in).
+	continuedNoWork = 3 * time.Minute
 )
 
 // commandRun: r ran a command (not an agent), whatever the schedule's
@@ -87,7 +90,10 @@ type schedState struct {
 	filesWake chan struct{}            // look at files now (schedfiles.go)
 	checkWake chan struct{}            // see which command checks are due now (schedcheck.go)
 	checking  map[string]bool          // command check trigger id → one of its checks is running
-	mac       macState                 // what's known of this Mac (macwatch.go)
+	// checksWoke is when the computer last woke, or was last seen not
+	// fully awake: command and URL checks wait checkWakeGrace after it.
+	checksWoke time.Time
+	mac        macState // what's known of this Mac (macwatch.go)
 	// checkSaved is when each trigger's last look was last saved and sent
 	// (a trigger that looks often is saved for that only now and then:
 	// noteChecked).
@@ -524,7 +530,7 @@ func (d *Daemon) startRunFor(s *pb.Schedule, due time.Time, manual bool, evs []*
 	d.noteRun(s, r)
 	d.audit("schedule:"+s.Id, "schedule-run", r.TabId, s.Name)
 	d.closeOldRuns(s)
-	d.typeFirstPrompt(p, later)
+	d.typeFirstPrompt(p, later, nil)
 	return r, nil
 }
 
@@ -691,6 +697,12 @@ func (d *Daemon) followRun(s *pb.Schedule, r *pb.ScheduleRun, now time.Time) boo
 			return true
 		}
 	case pb.AgentState_AGENT_STATE_IDLE:
+		if !d.sched.sawWork[r.Id] && r.Continued && !d.sched.sending[r.Id] && now.Sub(time.UnixMilli(r.StartedUnixMs)) >= continuedNoWork {
+			// Its message went in, but the agent never took it up (it
+			// wasn't at its prompt, or the paste was lost): not under way,
+			// so later runs, and your own next turn, aren't taken for it.
+			return d.endRun(s, r, pb.ScheduleRun_STATUS_FAILED, "Its message never went into the session")
+		}
 		if !d.sched.sawWork[r.Id] || a.Subagents > 0 || a.RunningCommand {
 			return false
 		}

@@ -159,16 +159,23 @@ object AutomationIntent {
         .setScheduleId(id).setTrigger(true).setSource("tasker")
         .setData(cut(text, MAX_DATA)).setLabel(cut(label.trim(), MAX_LABEL)).setStatusReply(true).build()
 
-    /** What the computer said: started, or queued (with why, if it says). */
-    data class Outcome(val queued: Boolean, val reason: String) {
-        /** The result data for an ordered broadcast: "Started", or "Queued" and why. */
-        val text: String get() = if (!queued) "Started" else if (reason.isEmpty()) "Queued" else "Queued: $reason"
+    /** What the computer said: started, queued or skipped (with why, if it says). */
+    data class Outcome(val queued: Boolean, val reason: String, val skipped: Boolean = false) {
+        /** The result data for an ordered broadcast: "Started", or "Queued" or "Skipped" and why. */
+        val text: String get() {
+            val word = if (skipped) "Skipped" else if (queued) "Queued" else return "Started"
+            return if (reason.isEmpty()) word else "$word: $reason"
+        }
     }
 
     /** Reads its reply: TriggerReply, or (an older computer) Created when it started and Ok when it waits. */
     fun outcome(r: ServerMessage): Outcome = when (r.msgCase) {
-        ServerMessage.MsgCase.TRIGGER_REPLY ->
-            Outcome(r.triggerReply.status == Hammock.TriggerReply.Status.STATUS_QUEUED, r.triggerReply.reason)
+        ServerMessage.MsgCase.TRIGGER_REPLY -> when (r.triggerReply.status) {
+            Hammock.TriggerReply.Status.STATUS_QUEUED -> Outcome(queued = true, reason = r.triggerReply.reason)
+            // (Only If didn't hold, or a run was already waiting: it didn't run.)
+            Hammock.TriggerReply.Status.STATUS_SKIPPED -> Outcome(queued = false, reason = r.triggerReply.reason, skipped = true)
+            else -> Outcome(queued = false, reason = r.triggerReply.reason)
+        }
         ServerMessage.MsgCase.OK -> Outcome(queued = true, reason = "")
         else -> Outcome(queued = false, reason = "")
     }

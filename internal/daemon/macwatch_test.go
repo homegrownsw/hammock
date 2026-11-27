@@ -304,6 +304,76 @@ func TestMacAppTriggers(t *testing.T) {
 	}
 }
 
+// What changed while the Mac app wasn't watching (its automations were
+// off, or places weren't wanted) isn't news when it starts again: the
+// first look after the gap only notes how things are.
+func TestMacAppStateAfterAGap(t *testing.T) {
+	t.Setenv("SHELL", "/bin/sh")
+	t.Setenv("ENV", "")
+	useFakeMac(t)
+	now := time.Now().Truncate(time.Minute)
+	clock := useSchedClock(t, now)
+	work := t.TempDir()
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	defer d.Shutdown()
+	c := dial(t, dir)
+	id := eventSchedule(t, c, work,
+		macTrig(&pb.MacTrigger{Event: pb.MacTrigger_EVENT_WIFI_JOINED, Name: "Office"}),
+		macTrig(&pb.MacTrigger{Event: pb.MacTrigger_EVENT_PLACE_ARRIVE, Name: "Office"}),
+	)
+	app := &conn{}
+	send := func(min int, m *pb.MacAppState) {
+		clock.set(now.Add(time.Duration(min) * time.Minute))
+		d.mu.Lock()
+		d.macAppState(app, m)
+		d.mu.Unlock()
+	}
+	places := []string{"Office"}
+	send(1, &pb.MacAppState{WifiKnown: true, Wifi: "Home", Places: places, PlacesOut: places})
+	// Nothing wants it for a while (the automation paused): it says so.
+	send(2, &pb.MacAppState{Idle: true})
+	if e := schedOf(d, id).Events[0].Error; e != "" {
+		t.Fatalf("idle, with the app open: %q", e)
+	}
+	send(90, &pb.MacAppState{WifiKnown: true, Wifi: "Office", Places: places, PlacesIn: places})
+	if g := firedAt(d, id); g[0]+g[1] != 0 {
+		t.Fatalf("fired for what changed while it wasn't watching: %v", g)
+	}
+	// Out of the office, then places aren't watched for a while (no place
+	// wanted), the Wi-Fi still is; back in when they're watched again.
+	send(100, &pb.MacAppState{WifiKnown: true, Wifi: "Office", Places: places, PlacesOut: places})
+	send(101, &pb.MacAppState{WifiKnown: true, Wifi: "Office"})
+	send(160, &pb.MacAppState{WifiKnown: true, Wifi: "Office", Places: places, PlacesIn: places})
+	if g := firedAt(d, id); g[1] != 0 {
+		t.Fatalf("arrived while places weren't watched: %v", g)
+	}
+	// Watched throughout, it's news.
+	send(220, &pb.MacAppState{WifiKnown: true, Wifi: "Office", Places: places, PlacesOut: places})
+	send(280, &pb.MacAppState{WifiKnown: true, Wifi: "Office", Places: places, PlacesIn: places})
+	if g := firedAt(d, id); g[1] != now.Add(280*time.Minute).UnixMilli() {
+		t.Fatalf("arriving: %v", g)
+	}
+}
+
+// Only If away, with the watcher's look too old: it never asks ioreg under
+// d.mu, using a look a little older instead, else can't tell.
+func TestOnlyIfAwayOffTheLock(t *testing.T) {
+	useFakeMac(t)
+	idleTime = func() time.Duration { t.Error("ioreg asked under d.mu"); return 0 }
+	now := time.Now()
+	d := &Daemon{}
+	cond := &pb.Condition{Kind: pb.Condition_KIND_AWAY}
+	d.sched.mac.sample = macSample{at: now.Add(-time.Minute), lookedAway: true, away: true}
+	if sm := d.macFreshSample(now, macNeed{away: true}); d.conditionFails(cond, now, sm) != "" {
+		t.Errorf("a minute-old look: %+v", sm)
+	}
+	d.sched.mac.sample.at = now.Add(-10 * time.Minute)
+	if sm := d.macFreshSample(now, macNeed{away: true}); d.conditionFails(cond, now, sm) != "Hammock can't tell yet whether you're away" {
+		t.Errorf("an old look: %q", d.conditionFails(cond, now, sm))
+	}
+}
+
 // Only If: a run an automation starts itself is skipped, its record saying
 // why, unless every condition holds; Run Now isn't held to them.
 func TestOnlyIf(t *testing.T) {

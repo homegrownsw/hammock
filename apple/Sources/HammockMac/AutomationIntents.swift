@@ -29,18 +29,12 @@ enum AutomationIntents {
         }
     }
 
-    /// The action's result: "Started", "Queued: why", "Failed: why", and
-    /// whether the text was cut.
+    /// The action's result: "Started", "Queued: why", "Skipped: why",
+    /// "Failed: why", and whether the text was cut.
     static func resultLine(_ call: () async throws -> (outcome: AppModel.TriggerOutcome, cut: Bool)) async -> String {
         do {
             let r = try await call()
-            var line: String
-            switch r.outcome {
-            case .started: line = "Started"
-            case .queued(let why): line = why.isEmpty ? "Queued" : "Queued: " + why
-            }
-            if r.cut { line += " (only the first 64 KB of the text went in)" }
-            return line
+            return r.outcome.line(cut: r.cut)
         } catch {
             return "Failed: " + error.localizedDescription
         }

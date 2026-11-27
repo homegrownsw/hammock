@@ -112,7 +112,8 @@ func TestURLCheckTrigger(t *testing.T) {
 	d.mu.Lock()
 	d.sched.checking[tid] = true
 	d.mu.Unlock()
-	// It fails: fail and change fire (its status changed), contains doesn't.
+	// It fails: fail fires; change and contains don't (a failed fetch says
+	// nothing of the page).
 	site.set(503, "down for maintenance")
 	jobs := d.dueURLs(schedNow())
 	if len(jobs) != 2 {
@@ -127,7 +128,7 @@ func TestURLCheckTrigger(t *testing.T) {
 	d.mu.Unlock()
 	runDueURLs(d)
 	f := fired()
-	if f[0] == 0 || f[1] == 0 || f[2] != 0 {
+	if f[0] == 0 || f[1] != 0 || f[2] != 0 {
 		t.Fatalf("after failing: %v", f)
 	}
 	if tr := schedOf(d, id).Events[0]; tr.GetUrl().GetLastResult() != "Failed (503 Service Unavailable)" {
@@ -209,5 +210,96 @@ func TestURLCheckTrigger(t *testing.T) {
 		}}}}); err == nil {
 			t.Errorf("saved %v", bad)
 		}
+	}
+}
+
+// quietChecks stops the check watcher being woken (the test runs checks).
+func quietChecks(t *testing.T, d *Daemon) {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		d.mu.Lock()
+		w := d.sched.checkWake
+		d.sched.checkWake = nil
+		d.mu.Unlock()
+		if w != nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("no check watcher")
+		}
+	}
+}
+
+// A network blip (a failed fetch) neither counts as a change nor arms
+// contains to fire again when the page is back as it was; checks wait a
+// while after a wake, and a fetch that went on across one doesn't count.
+func TestURLCheckBlipsAndWakes(t *testing.T) {
+	t.Setenv("SHELL", "/bin/sh")
+	t.Setenv("ENV", "")
+	old := checkTick
+	checkTick = time.Hour
+	t.Cleanup(func() { checkTick = old })
+	site := &fakeSite{status: 200, body: "Release 4.2 deployed"}
+	srv := httptest.NewServer(site)
+	defer srv.Close()
+	work := t.TempDir()
+	start := time.Now()
+	clock := useSchedClock(t, start)
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	defer d.Shutdown()
+	quietChecks(t, d)
+	c := dial(t, dir)
+	id := eventSchedule(t, c, work,
+		&pb.EventTrigger{Kind: &pb.EventTrigger_Url{Url: &pb.UrlCheckTrigger{Url: srv.URL + "/a", EveryMinutes: 1, On: pb.UrlCheckTrigger_ON_CHANGE}}},
+		&pb.EventTrigger{Kind: &pb.EventTrigger_Url{Url: &pb.UrlCheckTrigger{Url: srv.URL + "/b", EveryMinutes: 1, On: pb.UrlCheckTrigger_ON_CONTAINS, Text: "deployed"}}})
+	at := func(sec int) { clock.set(start.Add(time.Duration(sec) * time.Second)) }
+	runDueURLs(d) // the first look
+	for i, st := range []struct {
+		status int
+		body   string
+	}{{503, "oops"}, {200, "Release 4.2 deployed"}, {0, ""}, {200, "Release 4.2 deployed"}} {
+		at(61 * (i + 1))
+		if st.status == 0 {
+			evs := schedOf(d, id).Events
+			d.mu.Lock()
+			for _, tr := range evs {
+				d.urlDone(urlJob{schedule: id, trigger: tr.Id, key: urlKey(tr.GetUrl())}, urlResult{why: "unreachable: no route to host"})
+				d.sched.trig[tr.Id].URL.Started = schedNow().UnixMilli()
+			}
+			d.mu.Unlock()
+			continue
+		}
+		site.set(st.status, st.body)
+		runDueURLs(d)
+	}
+	if g := firedAt(d, id); g[0]+g[1] != 0 {
+		t.Fatalf("a blip fired: %v", g)
+	}
+
+	// Just woken: nothing's fetched for a while.
+	at(600)
+	d.noteChecksWake(schedNow(), true)
+	if n := runDueURLs(d); n != 0 {
+		t.Fatalf("%d fetched just after a wake", n)
+	}
+	at(600 + int(checkWakeGrace/time.Second) + 1)
+	jobs := d.dueURLs(schedNow())
+	if len(jobs) != 2 {
+		t.Fatalf("%d due after the wake's grace", len(jobs))
+	}
+	// One that went on across a sleep doesn't count, and is fetched again.
+	site.set(200, "something else")
+	before := schedOf(d, id).Events[0].GetUrl().GetLastResult()
+	d.noteChecksWake(schedNow().Add(time.Second), true)
+	d.runURL(jobs[0])
+	if g := firedAt(d, id); g[0] != 0 || schedOf(d, id).Events[0].GetUrl().GetLastResult() != before {
+		t.Fatalf("a fetch across a sleep counted: %v", g)
+	}
+	d.mu.Lock()
+	again := d.sched.trig[jobs[0].trigger].URL.Started == 0 && !d.sched.checking[jobs[0].trigger]
+	d.mu.Unlock()
+	if !again {
+		t.Fatal("not fetched again after the wake")
 	}
 }
