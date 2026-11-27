@@ -1248,6 +1248,10 @@ func (d *Daemon) runLink(addrs, lan []string, cert, want string) error {
 	commit := sha256.Sum256(nonce)
 	r, err := cl.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_PeerLinkHello{PeerLinkHello: &pb.PeerLinkHello{Commitment: commit[:], Computer: self}}})
 	if err != nil {
+		if self.OutOnly && strings.Contains(err.Error(), "bad link request") {
+			// An earlier build there wants an address to dial back.
+			return errors.New("it needs a newer Hammock to link out only: update it, or let it see this computer's Groups too (turning remote access on here)")
+		}
 		return err
 	}
 	pn := r.GetPeerLinkNonce()
