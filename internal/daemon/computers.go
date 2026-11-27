@@ -1838,7 +1838,8 @@ func (d *Daemon) ownerCheck(c *conn, msg *pb.ClientMessage) (ignore bool, err er
 		return false, nil // one here (checked above)
 	case *pb.ClientMessage_SlackCommand:
 		// You, setting Slack up here from another of yours, or that one
-		// taking it from here (HAND_OVER: only over a link; slack.go).
+		// taking it from here (HAND_OVER and RELEASE: only over a link;
+		// slack.go).
 		return false, here(&m.SlackCommand.ComputerId)
 	case *pb.ClientMessage_RespondGrant:
 		// You, answering an agent here from another of your computers

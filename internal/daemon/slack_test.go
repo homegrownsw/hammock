@@ -31,6 +31,15 @@ type fakeSlack struct {
 	history map[string][]map[string]any // channel → its messages (newest first, as Slack)
 	acks    []string
 	n       int
+	// down: the Web API answers 503 (Slack having a bad moment);
+	// refuseApp: it refuses the app-level token (revoked).
+	down, refuseApp bool
+}
+
+func (f *fakeSlack) setDown(down, refuseApp bool) {
+	f.mu.Lock()
+	f.down, f.refuseApp = down, refuseApp
+	f.mu.Unlock()
 }
 
 func newFakeSlack(t *testing.T) *fakeSlack {
@@ -66,6 +75,16 @@ func (f *fakeSlack) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = r.ParseForm()
 	tok := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	f.mu.Lock()
+	down, refuseApp := f.down, f.refuseApp
+	f.mu.Unlock()
+	if down {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if refuseApp && strings.HasPrefix(tok, "xapp-") {
+		tok = "xapp-revoked"
+	}
 	reply := func(v map[string]any) {
 		v["ok"] = true
 		_ = json.NewEncoder(w).Encode(v)
@@ -307,6 +326,13 @@ func TestSlackTriggers(t *testing.T) {
 	if n := len(outputs(works["dm"])); n != 1 {
 		t.Fatalf("dm fired %d times", n)
 	}
+	// What fired is kept at once (a restart doesn't catch it up again),
+	// though the last was kept only moments before.
+	var seen map[string]string
+	_ = json.Unmarshal([]byte(d.store.Setting("slack_seen")), &seen)
+	if seen["C1"] != missed {
+		t.Fatalf("kept as seen: %v, want C1 %s", seen, missed)
+	}
 
 	// A client here can't take the tokens (only another computer of yours).
 	if _, err := slackCmd(&pb.SlackCommand{Action: pb.SlackCommand_ACTION_HAND_OVER}); err == nil {
@@ -365,6 +391,25 @@ func TestSlackMovesBetweenComputers(t *testing.T) {
 	if _, err := try(a.c, &pb.ClientMessage{Msg: &pb.ClientMessage_SlackCommand{SlackCommand: &pb.SlackCommand{Action: pb.SlackCommand_ACTION_HAND_OVER}}}); err == nil {
 		t.Fatal("handed over to a client")
 	}
+	// Nor told to forget them.
+	if _, err := try(a.c, &pb.ClientMessage{Msg: &pb.ClientMessage_SlackCommand{SlackCommand: &pb.SlackCommand{Action: pb.SlackCommand_ACTION_RELEASE, TeamId: "T1"}}}); err == nil {
+		t.Fatal("a client released them")
+	}
+	// Slack can't be reached as b checks them: a keeps them, nothing's lost.
+	f.setDown(true, false)
+	if _, err := try(b.c, &pb.ClientMessage{Msg: &pb.ClientMessage_SlackCommand{SlackCommand: &pb.SlackCommand{Action: pb.SlackCommand_ACTION_MOVE_HERE, FromComputerId: a.uid}}}); err == nil {
+		t.Fatal("moved while Slack was down")
+	}
+	f.setDown(false, false)
+	a.d.mu.Lock()
+	kept := a.d.slack.tok != nil
+	a.d.mu.Unlock()
+	b.d.mu.Lock()
+	onB := b.d.slack.tok != nil
+	b.d.mu.Unlock()
+	if !kept || onB {
+		t.Fatalf("after a failed move: a has them %v, b %v", kept, onB)
+	}
 	r := call(t, b.c, &pb.ClientMessage{Msg: &pb.ClientMessage_SlackCommand{SlackCommand: &pb.SlackCommand{Action: pb.SlackCommand_ACTION_MOVE_HERE, FromComputerId: a.uid}}})
 	if r.GetSlackReply().GetLink().GetTeam() != "Acme" || r.GetSlackReply().GetUserToken() != "" {
 		t.Fatalf("moved: %v", r)
@@ -381,4 +426,37 @@ func TestSlackMovesBetweenComputers(t *testing.T) {
 	waitFor(t, "b's trigger to be able to fire", func() bool { return schedOf(b.d, id).Events[0].Error == "" })
 	// From b, a's Slack can be set up too (sent on over the link).
 	call(t, b.c, &pb.ClientMessage{Msg: &pb.ClientMessage_SlackCommand{SlackCommand: &pb.SlackCommand{Action: pb.SlackCommand_ACTION_STATUS, ComputerId: a.uid}}})
+}
+
+// Slack refusing the tokens ends the connection and its worker (it isn't
+// left behind on each try).
+func TestSlackRefusedEndsItsWorker(t *testing.T) {
+	t.Setenv("SHELL", "/bin/sh")
+	t.Setenv("ENV", "")
+	f := newFakeSlack(t)
+	oldBase, oldTick, oldBackoff := slackAPIBase, slackTick, slackBackoff
+	slackAPIBase, slackTick, slackBackoff = f.srv.URL+"/api/", 50*time.Millisecond, func(int) time.Duration { return 20 * time.Millisecond }
+	t.Cleanup(func() { slackAPIBase, slackTick, slackBackoff = oldBase, oldTick, oldBackoff })
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	defer d.Shutdown()
+	c := dial(t, dir)
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_SlackCommand{SlackCommand: &pb.SlackCommand{Action: pb.SlackCommand_ACTION_CONNECT, UserToken: "xoxp-good", AppToken: "xapp-good"}}})
+	slackSave(t, c, t.TempDir(), &pb.SlackTrigger{Event: pb.SlackTrigger_EVENT_DM})
+	waitFor(t, "the connection", func() bool {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.slack.listening
+	})
+	if n := slackWorkers.Load(); n != 1 {
+		t.Fatalf("%d workers", n)
+	}
+	f.setDown(false, true)
+	f.refresh()
+	waitFor(t, "the tokens refused", func() bool {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return strings.Contains(d.slack.problem, "refused") && d.slack.cancel == nil
+	})
+	waitFor(t, "its worker to end", func() bool { return slackWorkers.Load() == 0 })
 }

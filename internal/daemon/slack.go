@@ -11,8 +11,9 @@ package daemon
 //
 // One computer of yours holds the connection (Computer.slack says which;
 // MOVE_HERE takes it from another, which hands its tokens over its link
-// and forgets them): Slack hands each event to one of an app's open
-// connections, so two computers listening would each miss some.
+// and forgets them once they're kept here): Slack hands each event to one
+// of an app's open connections, so two computers listening would each
+// miss some.
 //
 // The connection is open only while an automation that's on has a Slack
 // trigger (and Automations are on); the tokens are kept when the last one
@@ -40,6 +41,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -99,9 +101,24 @@ type slackState struct {
 	// last looked up): their triggers say so.
 	noChannel map[string]bool
 	// last is the latest message seen in each channel (its ts), for
-	// catching up (kept: "slack_seen", now and then).
+	// catching up (kept: "slack_seen", now and then, as soon as one fires
+	// a trigger, and as the daemon stops, so none fires twice).
 	last      map[string]string
 	lastSaved time.Time
+	lastDirty bool
+}
+
+// slackWorkers counts the workers running (tests).
+var slackWorkers atomic.Int32
+
+// saveSlackSeen keeps what's been seen, if that's changed. Callers hold d.mu.
+func (d *Daemon) saveSlackSeen() {
+	if !d.slack.lastDirty {
+		return
+	}
+	d.slack.lastDirty, d.slack.lastSaved = false, time.Now()
+	b, _ := json.Marshal(d.slack.last)
+	d.persist(d.store.SetSetting("slack_seen", string(b)))
 }
 
 // slackFile is where the tokens are kept.
@@ -299,6 +316,8 @@ type slackItem struct {
 
 // runSlack keeps a connection open with tok until ctx ends.
 func (d *Daemon) runSlack(ctx context.Context, gen int, tok slackTokens) {
+	ctx, stop := context.WithCancel(ctx)
+	defer stop() // (its worker ends with it, however it ends)
 	w := &slackWorker{d: d, gen: gen, tok: tok, api: &slack.Client{Base: slackAPIBase, Token: tok.User},
 		items: make(chan slackItem, 512), users: map[string]slackUser{}, chans: map[string]slack.Channel{},
 		parents: map[string]string{}, seen: map[string]time.Time{}}
@@ -342,7 +361,8 @@ func (d *Daemon) runSlack(ctx context.Context, gen int, tok slackTokens) {
 		d.log.Warn("slack: connection refused", "err", err)
 		d.slack.failedGen, d.slack.failedAt = gen, time.Now()
 		d.slack.listening, d.slack.problem = false, slackProblem(err)
-		if d.slack.runGen == gen {
+		if d.slack.runGen == gen && d.slack.cancel != nil {
+			d.slack.cancel()
 			d.slack.cancel = nil
 		}
 		d.slackChanged()
@@ -392,6 +412,8 @@ type slackWorker struct {
 }
 
 func (w *slackWorker) run(ctx context.Context) {
+	slackWorkers.Add(1)
+	defer slackWorkers.Add(-1)
 	for {
 		select {
 		case <-ctx.Done():
@@ -545,10 +567,9 @@ func (w *slackWorker) noteLast(channel, ts string) {
 		return
 	}
 	d.slack.last[channel] = ts
+	d.slack.lastDirty = true
 	if time.Since(d.slack.lastSaved) > 30*time.Second {
-		d.slack.lastSaved = time.Now()
-		b, _ := json.Marshal(d.slack.last)
-		d.persist(d.store.SetSetting("slack_seen", string(b)))
+		d.saveSlackSeen()
 	}
 }
 
@@ -728,6 +749,7 @@ func (w *slackWorker) fire(ctx context.Context, c slackCandidate, m slack.Messag
 		return
 	}
 	_, _, _ = d.fireEvent(s, &schedEvent{Trigger: c.trigger, Kind: "slack", Summary: summary, Source: "Slack", Fields: fields, Body: text})
+	d.saveSlackSeen() // (else a restart soon after catches it up, and it fires again)
 }
 
 // catchUp reads what the channels triggers name had while the connection
@@ -888,6 +910,10 @@ func (d *Daemon) slackCommand(c *conn, m *pb.SlackCommand) (*pb.ServerMessage, e
 		if !ok {
 			return nil, errors.New("no such linked computer")
 		}
+		// In two steps, so the tokens are never only in flight: that
+		// computer hands them over (keeping them), this one checks and
+		// keeps them, then that one forgets them. Until then, a failure
+		// here (Slack unreachable) loses nothing.
 		r, err := l.call(&pb.ClientMessage{Msg: &pb.ClientMessage_SlackCommand{SlackCommand: &pb.SlackCommand{Action: pb.SlackCommand_ACTION_HAND_OVER}}})
 		if err != nil {
 			return nil, fmt.Errorf("couldn't take Slack from that computer: %v", err)
@@ -895,17 +921,24 @@ func (d *Daemon) slackCommand(c *conn, m *pb.SlackCommand) (*pb.ServerMessage, e
 		h := r.GetSlackReply()
 		tok, err := slackCheck(ctx, h.GetUserToken(), h.GetAppToken())
 		if err != nil {
-			// That computer has forgotten them: it's connected nowhere now.
-			return nil, fmt.Errorf("the tokens that computer had didn't work here: %v. Connect Slack again", err)
+			return nil, fmt.Errorf("the tokens that computer has didn't work here (it keeps them): %v", err)
 		}
 		d.mu.Lock()
-		defer d.mu.Unlock()
 		if err := d.setSlackTokens(tok); err != nil {
+			d.mu.Unlock()
 			return nil, err
 		}
 		d.audit(c.auditActor(), "slack-move", tok.TeamID, tok.Team)
+		d.mu.Unlock()
+		if _, err := l.call(&pb.ClientMessage{Msg: &pb.ClientMessage_SlackCommand{SlackCommand: &pb.SlackCommand{Action: pb.SlackCommand_ACTION_RELEASE, TeamId: tok.TeamID}}}); err != nil {
+			// Both have them for now: that one still listens until it's
+			// told, or disconnected there.
+			d.log.Warn("slack: the computer it moved from didn't forget the tokens", "computer", from, "err", err)
+		}
+		d.mu.Lock()
+		defer d.mu.Unlock()
 		return d.slackReply(), nil
-	case pb.SlackCommand_ACTION_HAND_OVER:
+	case pb.SlackCommand_ACTION_HAND_OVER, pb.SlackCommand_ACTION_RELEASE:
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		// Only to another of your computers, over its link (never to a
@@ -915,14 +948,22 @@ func (d *Daemon) slackCommand(c *conn, m *pb.SlackCommand) (*pb.ServerMessage, e
 		}
 		d.loadSlack()
 		tok := d.slack.tok
+		if m.Action == pb.SlackCommand_ACTION_RELEASE {
+			// That computer has kept them: forget them here, unless they've
+			// been changed meanwhile (another workspace connected).
+			if tok == nil || tok.TeamID != m.TeamId {
+				return &pb.ServerMessage{Msg: &pb.ServerMessage_Ok{Ok: &pb.Ok{}}}, nil
+			}
+			if err := d.setSlackTokens(nil); err != nil {
+				return nil, err
+			}
+			d.audit(c.auditActor(), "slack-hand-over", tok.TeamID, tok.Team)
+			return &pb.ServerMessage{Msg: &pb.ServerMessage_Ok{Ok: &pb.Ok{}}}, nil
+		}
 		if tok == nil {
 			return nil, errors.New("Slack isn't connected there any more")
 		}
-		if err := d.setSlackTokens(nil); err != nil {
-			return nil, err
-		}
-		d.audit(c.auditActor(), "slack-hand-over", tok.TeamID, tok.Team)
-		return &pb.ServerMessage{Msg: &pb.ServerMessage_SlackReply{SlackReply: &pb.SlackReply{UserToken: tok.User, AppToken: tok.App}}}, nil
+		return &pb.ServerMessage{Msg: &pb.ServerMessage_SlackReply{SlackReply: &pb.SlackReply{UserToken: tok.User, AppToken: tok.App, TeamId: tok.TeamID}}}, nil
 	}
 	return nil, errors.New("unknown Slack command (from a newer Hammock?)")
 }

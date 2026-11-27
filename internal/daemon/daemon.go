@@ -619,6 +619,7 @@ func (d *Daemon) shutdown() {
 	d.mu.Lock()
 	d.stopped = true
 	d.releaseAwake()
+	d.saveSlackSeen() // (slack.go: before the store closes)
 	srv := d.srv
 	for c := range d.conns {
 		c.cancel()
