@@ -2,10 +2,10 @@ import AppKit
 import HammockKit
 import SwiftUI
 
-/// The schedule editor's Only If: conditions a run it starts itself must
-/// meet, or it's skipped (the daemon's schedonlyif.go), each edited in
+/// The editor's Only If: conditions a run it starts itself must meet, or
+/// it's skipped (the daemon's schedonlyif.go), each a sentence edited in
 /// place, added from a menu of their own.
-struct ScheduleOnlyIfSection: View {
+struct ScheduleOnlyIfBox: View {
     @Binding var conditions: [ScheduleCondition]
     /// On another computer of yours (which may not be a Mac): only what
     /// any computer can tell.
@@ -13,16 +13,16 @@ struct ScheduleOnlyIfSection: View {
     let model: AppModel
 
     var body: some View {
-        Section {
+        RowBox {
             ForEach(conditions.indices, id: \.self) { i in
                 ConditionRow(condition: $conditions[i]) { conditions.remove(at: i) }
             }
-            Menu("Add Condition") {
+            Menu {
                 if onThisMac {
                     Button("Mac Is Plugged In") { add(.with { $0.kind = .power }) }
                     Button("I’m Away") { add(.with { $0.kind = .away }) }
                     Button("On a Wi-Fi Network…") {
-                        add(.with { $0.kind = .wifi; $0.wifi = ScheduleTriggersSection.currentWiFi })
+                        add(.with { $0.kind = .wifi; $0.wifi = ScheduleWhenBox.currentWiFi })
                         MacWatcher.shared.requestLocation()
                     }
                     Button("Not in a Meeting") {
@@ -34,10 +34,15 @@ struct ScheduleOnlyIfSection: View {
                 Button("Between Times…") { add(.with { $0.kind = .hours; $0.fromMinute = 9 * 60; $0.toMinute = 17 * 60 }) }
                 Button("On Days…") { add(.with { $0.kind = .days; $0.weekdays = [1, 2, 3, 4, 5] }) }
                 Button("Disk Has Space…") { add(.with { $0.kind = .disk; $0.percent = 10 }) }
+            } label: {
+                Label("Add Condition", systemImage: "plus")
             }
+            .menuStyle(.button)
+            .buttonStyle(.borderless)
             .fixedSize()
-        } header: {
-            Text("Only If")
+            .help("A run it starts on its own is skipped unless all of these hold")
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
         }
     }
 
@@ -46,19 +51,15 @@ struct ScheduleOnlyIfSection: View {
     private func add(_ c: ScheduleCondition) { conditions.append(c) }
 }
 
-/// One Only If condition.
+/// One Only If condition, as a sentence.
 private struct ConditionRow: View {
     @Binding var condition: ScheduleCondition
     let remove: () -> Void
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Image(systemName: symbol).foregroundStyle(.secondary).frame(width: 18)
+        WhenRow(symbol: symbol, removeLabel: "Remove condition", remove: remove,
+                footer: condition.missing.isEmpty ? nil : AnyView(Text(condition.missing).font(.caption).foregroundStyle(.orange))) {
             fields
-            Spacer(minLength: 4)
-            Button(action: remove) { Image(systemName: "minus.circle.fill").foregroundStyle(.secondary) }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("Remove condition")
         }
     }
 
@@ -68,7 +69,7 @@ private struct ConditionRow: View {
         case .away: "figure.walk"
         case .wifi: "wifi"
         case .hours: "clock"
-        case .days: "calendar.day.timeline.left"
+        case .days: "calendar"
         case .free: "calendar.badge.checkmark"
         case .disk: "internaldrive"
         default: "questionmark"
@@ -81,31 +82,44 @@ private struct ConditionRow: View {
         case .power:
             Text("The Mac is plugged in")
         case .away:
-            Picker("I’m away", selection: $condition.minutes) {
-                ForEach(awayChoices, id: \.self) { m in Text(m == 0 ? "Now" : "For \(Schedule.durationText(minutes: Int(m)))").tag(m) }
+            Text("I’m away")
+            Picker("Away", selection: $condition.minutes) {
+                ForEach(awayChoices, id: \.self) { m in Text(m == 0 ? "now" : "for \(Schedule.durationText(minutes: Int(m)))").tag(m) }
             }
+            .labelsHidden()
+            .fixedSize()
         case .wifi:
-            TextField("On the Wi-Fi", text: $condition.wifi, prompt: Text("Network name"))
+            Text("On the Wi-Fi")
+            TextField("Network", text: $condition.wifi, prompt: Text("Network name"))
+                .labelsHidden()
+                .frame(width: 150)
         case .hours:
-            HStack {
-                DatePicker("Between", selection: time(\.fromMinute), displayedComponents: .hourAndMinute)
-                DatePicker("and", selection: time(\.toMinute), displayedComponents: .hourAndMinute)
-            }
+            Text("Between")
+            DatePicker("From", selection: time(\.fromMinute), displayedComponents: .hourAndMinute)
+                .labelsHidden()
+                .datePickerStyle(.field)
+                .fixedSize()
+            Text("and")
+            DatePicker("To", selection: time(\.toMinute), displayedComponents: .hourAndMinute)
+                .labelsHidden()
+                .datePickerStyle(.field)
+                .fixedSize()
         case .days:
-            HStack(spacing: 4) {
-                Text("On")
-                ForEach([1, 2, 3, 4, 5, 6, 0] as [Int32], id: \.self) { d in
-                    Toggle(Schedule.weekdaySymbols[Int(d)], isOn: day(d))
-                        .toggleStyle(.button)
-                        .controlSize(.small)
-                }
+            Text("On")
+            ForEach([1, 2, 3, 4, 5, 6, 0] as [Int32], id: \.self) { d in
+                Button(Schedule.weekdaySymbols[Int(d)]) { toggle(d) }
+                    .buttonStyle(ChipStyle(on: condition.weekdays.contains(d)))
+                    .accessibilityAddTraits(condition.weekdays.contains(d) ? .isSelected : [])
             }
         case .free:
             Text("I’m not in a meeting")
         case .disk:
-            Picker("The startup disk has more than", selection: $condition.percent) {
+            Text("The startup disk has more than")
+            Picker("Free", selection: $condition.percent) {
                 ForEach(percentChoices, id: \.self) { p in Text("\(p)% free").tag(p) }
             }
+            .labelsHidden()
+            .fixedSize()
         default:
             Text(condition.text)
         }
@@ -121,13 +135,10 @@ private struct ConditionRow: View {
         return base.contains(condition.percent) ? base : (base + [condition.percent]).sorted()
     }
 
-    private func day(_ d: Int32) -> Binding<Bool> {
-        Binding(get: { condition.weekdays.contains(d) },
-                set: { on in
-                    var set = Set(condition.weekdays)
-                    if on { set.insert(d) } else { set.remove(d) }
-                    condition.weekdays = set.sorted()
-                })
+    private func toggle(_ d: Int32) {
+        var set = Set(condition.weekdays)
+        if set.contains(d) { set.remove(d) } else { set.insert(d) }
+        condition.weekdays = set.sorted()
     }
 
     private func time(_ kp: WritableKeyPath<ScheduleCondition, Int32>) -> Binding<Date> {
@@ -153,76 +164,96 @@ extension ScheduleCondition {
     }
 }
 
-/// A This Mac trigger's fields.
-struct MacTriggerFields: View {
+/// A This Mac trigger's sentence, its fields in it; target: the row's
+/// token for what it watches (apps, drives, displays, networks).
+struct MacTriggerFields<Target: View>: View {
     @Binding var trigger: MacTrigger
     let event: MacTrigger.Event
+    @ViewBuilder let target: () -> Target
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            switch event {
-            case .diskLow:
-                Picker("Disk", selection: $trigger.volume) {
-                    Text("The startup disk").tag("")
-                    ForEach(Self.volumes, id: \.self) { v in Text((v as NSString).lastPathComponent).tag(v) }
-                    if !trigger.volume.isEmpty, !Self.volumes.contains(trigger.volume) { Text(trigger.volume).tag(trigger.volume) }
-                }
-                Picker("Has less than", selection: diskMark) {
-                    ForEach([5, 10, 15, 20, 25] as [Int32], id: \.self) { p in Text("\(p)% free").tag("p\(p)") }
-                    ForEach([10, 20, 50, 100] as [Int32], id: \.self) { g in Text("\(g) GB free").tag("g\(g)") }
-                    if !diskMarks.contains(diskMark.wrappedValue) { Text(diskMarkText).tag(diskMark.wrappedValue) }
-                }
-            case .batteryLow:
-                Picker("The battery falls below", selection: $trigger.percent) {
-                    ForEach(choices([5, 10, 15, 20, 30, 50], trigger.percent), id: \.self) { p in Text("\(p)%").tag(p) }
-                }
-            case .pluggedIn, .unplugged:
-                Picker("The Mac is", selection: $trigger.event) {
-                    Text("Plugged in").tag(MacTrigger.Event.pluggedIn)
-                    Text("Unplugged").tag(MacTrigger.Event.unplugged)
-                }
-            case .away:
-                Picker("I’ve been away for", selection: $trigger.minutes) {
-                    ForEach(choices([5, 10, 15, 30, 60, 120], trigger.minutes), id: \.self) { m in Text(Schedule.durationText(minutes: Int(m))).tag(m) }
-                }
-            case .back:
-                Picker("I’m back after", selection: $trigger.minutes) {
-                    ForEach(choices([5, 10, 15, 30, 60, 120], trigger.minutes), id: \.self) { m in Text("\(Schedule.durationText(minutes: Int(m))) or more away").tag(m) }
-                }
-            case .wake:
-                Picker("The Mac wakes", selection: $trigger.minutes) {
-                    ForEach(choices([0, 15, 30, 60, 240, 480], trigger.minutes), id: \.self) { m in
-                        Text(m == 0 ? "After any sleep" : "After sleeping \(Schedule.durationText(minutes: Int(m))) or more").tag(m)
-                    }
-                }
-            case .appOpened, .appQuit:
-                HStack {
-                    Picker("When", selection: $trigger.event) {
-                        Text("Opens").tag(MacTrigger.Event.appOpened)
-                        Text("Quits").tag(MacTrigger.Event.appQuit)
-                    }
-                    .fixedSize()
-                    TextField("App", text: $trigger.name, prompt: Text("Xcode, or com.apple.dt.Xcode"))
-                    Button("Choose…") { chooseApp() }
-                }
-            case .drive:
-                TextField("A drive is connected, named", text: $trigger.name, prompt: Text("Any drive"))
-            case .display:
-                TextField("A display is connected, named", text: $trigger.name, prompt: Text("Any display"))
-            case .wifiJoined, .wifiLeft:
-                Picker("The Mac", selection: $trigger.event) {
-                    Text("Joins").tag(MacTrigger.Event.wifiJoined)
-                    Text("Leaves").tag(MacTrigger.Event.wifiLeft)
-                }
-                TextField("Wi-Fi network", text: $trigger.name, prompt: Text("Any network"))
-            default:
-                Text(trigger.text)
+        switch event {
+        case .diskLow:
+            Text("Free space on")
+            Picker("Disk", selection: $trigger.volume) {
+                Text("the startup disk").tag("")
+                ForEach(Self.volumes, id: \.self) { v in Text((v as NSString).lastPathComponent).tag(v) }
+                if !trigger.volume.isEmpty, !Self.volumes.contains(trigger.volume) { Text(trigger.volume).tag(trigger.volume) }
             }
-            if trigger.appWatched {
-                Text("Works while Hammock is open.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            .labelsHidden()
+            .fixedSize()
+            Text("falls below")
+            Picker("Free", selection: diskMark) {
+                ForEach([5, 10, 15, 20, 25] as [Int32], id: \.self) { p in Text("\(p)%").tag("p\(p)") }
+                ForEach([10, 20, 50, 100] as [Int32], id: \.self) { g in Text("\(g) GB").tag("g\(g)") }
+                if !diskMarks.contains(diskMark.wrappedValue) { Text(diskMarkText).tag(diskMark.wrappedValue) }
             }
+            .labelsHidden()
+            .fixedSize()
+        case .batteryLow:
+            Text("The battery falls below")
+            Picker("Battery", selection: $trigger.percent) {
+                ForEach(choices([5, 10, 15, 20, 30, 50], trigger.percent), id: \.self) { p in Text("\(p)%").tag(p) }
+            }
+            .labelsHidden()
+            .fixedSize()
+        case .pluggedIn, .unplugged:
+            Text("The Mac is")
+            Picker("Power", selection: $trigger.event) {
+                Text("plugged in").tag(MacTrigger.Event.pluggedIn)
+                Text("unplugged").tag(MacTrigger.Event.unplugged)
+            }
+            .labelsHidden()
+            .fixedSize()
+        case .away:
+            Text("I’ve been away for")
+            Picker("Away for", selection: $trigger.minutes) {
+                ForEach(choices([5, 10, 15, 30, 60, 120], trigger.minutes), id: \.self) { m in Text(Schedule.durationText(minutes: Int(m))).tag(m) }
+            }
+            .labelsHidden()
+            .fixedSize()
+        case .back:
+            Text("I’m back after")
+            Picker("Away at least", selection: $trigger.minutes) {
+                ForEach(choices([5, 10, 15, 30, 60, 120], trigger.minutes), id: \.self) { m in Text(Schedule.durationText(minutes: Int(m))).tag(m) }
+            }
+            .labelsHidden()
+            .fixedSize()
+            Text("or more away")
+        case .wake:
+            Text("The Mac wakes")
+            Picker("After sleeping", selection: $trigger.minutes) {
+                ForEach(choices([0, 15, 30, 60, 240, 480], trigger.minutes), id: \.self) { m in
+                    Text(m == 0 ? "after any sleep" : "after sleeping \(Schedule.durationText(minutes: Int(m))) or more").tag(m)
+                }
+            }
+            .labelsHidden()
+            .fixedSize()
+        case .appOpened, .appQuit:
+            target()
+            Picker("When", selection: $trigger.event) {
+                Text("opens").tag(MacTrigger.Event.appOpened)
+                Text("quits").tag(MacTrigger.Event.appQuit)
+            }
+            .labelsHidden()
+            .fixedSize()
+        case .drive:
+            Text("A drive is connected:")
+            target()
+        case .display:
+            Text("A display is connected:")
+            target()
+        case .wifiJoined, .wifiLeft:
+            Text("The Mac")
+            Picker("Joins or leaves", selection: $trigger.event) {
+                Text("joins").tag(MacTrigger.Event.wifiJoined)
+                Text("leaves").tag(MacTrigger.Event.wifiLeft)
+            }
+            .labelsHidden()
+            .fixedSize()
+            target()
+        default:
+            Text(trigger.text)
         }
     }
 
@@ -241,20 +272,11 @@ struct MacTriggerFields: View {
                 })
     }
 
-    private var diskMarkText: String { trigger.gigabytes > 0 ? "\(trigger.gigabytes) GB free" : "\(trigger.percent)% free" }
+    private var diskMarkText: String { trigger.gigabytes > 0 ? "\(trigger.gigabytes) GB" : "\(trigger.percent)%" }
 
     /// Disks other than the startup disk, mounted now.
     private static var volumes: [String] {
         let urls = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: [.volumeIsBrowsableKey], options: [.skipHiddenVolumes]) ?? []
         return urls.map(\.path).filter { $0.hasPrefix("/Volumes/") }
-    }
-
-    private func chooseApp() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.application]
-        panel.directoryURL = URL(fileURLWithPath: "/Applications")
-        panel.message = "Choose the app this trigger watches"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        trigger.name = FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
     }
 }

@@ -13,10 +13,14 @@ Claude Code by default, or any agent with a tick in the Schedules column of [Sup
 
 ## Making one in the app
 
-Choose File ▸ New Automation… (⌥⇧⌘N), or right-click a tab in the sidebar and choose **Automate This…** to start from what it's doing. Besides the prompt or command and when to run it, the sheet sets:
+Choose File ▸ New Automation… (⌥⇧⌘N), or right-click a tab in the sidebar and choose **Automate This…** to start from what it's doing. It opens in the Automations window, where you edit it in place, then **Save** (⌘S) or **Cancel**. Under its name are the **Group** where its tabs open, what it runs, and the **folder** it runs in. Then:
 
-- **Folder**, where it runs, and **Group**, where its tabs open.
-- **Runs** on a schedule, once (at a date and time), or only on its triggers, its **Triggers**, and **Only If**: [conditions](#only-if) a run must meet.
+- **When:** its times and triggers. **Add Trigger** adds one: **Schedule…** (days and a time, or a cron line) and **Once…** (a date and time) are under Time and Place. Triggers alike but for what they watch (repositories, calendars, apps, drives, displays, Wi-Fi networks) share a row: click the token (**16 repositories**) to add or remove one. **At most once every** sets the [cooldown](#triggers).
+- **Only If:** [conditions](#only-if) a run must meet.
+- **Run:** the prompt, or the command. **Insert Event** marks where what happened goes.
+
+Under **Options**:
+
 - **If still running:** skip the new run (the default), stop the last one, or run both.
 - **Give up after** (agents): stop a run that's waited on you this long.
 - **Keep the last** few runs' tabs; older ones close, unless you've typed in them.
@@ -82,7 +86,7 @@ hmk automation add "Triage" --codex --cron '0 9-17/2 * * 1-5' --sandbox read-onl
 
 ## Triggers
 
-A trigger starts a run when something happens, as well as at the automation's times, or instead of them (**Only on triggers**). In the app, add them under **Triggers** in the automation's sheet. With `hmk` or an agent, write each one as below.
+A trigger starts a run when something happens, as well as at the automation's times, or instead of them (remove its Schedule from When). In the app, add them with **Add Trigger** under **When**. With `hmk` or an agent, write each one as below.
 
 | Trigger | `--trigger` | Runs when |
 |---|---|---|
@@ -122,7 +126,7 @@ GitHub triggers watch the folder's GitHub repository (`gh repo set-default`'s, e
 
 This Mac triggers work with the app closed, except Wi-Fi, apps and displays: the app watches those, so their row says **Needs Hammock open** when it isn't. To watch those with the app closed, use a [Shortcuts automation](#from-shortcuts) instead. Wi-Fi triggers need Location access, which the app asks for (macOS gives the network's name only to apps with it). Free space is what the Finder shows as available. A drive is one you connect, not a disk image or a Time Machine backup. You're away once the Mac is locked or hasn't been touched for 2 minutes, or you've used Hammock on your phone or another computer since. A disk or battery trigger fires once as it falls below its mark, and again only after it's been back above it.
 
-Nothing that's already so when you add a trigger starts a run. Under each trigger in the automation's sheet (and in `hmk automation show`), a line says when it last checked and fired, or what's holding back a run it started, such as its cooldown. What happens in an automation's run, or in panes a run opened, never triggers an automation, so automations can't set each other off in a loop.
+Nothing that's already so when you add a trigger starts a run. Under each trigger in the Automations window (and in `hmk automation show`), a line says when it last checked and fired, or what's holding back a run it started, such as its cooldown. What happens in an automation's run, or in panes a run opened, never triggers an automation, so automations can't set each other off in a loop.
 
 ### What the run gets
 
@@ -201,7 +205,7 @@ A webhook trigger gives the automation a secret URL on [remote access](/hammock/
 curl -k -X POST --data @payload.json https://100.64.0.2:7433/hook/SECRET
 ```
 
-`-k` is needed because the certificate is Hammock's own. **New URL…** in the automation's sheet (or `hmk automation webhook NAME --new`) makes a new secret, and the old URL stops working.
+`-k` is needed because the certificate is Hammock's own. **New URL…** under the trigger while you edit the automation (or `hmk automation webhook NAME --new`) makes a new secret, and the old URL stops working.
 
 To call it from the internet, such as from a GitHub repository's webhooks, put [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) in front of it with your Mac's Tailscale address. The URL is then `https://` your Mac's Tailscale name, then `/hook/SECRET`:
 
@@ -246,7 +250,7 @@ hmk automation add "1:1 prep" --trigger 'calendar:10,title=1:1,attendees' --dir 
 
 ## Managing them
 
-View ▸ Automations (⇧⌘S) lists your automations, and ⌃B @ in [the TUI](/hammock/docs/tui/). Select one to pause, edit, run, skip or delete it, and to see its recent runs: **Open Tab** goes to a run's tab, or **Resume Session** carries on its agent's session once the tab's closed. In the list, type to search, ⌘R runs the selected automation and ⌫ deletes it. Deleting an automation leaves its runs' tabs open.
+View ▸ Automations (⇧⌘S) opens the Automations window, and ⌃B @ lists them in [the TUI](/hammock/docs/tui/). The window lists them by when they run, or by Group (⋯ ▸ Sections), paused ones last; a red dot marks one whose last run failed, an orange one a run waiting for you. Select one to see what starts it, what it runs and its recent runs; turn it off with its **On** switch, or use **Edit**, **Run Now** and ⋯ (Skip Next Run, Duplicate, Copy Webhook URL, Delete). **Options** lists its settings that aren't the default. **Open Tab** goes to a run's tab, or **Resume Session** carries on its agent's session once the tab's closed. In the list, type to search, ⌘R runs the selected automation and ⌫ deletes it. Deleting an automation leaves its runs' tabs open.
 
 To run an automation now instead of at its next time, choose **Run Now Instead of 09:00** (in the TUI, R): its next run moves on to the one after. **Run Now** runs it as well, and the next run still happens. When the next run is within 12 hours, the Mac's run button brings it forward, and its menu has Run Now.
 

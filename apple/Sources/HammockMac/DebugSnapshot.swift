@@ -158,14 +158,14 @@ enum DebugSnapshot {
                 render(AcknowledgementsView(initial: which == "1" ? nil : which), size: NSSize(width: 860, height: 600), to: "\(prefix)-acknowledgements")
             }
         }
-        // HMK_DEBUG_SCHEDULES=list or edit: the Scheduled Tasks sheet (open
-        // from launch, ScheduleUI) or the editor (the first schedule, else a
-        // new one) opened; with HMK_DEBUG_SNAPSHOT also rendered on their own
-        // to <prefix>-schedules-<light|dark>.png (sheets aren't in the
-        // window's snapshot).
+        // HMK_DEBUG_SCHEDULES=list, edit or new: the Automations window
+        // opened (editing the first automation, or a new one); with
+        // HMK_DEBUG_SNAPSHOT also captured as drawn to
+        // <prefix>-schedules-<light|dark>.png (ScreenCaptureKit, else a
+        // snapshot of its content without the toolbar).
         if let which = env["HMK_DEBUG_SCHEDULES"] {
             Task { @MainActor in
-                // Once the daemon's state (and its schedules) is in.
+                // Once the daemon's state (and its automations) is in.
                 for _ in 0..<40 {
                     try? await Task.sleep(for: .milliseconds(100))
                     if AppModelRegistry.shared?.schedules.isEmpty == false { break }
@@ -177,18 +177,19 @@ enum DebugSnapshot {
                     ScheduleUI.shared.selected = samples[0].id
                     TriggerEditorRow.debugWebhook = ScheduleSamples.webhook
                 }
-                if which == "edit" { ScheduleUI.shared.openDebugEditor(model) }
+                if let id = env["HMK_DEBUG_SCHEDULES_SELECT"] { ScheduleUI.shared.selected = id }
+                ScheduleUI.shared.openDebug(model)
+                guard let window = ScheduleUI.shared.window else { return }
+                let tall = env["HMK_DEBUG_SCHEDULES_HEIGHT"].flatMap(Double.init) ?? 740
+                window.setContentSize(NSSize(width: 1040, height: tall))
+                window.center()
                 guard let prefix = env["HMK_DEBUG_SNAPSHOT"] else { return }
-                if which == "edit" {
-                    let s = ScheduleUI.shared.editing?.schedule ?? Schedule()
-                    let tall = Double(env["HMK_DEBUG_SCHEDULES_HEIGHT"] ?? "") ?? 720
-                    ScheduleEditor.debugHeight = tall
-                    render(ScheduleEditor(model: model, original: s), size: NSSize(width: 580, height: tall), to: "\(prefix)-schedules")
-                } else {
-                    let tall = Double(env["HMK_DEBUG_SCHEDULES_HEIGHT"] ?? "") ?? 680
-                    ScheduledTasksSheet.debugHeight = env["HMK_DEBUG_SCHEDULES_HEIGHT"].flatMap(Double.init).map { CGFloat($0) }
-                    render(ScheduledTasksSheet(model: model), size: NSSize(width: 900, height: tall), to: "\(prefix)-schedules")
-                }
+                await captureAutomations(window, prefix: prefix)
+                // The list's rows on their own too: a snapshot draws the sidebar's List blank.
+                render(VStack(alignment: .leading, spacing: 8) {
+                    ForEach(model.sortedSchedules, id: \.id) { ScheduleListRow(model: model, schedule: $0) }
+                    Spacer()
+                }.padding(12), size: NSSize(width: 290, height: 420), to: "\(prefix)-schedules-list")
             }
         }
         // HMK_DEBUG_START_AGENT=1: the Start an Agent sheet opened on the
@@ -452,6 +453,25 @@ extension DebugSnapshot {
     private static func captureFailed(_ reason: String, prefix: String) {
         FileHandle.standardError.write(Data("HMK_DEBUG_CAPTURE: can't capture: \(reason)\n".utf8))
         try? "\(reason)\n".write(toFile: "\(prefix)-capture-error.txt", atomically: true, encoding: .utf8)
+    }
+
+    /// The Automations window, light and dark, as drawn (HMK_DEBUG_SCHEDULES).
+    @MainActor private static func captureAutomations(_ window: NSWindow, prefix: String) async {
+        let blocker = captureBlocker()
+        if let blocker { captureFailed(blocker, prefix: prefix) }
+        for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+            window.appearance = NSAppearance(named: appearance)
+            window.makeKeyAndOrderFront(nil)
+            try? await Task.sleep(for: .seconds(1.5))
+            let path = "\(prefix)-schedules-\(name).png"
+            if blocker == nil, let image = await grabWindow(window) {
+                try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+            } else if let view = window.contentView, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                view.cacheDisplay(in: view.bounds, to: rep)
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+            }
+        }
+        window.appearance = nil
     }
 
     @MainActor private static func captureWindow(_ window: NSWindow, prefix: String) async {

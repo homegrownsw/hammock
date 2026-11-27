@@ -199,8 +199,8 @@ struct HammockApp: App {
                 Divider()
                 if HammockTool.schedules.on {
                     Button("New Automation…") { ScheduleUI.shared.new(model) }.keyboardShortcut(Keys.newScheduledTask)
-                    // The one selected in the Scheduled Tasks list, while it shows.
-                    if ScheduleUI.shared.showingList {
+                    // The one selected in the Automations window, while it's in front.
+                    if ScheduleUI.shared.windowIsKey {
                         Button("Run Automation Now") { ScheduleUI.shared.runSelected(model) }
                             .keyboardShortcut(Keys.runScheduledTask)
                             .disabled(ScheduleUI.shared.selectedSchedule(model) == nil)
@@ -281,8 +281,9 @@ struct HammockApp: App {
                 // Group, and the window only once nothing is left.
                 Button(closeLabel) { closeCurrent() }.keyboardShortcut(Keys.close)
                 Button("Close Window") { NSApp.keyWindow?.performClose(nil) }.keyboardShortcut(Keys.closeWindow)
-                // Only with an editor focused: ⌘S is the simulator's otherwise.
-                if let id = focused, focusedIsEditor {
+                // Only with an editor focused: ⌘S is the simulator's otherwise,
+                // and the Automations window's in front of it.
+                if let id = focused, focusedIsEditor, !ScheduleUI.shared.windowIsKey {
                     Divider()
                     Button("Save") { EditorUI.shared.save(model, id) }.keyboardShortcut(Keys.editorSave)
                         .disabled(model.group(ofPane: id)?.canDrive == false)
@@ -617,9 +618,9 @@ struct HammockApp: App {
     }
 
     /// A browser pane you can drive is focused (one shared with you too),
-    /// with no Scheduled Tasks list over it: Back, Forward and Reload Page.
+    /// with the Automations window not in front: Back, Forward and Reload Page.
     private var browserKeys: Bool {
-        guard let id = focused, model.panes[id]?.kind == .browser, !ScheduleUI.shared.showingList else { return false }
+        guard let id = focused, model.panes[id]?.kind == .browser, !ScheduleUI.shared.windowIsKey else { return false }
         return model.group(ofPane: id).map { $0.canDrive && !$0.offline } ?? true
     }
 
@@ -824,7 +825,6 @@ struct ContentView: View {
         }
         .overlay(alignment: .bottomTrailing) { InAppNoticeStack() }
         .modifier(TabSheets.Host(model: model))
-        .modifier(ScheduleUI.Host(model: model))
         // Hide Sidebar from the menu or palette: slide, as the window's button does.
         .onChange(of: sidebarHidden) { _, hidden in
             let want: NavigationSplitViewVisibility = hidden ? .detailOnly : .all

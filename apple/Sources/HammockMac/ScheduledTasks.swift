@@ -3,51 +3,75 @@ import HammockKit
 import Observation
 import SwiftUI
 
-/// Scheduled tasks on the Mac: View ▸ Scheduled Tasks (the list, with the
-/// selected one's runs) and File ▸ New Scheduled Task… (ScheduleEditor).
+/// Automations on the Mac: a window of their own (View ▸ Automations), the
+/// list beside the selected one, read (ScheduleDetail) or edited in place
+/// (ScheduleEditor: Edit, File ▸ New Automation…, Automate This…).
 @MainActor
 @Observable
 final class ScheduleUI {
     static let shared = ScheduleUI()
 
-    /// HMK_DEBUG_SCHEDULES=list or edit opens that sheet at launch (DebugSnapshot).
+    /// HMK_DEBUG_SCHEDULES=list or edit opens the window (and the editor) at launch (DebugSnapshot).
     private static let debug = ProcessInfo.processInfo.environment["HMK_DEBUG_SCHEDULES"]
 
-    var showingList = ScheduleUI.debug == "list"
-    /// The schedule the list shows.
+    /// The Automations window is the key window: its commands (Run
+    /// Automation Now) are in the menu bar, and a browser pane's aren't.
+    private(set) var windowIsKey = false
+    /// The automation the window shows.
     var selected: String?
-    var editing: EditRequest?
+    /// The one being edited (or made), in place of the selected one's page.
+    var editing: ScheduleDraft?
+    /// What the list is filtered by.
+    var search = ""
 
-    struct EditRequest: Identifiable {
-        let id = UUID()
-        var schedule: Schedule
-    }
+    @ObservationIgnored private(set) var window: NSWindow?
+    @ObservationIgnored private var observers: [NSObjectProtocol] = []
+    @ObservationIgnored private var closer: WindowCloser?
 
+    /// Opens the window (selecting id), keeping anything being edited.
     func showList(select id: String? = nil) {
-        if let id { selected = id }
-        showingList = true
+        if let id, editing == nil { selected = id }
+        openWindow()
     }
 
-    func edit(_ s: Schedule) { editing = EditRequest(schedule: s) }
+    func edit(_ s: Schedule) {
+        selected = s.id
+        guard let model = AppModelRegistry.shared else { return }
+        editing = ScheduleDraft(model: model, original: s)
+        openWindow()
+    }
 
-    /// The schedule selected in the list, while it shows.
+    /// Cancel (or Esc): stops editing, asking first if anything's changed.
+    func cancelEdit() {
+        guard let draft = editing else { return }
+        if draft.changed {
+            let alert = NSAlert()
+            alert.messageText = draft.isNew ? "Discard this new automation?" : "Discard your changes to “\(draft.original.name)”?"
+            alert.addButton(withTitle: "Discard").hasDestructiveAction = true
+            alert.addButton(withTitle: "Keep Editing")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        }
+        editing = nil
+    }
+
+    /// The selected automation, while the window's in front.
     func selectedSchedule(_ model: AppModel) -> Schedule? {
-        showingList ? selected.flatMap { model.schedules[$0] } : nil
+        windowIsKey && editing == nil ? selected.flatMap { model.schedules[$0] } : nil
     }
 
-    /// Run Scheduled Task Now (⌘R in the list).
+    /// Run Automation Now (⌘R in the window).
     func runSelected(_ model: AppModel) {
         guard let s = selectedSchedule(model) else { return }
         ScheduleActions.runNow(model, s)
     }
 
-    /// A new schedule on this computer: in groupID (else the Group you're
+    /// A new automation on this computer: in groupID (else the Group you're
     /// in, if it's this computer's), in its folder.
     func new(_ model: AppModel, groupID: String? = nil, cwd: String? = nil, kind: String = "claude") {
         let local = model.scheduleGroups(on: "")
         let group = (groupID ?? model.currentGroup?.id).flatMap { id in local.first { $0.id == id } }
         let folder = cwd ?? group.map { model.groupFolder($0) } ?? ""
-        editing = EditRequest(schedule: .with {
+        editing = ScheduleDraft(model: model, original: .with {
             $0.kind = kind
             $0.groupID = group?.id ?? ""
             $0.groupName = group?.name ?? ""
@@ -55,202 +79,374 @@ final class ScheduleUI {
             $0.weekdays = [1, 2, 3, 4, 5]
             $0.minuteOfDay = 9 * 60
         })
+        openWindow()
     }
 
-    /// Schedule This… on a tab: its folder, Group and agent. An agent tab's
+    /// Another like s, to change before it's saved.
+    func duplicate(_ model: AppModel, _ s: Schedule) {
+        var copy = s
+        copy.id = ""
+        copy.name = s.name + " copy"
+        copy.runs = []
+        copy.nextRunUnixMs = 0
+        copy.skipUntilUnixMs = 0
+        copy.createdBy = ""
+        copy.createdUnixMs = 0
+        copy.error = ""
+        copy.paused = false
+        for i in copy.events.indices {
+            copy.events[i].id = ""
+            copy.events[i].checkedUnixMs = 0
+            copy.events[i].firedUnixMs = 0
+            copy.events[i].held = ""
+            copy.events[i].error = ""
+        }
+        editing = ScheduleDraft(model: model, original: copy)
+        openWindow()
+    }
+
+    /// Automate This… on a tab: its folder, Group and agent. An agent tab's
     /// also start from its session: named after the tab (as you named it,
     /// else the session's title), with the first prompt you sent in it.
     func scheduleThis(_ model: AppModel, _ tab: WorkspaceTab) {
         let agent = model.shownAgentPane(of: tab)
         let pane = agent ?? model.panes[tab.focusedPaneID]
         new(model, groupID: tab.groupID, cwd: pane?.cwd, kind: agent?.agent.harness ?? "command")
-        guard let agent, let request = editing else { return }
+        guard let agent, let draft = editing else { return }
         let name = !tab.name.isEmpty ? tab.name : tab.autoKey.hasPrefix("agent:") ? tab.autoName : ""
         // Shown at once, the prompt filled in when the session's been read
         // (unless you've started typing one).
-        editing?.schedule.name = name
+        draft.s.name = name
+        let original = draft.s
         Task {
             guard let start = await model.sessionStart(harness: agent.agent.harness, id: agent.agent.sessionID),
-                  editing?.id == request.id else { return }
-            prefill = Prefill(request: request.id, name: name.isEmpty ? start.title ?? "" : name, prompt: start.prompt)
+                  editing === draft else { return }
+            if draft.s.name == original.name, name.isEmpty, let t = start.title, !t.isEmpty { draft.s.name = t }
+            if draft.s.prompt.isEmpty, draft.s.kind != "command" { draft.s.prompt = start.prompt }
         }
     }
 
-    /// What Schedule This read from a session after its editor opened: the
-    /// editor (of that request) takes each field you haven't typed in.
-    var prefill: Prefill?
-    struct Prefill: Equatable {
-        var request: UUID
-        var name: String
-        var prompt: String
-    }
-
-    /// Whether a tab can be scheduled from: one in a Group of this computer's.
+    /// Whether a tab can be automated: one in a Group of this computer's.
     static func canSchedule(_ model: AppModel, _ tab: WorkspaceTab) -> Bool {
         HammockTool.schedules.on && model.group(of: tab)?.isRemote == false
     }
 
-    /// Opens a debug sheet asked for by HMK_DEBUG_SCHEDULES=edit, once the
-    /// schedules have arrived.
-    func openDebugEditor(_ model: AppModel) {
-        guard Self.debug == "edit" else { return }
-        let first = selected.flatMap { model.schedules[$0] } ?? model.sortedSchedules.first
-        if let s = first { edit(s) } else { new(model) }
+    /// Opens the window asked for by HMK_DEBUG_SCHEDULES, once the
+    /// automations have arrived.
+    func openDebug(_ model: AppModel) {
+        switch Self.debug {
+        case "edit":
+            let first = selected.flatMap { model.schedules[$0] } ?? model.sortedSchedules.first
+            if let s = first { edit(s) } else { new(model) }
+        case "new": new(model)
+        default: showList()
+        }
     }
 
-    /// Hosts the sheets on the window: the list, and the editor (over the
-    /// list when it's open).
-    struct Host: ViewModifier {
-        let model: AppModel
-        @Bindable private var ui = ScheduleUI.shared
+    // MARK: The window
 
-        func body(content: Content) -> some View {
-            content
-                .sheet(isPresented: $ui.showingList) {
-                    ScheduledTasksSheet(model: model)
-                        .sheet(item: Binding(get: { ui.showingList ? ui.editing : nil }, set: { ui.editing = $0 })) {
-                            ScheduleEditor(model: model, original: $0.schedule, request: $0.id)
-                        }
-                }
-                .sheet(item: Binding(get: { ui.showingList ? nil : ui.editing }, set: { ui.editing = $0 })) {
-                    ScheduleEditor(model: model, original: $0.schedule, request: $0.id)
-                }
+    private func openWindow() {
+        if let window {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate()
+            return
         }
+        guard let model = AppModelRegistry.shared else { return }
+        let host = NSHostingController(rootView: AutomationsView(model: model).themeTint())
+        // Its toolbar and title are the view's (.toolbar, .navigationTitle).
+        host.sceneBridgingOptions = [.toolbars, .title]
+        let w = NSWindow(contentViewController: host)
+        w.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+        w.isReleasedWhenClosed = false
+        w.toolbarStyle = .unified
+        w.contentMinSize = NSSize(width: 820, height: 520)
+        w.setContentSize(NSSize(width: 1040, height: 740))
+        w.center()
+        w.setFrameAutosaveName("HammockAutomations")
+        let closer = WindowCloser { [weak self] in
+            guard let self else { return }
+            // Whatever was being edited goes with it.
+            self.editing = nil
+            self.windowIsKey = false
+            self.window = nil
+            self.closer = nil
+            self.observers.forEach(NotificationCenter.default.removeObserver)
+            self.observers = []
+        }
+        w.delegate = closer
+        self.closer = closer
+        for (name, key) in [(NSWindow.didBecomeKeyNotification, true), (NSWindow.didResignKeyNotification, false)] {
+            observers.append(NotificationCenter.default.addObserver(forName: name, object: w, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.windowIsKey = key }
+            })
+        }
+        window = w
+        w.makeKeyAndOrderFront(nil)
+        NSApp.activate()
+    }
+
+    /// Brings the workspace window forward: a run's tab is there.
+    func showWorkspace() {
+        WorkspaceWindow.window?.makeKeyAndOrderFront(nil)
+    }
+
+    private final class WindowCloser: NSObject, NSWindowDelegate {
+        let onClose: () -> Void
+        init(_ onClose: @escaping () -> Void) { self.onClose = onClose }
+        func windowWillClose(_ notification: Notification) { onClose() }
     }
 }
 
-/// View ▸ Scheduled Tasks: every schedule on the left (name, where and
-/// when, next run, last run), the selected one's settings and runs on the right.
-struct ScheduledTasksSheet: View {
+/// The Automations window: the list (by when they run, or by Group; paused
+/// ones last) beside the selected one's page, or the one being edited.
+struct AutomationsView: View {
     let model: AppModel
-    /// Taller, to render all of it (HMK_DEBUG_SCHEDULES_HEIGHT).
-    nonisolated(unsafe) static var debugHeight: CGFloat?
     @Bindable private var ui = ScheduleUI.shared
-    @Environment(\.dismiss) private var dismiss
-    @State private var search = ""
+    /// How the list is divided: "when" (on a schedule, on triggers) or "group".
+    @AppStorage("automationsSections") private var sections = "when"
+    @State private var hovered: String?
 
     private var all: [Schedule] { model.sortedSchedules }
     /// Those matching the search: by name, prompt or command, Group, kind or when.
     private var list: [Schedule] {
-        let q = search.trimmingCharacters(in: .whitespaces)
+        let q = ui.search.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return all }
         return all.filter { s in
-            [s.name, s.prompt, ScheduleText.where(model, s)].contains { $0.localizedStandardContains(q) }
+            [s.name, s.prompt, ScheduleText.groupName(model, s), s.kindName, s.listWhenText].contains { $0.localizedStandardContains(q) }
         }
     }
 
+    private var editing: Bool { ui.editing != nil }
+
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("Automations").font(.title3.weight(.semibold))
-                Spacer()
-                Button { ScheduleUI.shared.new(model) } label: { Label("New Automation…", systemImage: "plus") }
-                    .help(Keys.hint("New Automation", "new_scheduled_task"))
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            Divider()
-            if all.isEmpty {
-                ContentUnavailableView {
-                    Label("No Automations", systemImage: "clock")
-                } description: {
-                    Text("Run Claude Code, Codex or a command at set times, or when something happens. Each run opens a tab in its Group, so you can pick up where it left off.")
-                } actions: {
-                    Button("New Automation…") { ScheduleUI.shared.new(model) }
-                        .buttonStyle(.borderedProminent)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                HStack(spacing: 0) {
-                    VStack(spacing: 0) {
-                        TextField("Search", text: $search, prompt: Text("Search"))
-                            .textFieldStyle(.roundedBorder)
-                            .padding(8)
-                        if list.isEmpty {
-                            Text("No automations match “\(search)”.")
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
-                                .padding()
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        } else {
-                            List(selection: $ui.selected) {
-                                ForEach(list, id: \.id) { s in
-                                    ScheduleListRow(model: model, schedule: s).tag(s.id)
-                                        .contextMenu { ScheduleMenuItems(model: model, schedule: s) }
-                                }
-                            }
-                            .listStyle(.inset)
-                            // ⌫ (Edit ▸ Delete): the selected one, asking first.
-                            .onDeleteCommand {
-                                if let s = ui.selected.flatMap({ model.schedules[$0] }) { ScheduleActions.confirmDelete(model, s) }
-                            }
-                        }
-                    }
-                    .frame(width: 290)
-                    Divider()
-                    if let s = ui.selected.flatMap({ model.schedules[$0] }) {
-                        ScheduleDetail(model: model, schedule: s)
-                            .id(s.id)
-                    } else {
-                        ContentUnavailableView("Select an Automation", systemImage: "clock")
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
-                }
-            }
-            Divider()
-            HStack {
-                Spacer()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+        NavigationSplitView {
+            sidebar
+                .navigationSplitViewColumnWidth(min: 240, ideal: 290, max: 380)
+                .toolbar(removing: .sidebarToggle)
+                .background { SidebarTint().ignoresSafeArea() }
+        } detail: {
+            detail
+                .settingsPaneCard()
         }
-        // Resizable, taller to see more runs; the detail scrolls.
-        .frame(minWidth: 820, idealWidth: 900, maxWidth: 1400, minHeight: 520,
-               idealHeight: Self.debugHeight ?? 680, maxHeight: Self.debugHeight ?? .infinity)
+        .navigationTitle("Automations")
+        .searchable(text: $ui.search, placement: .sidebar, prompt: "Search")
+        .toolbar { toolbar }
+        // Its toolbar, sidebar and search field drawn as Settings' are.
+        .background(SettingsWindowStyle())
+        .toggleStyle(ThemedSwitchStyle())
+        .frame(minWidth: 820, minHeight: 520)
         .onAppear(perform: keepSelection)
         .onChange(of: list.map(\.id)) { keepSelection() }
     }
 
+    // MARK: Toolbar
+
+    @ToolbarContentBuilder
+    private var toolbar: some ToolbarContent {
+        if let draft = ui.editing {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { ui.cancelEdit() }
+                    .keyboardShortcut(.cancelAction)
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button(draft.isNew ? "Create" : "Save") { draft.save(model) }
+                    .keyboardShortcut("s")
+                    .buttonStyle(.borderedProminent)
+                    .disabled(draft.saving || !draft.canSave)
+                    .help(draft.missing ?? (draft.isNew ? "Create it (⌘S)" : "Save your changes (⌘S)"))
+            }
+        } else {
+            if let s = ui.selected.flatMap({ model.schedules[$0] }) {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    Button("Edit") { ui.edit(s) }
+                        .help("Change what it runs and when")
+                    ScheduleRunButton(model: model, schedule: s)
+                    Menu {
+                        ScheduleMenuItems(model: model, schedule: s, inWindow: true)
+                        Divider()
+                        Picker("Sections", selection: $sections) {
+                            Text("By When They Run").tag("when")
+                            Text("By Group").tag("group")
+                        }
+                    } label: {
+                        Label("More", systemImage: "ellipsis")
+                    }
+                    .help("More")
+                }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button { ui.new(model) } label: { Label("New Automation", systemImage: "plus") }
+                    .help(Keys.hint("New Automation", "new_scheduled_task"))
+            }
+        }
+    }
+
+    // MARK: List
+
+    /// The list's sections, paused ones last.
+    private var listSections: [(title: String, items: [Schedule])] {
+        let on = list.filter { !$0.paused }
+        var out: [(String, [Schedule])] = []
+        if sections == "group" {
+            var order: [String] = []
+            var byGroup: [String: [Schedule]] = [:]
+            for s in on {
+                let g = ScheduleText.groupName(model, s)
+                if byGroup[g] == nil { order.append(g) }
+                byGroup[g, default: []].append(s)
+            }
+            out = order.map { ($0.isEmpty ? "No Group" : $0, byGroup[$0] ?? []) }
+        } else {
+            out = [("On a Schedule", on.filter { $0.timesText != nil }), ("On Triggers", on.filter { $0.timesText == nil })]
+        }
+        out.append(("Paused", list.filter(\.paused)))
+        return out.filter { !$0.1.isEmpty }
+    }
+
+    @ViewBuilder
+    private var sidebar: some View {
+        if all.isEmpty && !editing {
+            Color.clear
+        } else if list.isEmpty && !editing {
+            Text("No automations match “\(ui.search)”.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            List {
+                if let d = ui.editing, d.isNew {
+                    Section {
+                        ScheduleListRow(model: model, schedule: d.s, draft: true)
+                            .settingsSidebarRow("draft", selected: true, hovered: $hovered) {}
+                    }
+                }
+                ForEach(listSections, id: \.title) { section in
+                    Section(section.title) {
+                        ForEach(section.items, id: \.id) { s in
+                            ScheduleListRow(model: model, schedule: s, draft: ui.editing?.original.id == s.id)
+                                .settingsSidebarRow(s.id, selected: ui.editing.map { $0.original.id == s.id } ?? (ui.selected == s.id), hovered: $hovered) {
+                                    ui.selected = s.id
+                                }
+                                .contextMenu { ScheduleMenuItems(model: model, schedule: s) }
+                        }
+                    }
+                }
+            }
+            // While one's edited, the list waits: Save or Cancel first.
+            .disabled(editing)
+            .opacity(editing ? 0.55 : 1)
+            .focusable(!editing)
+            .focusEffectDisabled()
+            .onKeyPress(.downArrow) { move(1) }
+            .onKeyPress(.upArrow) { move(-1) }
+            // ⌫ (Edit ▸ Delete): the selected one, asking first.
+            .onDeleteCommand {
+                if !editing, let s = ui.selected.flatMap({ model.schedules[$0] }) { ScheduleActions.confirmDelete(model, s) }
+            }
+        }
+    }
+
+    /// The next or previous one in the list, as it's shown.
+    private func move(_ by: Int) -> KeyPress.Result {
+        let order = listSections.flatMap(\.items).map(\.id)
+        guard !editing, !order.isEmpty else { return .ignored }
+        let i = ui.selected.flatMap { order.firstIndex(of: $0) } ?? -by
+        ui.selected = order[max(0, min(order.count - 1, i + by))]
+        return .handled
+    }
+
+    // MARK: Detail
+
+    @ViewBuilder
+    private var detail: some View {
+        if let draft = ui.editing {
+            ScheduleEditor(model: model, draft: draft)
+                .id(draft.id)
+        } else if all.isEmpty {
+            ContentUnavailableView {
+                Label("No Automations", systemImage: "clock")
+            } description: {
+                Text("Run Claude Code, Codex or a command at set times, or when something happens. Each run opens a tab in its Group, so you can pick up where it left off.")
+            } actions: {
+                Button("New Automation") { ui.new(model) }
+                    .buttonStyle(.borderedProminent)
+            }
+        } else if let s = ui.selected.flatMap({ model.schedules[$0] }) {
+            ScheduleDetail(model: model, schedule: s)
+                .id(s.id)
+        } else {
+            ContentUnavailableView("Select an Automation", systemImage: "clock")
+        }
+    }
+
     /// Something is always selected while there's anything to select (that the search shows).
     private func keepSelection() {
-        if !list.contains(where: { $0.id == ui.selected }) { ui.selected = list.first?.id }
+        guard !editing else { return }
+        if !list.contains(where: { $0.id == ui.selected }) { ui.selected = listSections.first?.items.first?.id }
     }
 }
 
-/// A schedule in the list: name, where and when, next run, last run.
+/// An automation in the list: its name, what starts it, and a dot when its
+/// last run failed or waits on you.
 struct ScheduleListRow: View {
     let model: AppModel
     let schedule: Schedule
+    /// It's the one being edited (or made).
+    var draft = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 5) {
-                Text(schedule.name).fontWeight(.medium).lineLimit(1)
-                if let c = model.computer(of: schedule) { ComputerBadge(c, size: 11) }
-                Spacer(minLength: 4)
-                if let r = schedule.runs.first {
-                    RunStatusIcon(status: r.status)
-                        .font(.caption)
-                        .help("Last run: \(r.status.label)")
-                }
-            }
-            Text(ScheduleText.where(model, schedule))
-                .font(.caption)
+        HStack(spacing: 10) {
+            Image(systemName: schedule.timesText != nil ? "clock" : "bolt")
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
-            Text(ScheduleText.next(schedule))
-                .font(.caption)
-                .foregroundStyle(schedule.error.isEmpty ? .tertiary : .secondary)
-                .lineLimit(1)
+                .frame(width: 26, height: 26)
+                .background(.quaternary.opacity(0.7), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 5) {
+                    Text(schedule.name.isEmpty ? "New Automation" : schedule.name)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(schedule.paused ? .secondary : .primary)
+                        .lineLimit(1)
+                    if let c = model.computer(of: schedule) { ComputerBadge(c, size: 11) }
+                }
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            if let dot {
+                Circle().fill(dot.color).frame(width: 7, height: 7)
+                    .help(dot.help)
+                    .accessibilityLabel(dot.help)
+            }
         }
-        .padding(.vertical, 3)
+        .padding(.vertical, 2)
+    }
+
+    private var subtitle: String {
+        if draft { return "Editing" }
+        if schedule.paused { return "Paused" }
+        if !schedule.error.isEmpty { return schedule.error }
+        var parts = [schedule.listWhenText]
+        if schedule.kind != "claude", !schedule.kind.isEmpty { parts.insert(schedule.kindName, at: 0) }
+        if let r = schedule.runs.first, r.status.isProblem { parts.append("last run \(r.status.label.lowercased())") }
+        return parts.joined(separator: " · ")
+    }
+
+    /// Red: its last run failed, or it can't run; orange: a run waits on you.
+    private var dot: (color: Color, help: String)? {
+        guard !draft else { return nil }
+        if !schedule.error.isEmpty { return (.red, schedule.error) }
+        guard let r = schedule.runs.first else { return nil }
+        if schedule.runs.contains(where: { $0.status == .waiting }) { return (.orange, "Waiting for you") }
+        return r.status.isProblem ? (.red, "Last run: \(r.status.label)") : nil
     }
 }
 
-/// How schedules are put in the Mac's lists and menus.
+/// How automations are put in the Mac's lists and menus.
 enum ScheduleText {
     /// "🗞️ Notes · Claude Code · Weekdays at 08:30".
     @MainActor static func `where`(_ model: AppModel, _ s: Schedule) -> String {
@@ -293,18 +489,27 @@ enum ScheduleText {
     }
 }
 
-/// A schedule's actions, for its right-click menu.
+/// An automation's actions, for its right-click menu and the window's ⋯.
 struct ScheduleMenuItems: View {
     let model: AppModel
     let schedule: Schedule
+    /// In the Automations window, which has Edit, Run Now and On beside it already.
+    var inWindow = false
 
     var body: some View {
-        Button("Run Now") { ScheduleActions.runNow(model, schedule) }
-        if schedule.canRunEarly {
+        if !inWindow {
+            Button("Run Now") { ScheduleActions.runNow(model, schedule) }
+        }
+        if schedule.canRunEarly, !inWindow {
             Button(schedule.runEarlyTitle()) { ScheduleActions.runNow(model, schedule, early: true) }
         }
-        Button(schedule.paused ? "Resume" : "Pause") { ScheduleActions.setPaused(model, schedule, !schedule.paused) }
-        Button("Edit…") { ScheduleUI.shared.edit(schedule) }
+        if !schedule.paused, schedule.nextRunUnixMs > 0 {
+            Button(schedule.skipping ? "Don’t Skip Next Run" : "Skip Next Run") { ScheduleActions.skip(model, schedule, !schedule.skipping) }
+        }
+        Button(schedule.paused ? "Turn On" : "Pause") { ScheduleActions.setPaused(model, schedule, !schedule.paused) }
+        Divider()
+        Button("Edit") { ScheduleUI.shared.edit(schedule) }
+        Button("Duplicate") { ScheduleUI.shared.duplicate(model, schedule) }
         if schedule.hasWebhook {
             Button("Copy Webhook URL") { ScheduleActions.copyWebhook(model, schedule) }
         }
@@ -313,17 +518,48 @@ struct ScheduleMenuItems: View {
     }
 }
 
+/// Run Now, or (its next run coming up soon) Run Early, saying which, with
+/// the other in its menu.
+struct ScheduleRunButton: View {
+    let model: AppModel
+    let schedule: Schedule
+
+    var body: some View {
+        if !schedule.canRunEarly {
+            Button { ScheduleActions.runNow(model, schedule) } label: { Label("Run Now", systemImage: "play.fill") }
+                .labelStyle(.titleAndIcon)
+                .help("Run it now")
+        } else {
+            let early = schedule.runsEarlyFirst()
+            Menu {
+                if early {
+                    Button(schedule.runAsWellTitle()) { ScheduleActions.runNow(model, schedule) }
+                } else {
+                    Button(schedule.runEarlyTitle()) { ScheduleActions.runNow(model, schedule, early: true) }
+                }
+            } label: {
+                Label(early ? schedule.runEarlyTitle() : "Run Now", systemImage: "play.fill")
+                    .labelStyle(.titleAndIcon)
+            } primaryAction: {
+                ScheduleActions.runNow(model, schedule, early: early)
+            }
+            .help(early ? "Runs it now, and not \(schedule.nextRunPhrase())" : "Runs it now, and \(schedule.nextRunPhrase()) as usual")
+        }
+    }
+}
+
 extension Schedule {
     /// It has a webhook trigger (its URL: Copy Webhook URL).
     var hasWebhook: Bool { events.contains { if case .webhook = $0.kind { true } else { false } } }
 }
 
-/// What the list's buttons, menus and the palette do, with errors said in a toast.
+/// What the window's buttons, menus and the palette do, with errors said in a toast.
 @MainActor
 enum ScheduleActions {
-    /// early: Run Early, in place of its next run.
+    /// early: Run Early, in place of its next run. Its tab opens in the
+    /// workspace window, which comes forward.
     static func runNow(_ model: AppModel, _ s: Schedule, early: Bool = false) {
-        ScheduleUI.shared.showingList = false
+        ScheduleUI.shared.showWorkspace()
         Task {
             do { try await model.runScheduleNow(s.id, early: early) } catch { model.showToast("Couldn’t run “\(s.name)”: \(error.localizedDescription)") }
         }
@@ -341,7 +577,7 @@ enum ScheduleActions {
         }
     }
 
-    /// Asks first (an alert: the list may be a sheet already).
+    /// Asks first.
     static func confirmDelete(_ model: AppModel, _ s: Schedule) {
         let alert = NSAlert()
         alert.messageText = "Delete “\(s.name)”?"
@@ -373,174 +609,11 @@ enum ScheduleActions {
     }
 
     static func open(_ model: AppModel, _ run: ScheduleRun, of s: Schedule) {
-        ScheduleUI.shared.showingList = false
+        ScheduleUI.shared.showWorkspace()
         Task { await model.open(run, of: s) }
     }
 }
 
-/// The selected schedule: its actions, settings and runs.
-struct ScheduleDetail: View {
-    let model: AppModel
-    let schedule: Schedule
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                header
-                actions
-                if !schedule.error.isEmpty {
-                    Label(schedule.error, systemImage: "exclamationmark.triangle.fill")
-                        .font(.callout)
-                        .foregroundStyle(.orange)
-                }
-                details
-                runs
-            }
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Text(schedule.name).font(.title2.weight(.semibold)).lineLimit(2)
-                if let c = model.computer(of: schedule) { ComputerBadge(c, size: 14) }
-                if schedule.paused {
-                    Text("Paused")
-                        .font(.caption.weight(.medium))
-                        .padding(.horizontal, 7).padding(.vertical, 2)
-                        .background(.quaternary, in: Capsule())
-                }
-            }
-            Text(ScheduleText.where(model, schedule))
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var actions: some View {
-        HStack(spacing: 8) {
-            Button(schedule.paused ? "Resume" : "Pause") { ScheduleActions.setPaused(model, schedule, !schedule.paused) }
-            Button("Edit…") { ScheduleUI.shared.edit(schedule) }
-            runButton
-            if schedule.hasWebhook {
-                Button("Copy Webhook URL") { ScheduleActions.copyWebhook(model, schedule) }
-            }
-            if !schedule.paused, schedule.nextRunUnixMs > 0 {
-                Button(schedule.skipping ? "Don’t Skip" : "Skip Next Run") { ScheduleActions.skip(model, schedule, !schedule.skipping) }
-            }
-            Spacer()
-            Button("Delete…", role: .destructive) { ScheduleActions.confirmDelete(model, schedule) }
-        }
-        .controlSize(.regular)
-    }
-
-    /// Run Now, or (its next run coming up soon) Run Early, saying which,
-    /// with the other in its menu.
-    @ViewBuilder
-    private var runButton: some View {
-        if !schedule.canRunEarly {
-            Button("Run Now") { ScheduleActions.runNow(model, schedule) }
-        } else {
-            let early = schedule.runsEarlyFirst()
-            Menu {
-                if early {
-                    Button(schedule.runAsWellTitle()) { ScheduleActions.runNow(model, schedule) }
-                } else {
-                    Button(schedule.runEarlyTitle()) { ScheduleActions.runNow(model, schedule, early: true) }
-                }
-            } label: {
-                Text(early ? schedule.runEarlyTitle() : "Run Now")
-            } primaryAction: {
-                ScheduleActions.runNow(model, schedule, early: early)
-            }
-            .fixedSize()
-            .help(early ? "Runs it now, and not \(schedule.nextRunPhrase())" : "Runs it now, and \(schedule.nextRunPhrase()) as usual")
-        }
-    }
-
-    private var details: some View {
-        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 14, verticalSpacing: 7) {
-            row("Next run", ScheduleText.next(schedule).replacingOccurrences(of: "Next: ", with: ""))
-            if !schedule.events.isEmpty {
-                GridRow {
-                    Text("Triggers")
-                        .foregroundStyle(.secondary)
-                        .gridColumnAlignment(.trailing)
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(schedule.events, id: \.id) { t in
-                            Label(t.text(names: model.triggerName), systemImage: t.symbol)
-                            if !t.error.isEmpty {
-                                Text(t.error).font(.caption).foregroundStyle(.orange)
-                            }
-                        }
-                        Text(schedule.cooldown == 0 ? "No cooldown" : "At most one run every \(Schedule.cooldownWords(schedule.cooldown).replacing(#/^1 /#, with: ""))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-            if let only = schedule.onlyIfText {
-                row("Only if", only.prefix(1).uppercased() + only.dropFirst())
-            }
-            row(schedule.kind == "command" ? "Command" : "Prompt", schedule.prompt, mono: schedule.kind == "command", lines: 3)
-            row("Folder", GroupFolder.tilde(schedule.cwd), mono: true)
-            row("If still running", ScheduleText.overlap(schedule.overlap))
-            if schedule.kind != "command" {
-                row("Gives up", "After waiting \(Schedule.durationText(minutes: schedule.givesUpAfter)) for you")
-            }
-            row("Keeps", "The last \(schedule.keptRuns) run\(schedule.keptRuns == 1 ? "" : "s")’ tabs, and any you’ve typed in")
-            row("Notifies", ScheduleText.notify(schedule.effectiveNotify))
-            if schedule.kind == "claude" {
-                row("Remembered tools", schedule.allowedTools.isEmpty ? "None" : "\(schedule.allowedTools.count): " + schedule.allowedTools.joined(separator: ", "), lines: 2)
-            }
-            if schedule.kind == "codex" {
-                row("Codex", [schedule.codexSandbox.isEmpty ? "Your sandbox setting" : schedule.codexSandbox,
-                              schedule.codexApproval.isEmpty ? "your approval setting" : "approval " + schedule.codexApproval].joined(separator: ", "))
-            }
-            let made = schedule.createdUnixMs > 0 ? " · " + Schedule.dateText(schedule.createdUnixMs) : ""
-            row("Made by", (schedule.createdBy.isEmpty ? "You" : schedule.createdBy) + made)
-        }
-    }
-
-    private func row(_ label: String, _ value: String, mono: Bool = false, lines: Int = 1) -> some View {
-        GridRow {
-            Text(label)
-                .foregroundStyle(.secondary)
-                .gridColumnAlignment(.trailing)
-            Text(value)
-                .font(mono ? .system(.body, design: .monospaced) : .body)
-                .lineLimit(lines)
-                .truncationMode(.middle)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    @ViewBuilder
-    private var runs: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Runs").font(.headline)
-            if schedule.runs.isEmpty {
-                Text("None yet.").foregroundStyle(.secondary)
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(schedule.runs.enumerated()), id: \.element.id) { i, r in
-                        if i > 0 { Divider() }
-                        RunRow(model: model, schedule: schedule, run: r)
-                    }
-                }
-                .padding(.horizontal, 10)
-                .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay { RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.quaternary) }
-            }
-        }
-    }
-}
-
-/// One run: how it went, when, for how long, its last words, and a way back to it.
 /// A run's status: a spinner while it runs, else its symbol.
 struct RunStatusIcon: View {
     let status: ScheduleRun.Status
@@ -556,69 +629,8 @@ struct RunStatusIcon: View {
     }
 }
 
-struct RunRow: View {
-    let model: AppModel
-    let schedule: Schedule
-    let run: ScheduleRun
-
-    var body: some View {
-        HStack(spacing: 10) {
-            RunStatusIcon(status: run.status)
-                .frame(width: 16)
-                .help(run.status.label)
-                .accessibilityLabel(run.status.label)
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 6) {
-                    Text(run.whenUnixMs > 0 ? Schedule.dateText(run.whenUnixMs) : run.status.label)
-                    if let m = run.marker() { marker(m) }
-                    if run.catchUp { marker("catch-up") }
-                    if let d = run.durationText() {
-                        Text(d).foregroundStyle(.secondary).monospacedDigit()
-                    }
-                }
-                Text(note)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .help(note)
-            }
-            Spacer(minLength: 8)
-            link
-        }
-        .padding(.vertical, 7)
-    }
-
-    /// Its note, else its status (with a command's exit code).
-    private var note: String {
-        if !run.note.isEmpty { return run.note }
-        if schedule.kind == "command", run.status == .failed { return "Exit code \(run.exitCode)" }
-        return run.status.label
-    }
-
-    @ViewBuilder
-    private var link: some View {
-        if run.hasTab(in: model) {
-            Button("Open Tab") { ScheduleActions.open(model, run, of: schedule) }
-                .buttonStyle(.link)
-        } else if schedule.kind != "command", !run.sessionID.isEmpty {
-            Button("Resume Session") { ScheduleActions.open(model, run, of: schedule) }
-                .buttonStyle(.link)
-                .help("Its tab has closed: carry on with its session in a new tab")
-        }
-    }
-
-    private func marker(_ text: String) -> some View {
-        Text(text)
-            .font(.caption2.weight(.medium))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 5).padding(.vertical, 1)
-            .background(.quaternary, in: Capsule())
-    }
-}
-
 /// In the sidebar's footer, from half an hour before the next run is due:
-/// what it is. A click opens the list.
+/// what it is. A click opens the Automations window.
 struct ScheduleFooter: View {
     let model: AppModel
     /// How long before a run the footer says it's next.
