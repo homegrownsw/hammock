@@ -689,6 +689,16 @@ func startCommands(commands, starts []string) []string {
 	return out
 }
 
+// withState sets v's state (working, its prompt, status, error, drafts,
+// model) to what the view last sent: clients take each update that isn't
+// older turns as the whole state, so one sent for something else (the
+// composer) without it would say it stopped working. Callers hold w.mu.
+func (w *agentWatch) withState(v *pb.AgentView) {
+	v.Prompt, v.Working, v.Status, v.Error = w.prompt, w.working, w.status, w.errText
+	v.Draft, v.BangOutput = w.draft, w.bang
+	w.ctx.set(v)
+}
+
 // snapshot is the latest turns, replacing what a client shows. Callers hold w.mu.
 func (w *agentWatch) snapshot() *pb.AgentView {
 	if w.shell != "" {

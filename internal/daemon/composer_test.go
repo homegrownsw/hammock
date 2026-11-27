@@ -41,17 +41,40 @@ func TestComposerDraftIsShared(t *testing.T) {
 		v := ev.GetAgentView()
 		return v != nil && v.ComposerRev == 1 && v.ComposerDraft == "fix the flaky test" && v.ComposerWriter == "box-a"
 	})
+	// Typed while it works: the update still says it's working (clients
+	// take it as the whole state, and would drop the working line).
+	d.mu.Lock()
+	w := d.agentWatches[paneID]
+	d.mu.Unlock()
+	w.mu.Lock()
+	w.working, w.status = true, "Garnishing…"
+	w.mu.Unlock()
+	set(a, "fix the flaky test, then", "box-a")
+	waitEvent(t, b, func(ev *pb.ServerMessage) bool {
+		v := ev.GetAgentView()
+		if v == nil || v.ComposerRev != 2 {
+			return false
+		}
+		if !v.Working || v.Status != "Garnishing…" {
+			t.Fatalf("composer update while working: working %v, status %q", v.Working, v.Status)
+		}
+		return true
+	})
+	w.mu.Lock()
+	w.working, w.status = false, ""
+	w.mu.Unlock()
+	set(a, "fix the flaky test", "box-a")
 	set(a, "fix the flaky test", "box-a") // unchanged: no new rev
 	set(b, "", "box-b")                   // sent from b: emptied
 	waitEvent(t, a, func(ev *pb.ServerMessage) bool {
 		v := ev.GetAgentView()
-		return v != nil && v.ComposerRev == 2 && v.ComposerDraft == "" && v.ComposerWriter == "box-b"
+		return v != nil && v.ComposerRev == 4 && v.ComposerDraft == "" && v.ComposerWriter == "box-b"
 	})
 
 	// One that starts watching now gets it with the rest.
 	set(b, "and then the docs", "box-b")
 	c := dial(t, dir)
-	if v := watch(c); v.ComposerRev != 3 || v.ComposerDraft != "and then the docs" {
+	if v := watch(c); v.ComposerRev != 5 || v.ComposerDraft != "and then the docs" {
 		t.Fatalf("new watcher got rev %d %q", v.ComposerRev, v.ComposerDraft)
 	}
 }

@@ -56,6 +56,7 @@ func (d *Daemon) setComposerDraft(m *pb.SetComposerDraft) error {
 	u := &pb.AgentView{PaneId: m.PaneId}
 	c.put(u)
 	w.mu.Lock()
+	w.withState(u)
 	conns := make([]*conn, 0, len(w.conns))
 	for cn := range w.conns {
 		conns = append(conns, cn)
