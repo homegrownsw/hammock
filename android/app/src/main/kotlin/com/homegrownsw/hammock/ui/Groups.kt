@@ -178,7 +178,7 @@ fun GroupsScreen(session: Session, model: AppModel, nav: Nav) {
                 item(key = "g:" + g.id, contentType = "header") {
                     GroupHeader(w, g, isCollapsed, toggle = { toggle(g) }, newTab = { newTab(g) }, newFilesTab = { newFilesTab(g) },
                         startAgent = { startingIn = g.id },
-                        edit = { editing = g }, delete = { deleting = g }, leave = { leaving = g }, modifier = Modifier.animateItem())
+                        edit = { editing = g }, delete = { if (g.tabIdsCount == 0) model.closeGroup(g.id) else deleting = g }, leave = { leaving = g }, modifier = Modifier.animateItem())
                 }
                 if (!isCollapsed) {
                     if (g.tabIdsCount == 0) item(key = "empty:" + g.id) {
@@ -229,7 +229,7 @@ fun GroupsScreen(session: Session, model: AppModel, nav: Nav) {
             text = { Text("Everything running in its tabs on your computer is stopped.") },
             confirmButton = {
                 TextButton(onClick = { model.closeGroup(g.id); deleting = null }) {
-                    Text(if (n == 0) "Delete Group" else "Delete Group and Close ${if (n == 1) "1 Tab" else "$n Tabs"}", color = ErrorColor)
+                    Text("Delete Group and Close ${if (n == 1) "1 Tab" else "$n Tabs"}", color = ErrorColor)
                 }
             },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } },

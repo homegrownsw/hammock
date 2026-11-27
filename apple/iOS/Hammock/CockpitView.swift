@@ -472,7 +472,9 @@ struct GroupsView: View {
                         }
                     } header: {
                         GroupHeader(model: model, group: group, collapsed: isCollapsed, toggle: { toggle(group) },
-                                    newTab: { newTab(in: group) }, edit: { editing = group }, delete: { deleting = group },
+                                    newTab: { newTab(in: group) }, edit: { editing = group },
+                                    // An empty Group has nothing to lose: no asking.
+                                    delete: { if group.tabIds.isEmpty { Task { await model.closeGroup(group.id) } } else { deleting = group } },
                                     leave: { leaving = group })
                     }
                 }
@@ -498,7 +500,7 @@ struct GroupsView: View {
             .confirmationDialog(deleting.map { "Delete “\(model.title(of: $0))”?" } ?? "",
                                 isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
                                 titleVisibility: .visible, presenting: deleting) { g in
-                Button(g.tabIds.isEmpty ? "Delete Group" : "Delete Group and Close \(g.tabIds.count == 1 ? "1 Tab" : "\(g.tabIds.count) Tabs")", role: .destructive) {
+                Button("Delete Group and Close \(g.tabIds.count == 1 ? "1 Tab" : "\(g.tabIds.count) Tabs")", role: .destructive) {
                     Task { await model.closeGroup(g.id) }
                 }
             } message: { _ in
