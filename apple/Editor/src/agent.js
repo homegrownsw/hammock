@@ -70,6 +70,7 @@ function configure(c) {
   document.body.classList.toggle("touch", cfg.platform !== "mac")
   if (c.scheme) setScheme(c.scheme)
   document.body.classList.toggle("mac", cfg.platform === "mac")
+  document.body.classList.toggle("ios", cfg.platform === "ios")
   if (c.fonts || c.codeWrap || c.canOpenDiff != null) rebuildAll()
   // Lines cut in the middle are cut again in these fonts.
   fitWidth = -1

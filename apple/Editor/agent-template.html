@@ -40,6 +40,9 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 button:focus { outline: none; }
 /* What scrolls: the whole page, under the bars. */
 #scroller { position: fixed; inset: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+/* The iPhone's bounces even when it's shorter than the screen, as a UIScrollView does:
+   WebKit only bounces an element that overflows, so it always does, by a point. */
+body.ios #main { box-sizing: border-box; min-height: calc(100% + 1px); }
 /* The Mac's: the page scrolls, so it bounces at its ends (agent.js). */
 /* Only the page scrolls: overflow-x hidden would make the body a scroll area
    of its own (visible turns to auto beside it), a second bar. clip doesn't. */
