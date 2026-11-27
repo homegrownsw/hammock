@@ -57,6 +57,11 @@ options:
   --trigger T (repeatable)                  run when something happens, as well as at its times
                                             (only then, without --at, --cron or --once), T one of:
 ` + indent(schedtrig.Usage, "                                              ") + `
+  --check-cmd CMD (repeatable)              run CMD every few minutes (no pane, in --dir), and run
+                                            the automation when it starts failing; then, for that check:
+    --check-every MINUTES                   how often (default 5, at least 1)
+    --check-on fail|change|recover          it starts failing (default), its output changes, it passes again
+    --check-timeout SECONDS                 stop it after this long, as failing (default 60)
   --events-only                             run only on its triggers (and Run Now)
   --no-triggers                             drop its triggers
   --cooldown SECONDS                        runs its triggers start are this far apart (default 60, at most 30 days)
@@ -208,7 +213,8 @@ func scheduleFlags(w *world, s *pb.Schedule, args []string, adding bool) error {
 	// --days picks days for --at's time; on its own it isn't a time (it
 	// would run at midnight), nor on a schedule that ran by cron.
 	when, at, days, hadCron := false, false, false, s.Cron != ""
-	timed := false // given a time (--at, --cron, --once)
+	timed := false                    // given a time (--at, --cron, --once)
+	var check *pb.CommandCheckTrigger // the last --check-cmd, for its options
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		val := func() (string, error) {
@@ -264,6 +270,31 @@ func scheduleFlags(w *world, s *pb.Schedule, args []string, adding bool) error {
 				var t *pb.EventTrigger
 				if t, err = schedtrig.Parse(v, w.triggerResolver()); err == nil {
 					s.Events, when = append(s.Events, t), true
+				}
+			}
+		case "--check-cmd":
+			if v, err = val(); err == nil {
+				check = &pb.CommandCheckTrigger{Command: v}
+				s.Events, when = append(s.Events, &pb.EventTrigger{Kind: &pb.EventTrigger_Check{Check: check}}), true
+			}
+		case "--check-every", "--check-on", "--check-timeout":
+			if check == nil {
+				return fmt.Errorf("%s goes after the --check-cmd it's for", a)
+			}
+			if v, err = val(); err == nil {
+				switch a {
+				case "--check-on":
+					check.On, err = schedtrig.CheckOn(v)
+				default:
+					var n int
+					if n, err = strconv.Atoi(strings.TrimSuffix(strings.TrimSuffix(v, "m"), "s")); err == nil && n < 1 {
+						err = fmt.Errorf("%s is at least 1", a)
+					}
+					if a == "--check-every" {
+						check.EveryMinutes = int32(n)
+					} else {
+						check.TimeoutSeconds = int32(n)
+					}
 				}
 			}
 		case "--no-triggers":
@@ -352,7 +383,7 @@ func scheduleFlags(w *world, s *pb.Schedule, args []string, adding bool) error {
 		return errors.New("--days needs a time: --at HH:MM --days …")
 	}
 	if adding && !when {
-		return errors.New("say when: --at HH:MM [--days …], --cron EXPR, --once WHEN or --trigger T")
+		return errors.New("say when: --at HH:MM [--days …], --cron EXPR, --once WHEN, --trigger T or --check-cmd CMD")
 	}
 	if adding && !timed && len(s.Events) > 0 && s.Timing == pb.Schedule_TIMING_REPEAT {
 		s.Timing = pb.Schedule_TIMING_EVENTS // only on its triggers
@@ -464,7 +495,7 @@ func scheduleWhen(s *pb.Schedule) string {
 	when := scheduleTimes(s)
 	switch {
 	case len(s.Events) == 1 && when == "":
-		return "on " + schedtrig.Spec(s.Events[0])
+		return "on " + schedtrig.Brief(s.Events[0])
 	case len(s.Events) > 0 && when == "":
 		return fmt.Sprintf("on %d triggers", len(s.Events))
 	case len(s.Events) > 0:
@@ -574,6 +605,12 @@ func printSchedule(w *world, s *pb.Schedule) {
 	printfSafe("  when     %s; next %s\n", scheduleWhen(s), nextRunWords(s))
 	for _, t := range s.Events {
 		printfSafe("  trigger  %s  (%s)\n", schedtrig.Describe(t, w.triggerName), schedtrig.Spec(t))
+		if c := t.GetCheck(); c != nil && c.LastResult != "" {
+			printfSafe("           last check: %s\n", c.LastResult)
+		}
+		if st := schedtrig.Status(t, time.Now()); st != "" {
+			printfSafe("           %s\n", st)
+		}
 		if t.Error != "" {
 			printfSafe("           ! %s\n", t.Error)
 		}
@@ -835,10 +872,19 @@ func runTrigger(args []string) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, grantWait)
 	defer cancel()
-	r, err := c.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_RunSchedule{RunSchedule: &pb.RunSchedule{ScheduleId: s.Id, Trigger: true, Data: data}}})
+	r, err := c.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_RunSchedule{RunSchedule: &pb.RunSchedule{ScheduleId: s.Id, Trigger: true, Data: data, StatusReply: true}}})
 	if err != nil {
 		return err
 	}
+	if tr := r.GetTriggerReply(); tr != nil {
+		if tr.Status == pb.TriggerReply_STATUS_STARTED {
+			fmt.Println(tr.TabId)
+			return nil
+		}
+		printfSafe("Queued: %s runs once it may (%s)\n", s.Name, cmpOr(tr.Reason, "waiting"))
+		return nil
+	}
+	// (A computer with an older Hammock.)
 	if id := client.CreatedID(r); id != "" {
 		fmt.Println(id)
 		return nil

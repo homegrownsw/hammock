@@ -92,7 +92,7 @@ func scheduleWhen(s *pb.Schedule) string {
 	when := scheduleTimes(s)
 	switch {
 	case len(s.Events) == 1 && when == "":
-		return "on " + schedtrig.Spec(s.Events[0])
+		return "on " + schedtrig.Brief(s.Events[0])
 	case len(s.Events) > 0 && when == "":
 		return fmt.Sprintf("on %d triggers", len(s.Events))
 	case len(s.Events) > 0:
@@ -141,6 +141,31 @@ func (a *App) triggersText(s *pb.Schedule) string {
 		w = append(w, schedtrig.Describe(t, a.triggerName))
 	}
 	return fmt.Sprintf("on: %s (%s)", strings.Join(w, "; "), schedtrig.CooldownWords(schedtrig.Cooldown(s)))
+}
+
+// triggerStatus is the line for s's trigger that's held back, else the one
+// that fired last ("Last checked 2 min ago · last fired 14:02"), with what
+// it is when s has several; "" for none.
+func (a *App) triggerStatus(s *pb.Schedule, now time.Time) string {
+	var best *pb.EventTrigger
+	for _, t := range s.Events {
+		switch {
+		case best == nil, t.Held != "" && best.Held == "",
+			(t.Held == "") == (best.Held == "") && max(t.FiredUnixMs, t.CheckedUnixMs) > max(best.FiredUnixMs, best.CheckedUnixMs):
+			best = t
+		}
+	}
+	if best == nil {
+		return ""
+	}
+	line := schedtrig.Status(best, now)
+	if r := best.GetCheck().GetLastResult(); r != "" && line != "" {
+		line = r + " · " + strings.ToLower(line[:1]) + line[1:]
+	}
+	if line != "" && len(s.Events) > 1 {
+		line = schedtrig.Brief(best) + ": " + line
+	}
+	return line
 }
 
 // triggerError is the first of s's triggers' problems, in words ("" for none).
@@ -1003,6 +1028,9 @@ func (v *scheduleView) draw(a *App) {
 			more = append(more, plural(n, "tool")+" allowed")
 		}
 		if t := a.triggersText(sc); t != "" {
+			if st := a.triggerStatus(sc, time.Now()); st != "" {
+				t += " · " + st
+			}
 			more = append([]string{t}, more...)
 		}
 		line, c := strings.Join(more, " · "), dimC

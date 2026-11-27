@@ -1,6 +1,11 @@
 package schedtrig
 
-import "testing"
+import (
+	"testing"
+	"time"
+
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+)
 
 // GitHub commit and release triggers, in the folder's repository or one
 // named after @, read back as written.
@@ -57,5 +62,35 @@ func TestTagMatchesAndCooldownWords(t *testing.T) {
 		if got := CooldownWords(secs); got != want {
 			t.Errorf("CooldownWords(%d) = %q, want %q", secs, got, want)
 		}
+	}
+}
+
+// A command check is said in words with its command whole, written out as
+// hmk's options; a trigger's status line says when it looked and fired.
+func TestCheckWordsAndStatus(t *testing.T) {
+	c := &pb.EventTrigger{Kind: &pb.EventTrigger_Check{Check: &pb.CommandCheckTrigger{Command: "make test && echo 'ok'", EveryMinutes: 60, On: pb.CommandCheckTrigger_ON_RECOVER}}}
+	if got := Describe(c, nil); got != "“make test && echo 'ok'” passes again, checked every hour" {
+		t.Errorf("Describe: %q", got)
+	}
+	if got := Spec(c); got != `--check-cmd 'make test && echo '\''ok'\''' --check-every 60 --check-on recover` {
+		t.Errorf("Spec: %q", got)
+	}
+	if _, err := Parse("check:5", nil); err == nil {
+		t.Error("a check parsed as --trigger")
+	}
+	if tr, err := Parse("shortcut", nil); err != nil || Kind(tr) != "shortcut" || Describe(tr, nil) != "Shortcuts runs it" {
+		t.Errorf("shortcut: %v %v", tr, err)
+	}
+	now := time.Date(2026, 11, 27, 15, 0, 0, 0, time.Local)
+	tr := &pb.EventTrigger{CheckedUnixMs: now.Add(-2 * time.Minute).UnixMilli(), FiredUnixMs: now.Add(-25 * time.Hour).UnixMilli()}
+	if got := Status(tr, now); got != "Last checked 2 min ago · last fired yesterday 14:00" {
+		t.Errorf("Status: %q", got)
+	}
+	tr = &pb.EventTrigger{FiredUnixMs: now.Add(-time.Hour).UnixMilli(), Held: "waiting for its cooldown, until 15:05"}
+	if got := Status(tr, now); got != "Last fired 14:00 · waiting for its cooldown, until 15:05" {
+		t.Errorf("Status: %q", got)
+	}
+	if Status(&pb.EventTrigger{}, now) != "" {
+		t.Error("a status for nothing")
 	}
 }

@@ -342,6 +342,9 @@ func (d *Daemon) ghTriggerErrors(j *ghJob, msg string, r *ghResult) {
 		if j.repo != "" && g.Repo != j.repo {
 			g.Repo, changed = j.repo, true
 		}
+		if r != nil {
+			t.CheckedUnixMs, changed = schedNow().UnixMilli(), true
+		}
 	}
 	if changed {
 		d.saveSchedule(s)

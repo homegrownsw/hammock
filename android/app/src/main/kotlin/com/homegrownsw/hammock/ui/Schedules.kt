@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.PauseCircle
 import androidx.compose.material.icons.outlined.PlayCircle
@@ -64,16 +65,21 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.homegrownsw.hammock.HammockApplication
 import com.homegrownsw.hammock.client.AgentCatalog
 import com.homegrownsw.hammock.client.AppModel
 import com.homegrownsw.hammock.client.Workspace
 import hammock.v1.Hammock
+import hammock.v1.Hammock.CommandCheckTrigger
 import hammock.v1.Hammock.EventTrigger
 import hammock.v1.Hammock.GitHubTrigger
 import hammock.v1.Hammock.Schedule
@@ -82,6 +88,10 @@ import hammock.v1.Hammock.ScheduleRun.Status
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
@@ -240,7 +250,75 @@ object ScheduleWords {
                 out
             }
             EventTrigger.KindCase.WEBHOOK -> "Something calls its webhook URL"
+            EventTrigger.KindCase.SHORTCUT -> "Shortcuts runs it"
+            EventTrigger.KindCase.CHECK -> {
+                val c = t.check
+                val what = when (c.on) {
+                    CommandCheckTrigger.On.ON_CHANGE -> "’s output changes"
+                    CommandCheckTrigger.On.ON_RECOVER -> " passes again"
+                    else -> " starts failing"
+                }
+                "“${c.command}”$what, checked " + every(if (c.everyMinutes <= 0) 5 else c.everyMinutes)
+            }
             else -> "An unknown event"
+        }
+    }
+
+    /** How often, in minutes: "every minute", "every 5 minutes", "every hour", "every 2 days" (schedtrig.EveryWords). */
+    fun every(minutes: Int): String {
+        fun n(v: Int, unit: String) = if (v == 1) "1 $unit" else "$v ${unit}s"
+        return when {
+            minutes <= 1 -> "every minute"
+            minutes % 1440 == 0 -> if (minutes == 1440) "every day" else "every " + n(minutes / 1440, "day")
+            minutes % 60 == 0 -> if (minutes == 60) "every hour" else "every " + n(minutes / 60, "hour")
+            else -> "every " + n(minutes, "minute")
+        }
+    }
+
+    /**
+     * The line under a trigger: when it last looked and fired, and what's holding back what it
+     * fired; "" when there's nothing to say yet. "Last checked 2 min ago · last fired yesterday
+     * 14:02" (schedtrig.Status).
+     */
+    fun triggerStatus(t: EventTrigger, now: Long, zone: ZoneId = ZoneId.systemDefault()): String {
+        val parts = buildList {
+            if (t.checkedUnixMs > 0) add("last checked " + ago(t.checkedUnixMs, now))
+            if (t.firedUnixMs > 0) add("last fired " + whenText(t.firedUnixMs, now, zone))
+            else if (t.checkedUnixMs > 0) add("never fired")
+            if (t.held.isNotEmpty()) add(t.held)
+        }
+        if (parts.isEmpty()) return ""
+        val out = parts.joinToString(" · ")
+        return out.substring(0, 1).uppercase() + out.substring(1)
+    }
+
+    /** How its last check went, for a command check ("Passed", "Failed (exit 2)", "Timed out"); else null. */
+    fun checkResult(t: EventTrigger): String? =
+        t.check.lastResult.takeIf { t.kindCase == EventTrigger.KindCase.CHECK && it.isNotEmpty() }
+
+    /** How long ago: "just now", "2 min ago", "3 h ago", "2 days ago" (schedtrig.Ago). */
+    fun ago(at: Long, now: Long): String {
+        val d = now - at
+        return when {
+            d < 60_000 -> "just now"
+            d < 3_600_000 -> "${d / 60_000} min ago"
+            d < 86_400_000 -> "${d / 3_600_000} h ago"
+            else -> (d / 86_400_000).let { if (it == 1L) "1 day ago" else "$it days ago" }
+        }
+    }
+
+    /** When, near now: "14:02", "yesterday 14:02", "Mon 14:02", "3 Nov", "3 Nov 2025" (schedtrig.When). */
+    fun whenText(at: Long, now: Long, zone: ZoneId = ZoneId.systemDefault()): String {
+        val a = Instant.ofEpochMilli(at).atZone(zone)
+        val n = Instant.ofEpochMilli(now).atZone(zone)
+        val days = ChronoUnit.DAYS.between(a.toLocalDate(), n.toLocalDate())
+        fun f(p: String) = a.format(DateTimeFormatter.ofPattern(p, Locale.ENGLISH))
+        return when {
+            days <= 0 -> f("HH:mm")
+            days == 1L -> "yesterday " + f("HH:mm")
+            days < 7 -> f("EEE HH:mm")
+            a.year == n.year -> f("d MMM")
+            else -> f("d MMM yyyy")
         }
     }
 
@@ -582,6 +660,11 @@ fun ScheduleScreen(model: AppModel, id: String, nav: Nav, showBack: Boolean) {
     val now = rememberNow(60_000)
     val scope = rememberCoroutineScope()
     val s = w.schedules[id]
+    // The computer it's run on from Tasker (the one shown; none in the demo).
+    val shown by (ctx.applicationContext as HammockApplication).session.host.collectAsStateWithLifecycle()
+    val host = shown?.takeIf { !model.isDemo && it.deviceID != null }?.id
+    var tasker by remember { mutableStateOf(false) }
+    if (tasker && s != null && host != null) TaskerSheet(host, s) { tasker = false }
     DetailTop(s?.name ?: "Automation", nav, showBack) { padding ->
         if (s == null) {
             EmptyState("Automation Deleted", "It was deleted on your computer.", Modifier.padding(padding))
@@ -619,6 +702,10 @@ fun ScheduleScreen(model: AppModel, id: String, nav: Nav, showBack: Boolean) {
                     }
                     CardDivider(56.dp)
                     ActionRow(if (s.paused) "Resume" else "Pause", if (s.paused) Icons.Default.PlayArrow else Icons.Outlined.PauseCircle) { model.setSchedulePaused(s.id, !s.paused) }
+                    if (host != null) {
+                        CardDivider(56.dp)
+                        ActionRow("Run from Tasker…", Icons.Outlined.Bolt) { tasker = true }
+                    }
                 }
             }
             item {
@@ -646,6 +733,19 @@ fun ScheduleScreen(model: AppModel, id: String, nav: Nav, showBack: Boolean) {
                             if (i > 0) CardDivider()
                             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(ScheduleWords.trigger(t, w), style = MaterialTheme.typography.bodyLarge)
+                                val status = ScheduleWords.triggerStatus(t, now)
+                                val result = ScheduleWords.checkResult(t)
+                                val resultColor = if (result == "Passed") StatusPalette.green() else StatusPalette.red()
+                                if (status.isNotEmpty() || result != null) Text(
+                                    buildAnnotatedString {
+                                        if (result != null) {
+                                            withStyle(SpanStyle(color = resultColor)) { append(result) }
+                                            if (status.isNotEmpty()) append(" · ")
+                                        }
+                                        append(status)
+                                    },
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                                 if (t.error.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Icon(Icons.Default.Warning, null, tint = NeedsYouColor, modifier = Modifier.size(16.dp))
                                     Text(t.error, style = MaterialTheme.typography.bodySmall, color = NeedsYouColor)

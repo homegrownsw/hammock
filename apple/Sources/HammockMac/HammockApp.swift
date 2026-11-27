@@ -48,6 +48,7 @@ struct HammockApp: App {
             CalendarFeed.shared.attach(m) // calendar triggers' events, while any task has one
         }
         DetachedWindows.shared.attach(m)
+        AutomationIntents.attach(m) // Shortcuts' Run Hammock Automation
         // Run from outside Applications, the app first asks to move there
         // (AppMover, at launch), so no daemon starts from a copy about to go.
         if AppMover.shouldOffer { AppMover.deferredStart = { m.start() } } else { m.start() }

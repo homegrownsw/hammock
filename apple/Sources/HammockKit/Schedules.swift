@@ -120,6 +120,58 @@ extension AppModel {
         return tab
     }
 
+    /// What triggering an automation did (Shortcuts' Run Hammock Automation).
+    public enum TriggerOutcome: Sendable, Equatable {
+        case started
+        /// Waiting to run, and why ("waiting for its cooldown, until 14:05";
+        /// "" from an older Hammock, which doesn't say).
+        case queued(String)
+    }
+
+    /// The most a trigger sends: the rest is cut (and the caller told).
+    public static let maxTriggerText = 64 << 10
+
+    /// Starts an automation as an event, from source ("shortcuts"), with
+    /// what happened: text (cut to 64 KB on a character), a short label,
+    /// and files on the automation's computer. Throws why it won't run
+    /// ("Automations are off", "it's paused"). cut: the text was cut.
+    public func triggerSchedule(_ id: String, source: String, text: String, label: String = "",
+                                files: [String] = []) async throws -> (outcome: TriggerOutcome, cut: Bool) {
+        var data = text
+        var cut = false
+        if data.utf8.count > Self.maxTriggerText {
+            var n = 0
+            var end = data.startIndex
+            for i in data.indices {
+                let c = data[i].utf8.count
+                if n + c > Self.maxTriggerText { break }
+                n += c
+                end = data.index(after: i)
+            }
+            data = String(data[..<end])
+            cut = true
+        }
+        let r = try await scheduleCall {
+            $0.runSchedule = .with {
+                $0.scheduleID = id
+                $0.trigger = true
+                $0.source = source
+                $0.data = data
+                $0.label = label
+                $0.files = files
+                $0.statusReply = true
+            }
+        }
+        switch r.msg {
+        case .triggerReply(let t):
+            return (t.status == .queued ? .queued(t.reason) : .started, cut || t.cut)
+        case .created:
+            return (.started, cut)
+        default:
+            return (.queued(""), cut) // (an older Hammock's Ok)
+        }
+    }
+
     public func setSchedulePaused(_ id: String, _ paused: Bool) async throws {
         _ = try await scheduleCall { $0.setSchedulePaused = .with { $0.scheduleID = id; $0.paused = paused } }
     }
@@ -458,9 +510,72 @@ extension EventTrigger {
             return s
         case .webhook:
             return "Something calls its webhook URL"
+        case .shortcut:
+            return "Shortcuts runs it"
+        case .check(let c):
+            let what = switch c.on {
+            case .change: "’s output changes"
+            case .recover: " passes again"
+            default: " starts failing"
+            }
+            return "“\(c.command)”\(what), checked " + Self.everyWords(Int(c.everyMinutes))
         case nil:
             return "An unknown event"
         }
+    }
+
+    /// How often, in minutes: "every minute", "every 5 minutes", "every
+    /// hour", "every 2 days" (schedtrig.EveryWords). 0: the default, 5.
+    public static func everyWords(_ minutes: Int) -> String {
+        let m = minutes <= 0 ? 5 : minutes
+        func n(_ v: Int, _ unit: String) -> String { v == 1 ? "1 \(unit)" : "\(v) \(unit)s" }
+        if m <= 1 { return "every minute" }
+        if m % 1440 == 0 { return m == 1440 ? "every day" : "every " + n(m / 1440, "day") }
+        if m % 60 == 0 { return m == 60 ? "every hour" : "every " + n(m / 60, "hour") }
+        return "every " + n(m, "minute")
+    }
+
+    /// The line under it: when it last looked and fired, or what's holding
+    /// back what it fired ("Last checked 2 min ago · last fired yesterday
+    /// 14:02"); nil when there's nothing to say yet (schedtrig.Status).
+    public func statusText(now: Date = Date()) -> String? {
+        var parts: [String] = []
+        if checkedUnixMs > 0 { parts.append("last checked " + Self.ago(checkedUnixMs, now: now)) }
+        if firedUnixMs > 0 {
+            parts.append("last fired " + Self.when(firedUnixMs, now: now))
+        } else if checkedUnixMs > 0 {
+            parts.append("never fired")
+        }
+        if !held.isEmpty { parts.append(held) }
+        guard let first = parts.first else { return nil }
+        parts[0] = first.prefix(1).uppercased() + first.dropFirst()
+        return parts.joined(separator: " · ")
+    }
+
+    /// "just now", "2 min ago", "3 h ago", "2 days ago".
+    static func ago(_ ms: Int64, now: Date) -> String {
+        let secs = Int(now.timeIntervalSince1970) - Int(ms / 1000)
+        if secs < 60 { return "just now" }
+        if secs < 3600 { return "\(secs / 60) min ago" }
+        if secs < 86_400 { return "\(secs / 3600) h ago" }
+        let d = secs / 86_400
+        return d == 1 ? "1 day ago" : "\(d) days ago"
+    }
+
+    /// "14:02", "yesterday 14:02", "Mon 14:02", "3 Nov".
+    static func when(_ ms: Int64, now: Date) -> String {
+        let at = Date(timeIntervalSince1970: Double(ms) / 1000)
+        let cal = Calendar.current
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: at), to: cal.startOfDay(for: now)).day ?? 0
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_GB_POSIX")
+        switch days {
+        case ...0: f.dateFormat = "HH:mm"
+        case 1: f.dateFormat = "'yesterday' HH:mm"
+        case 2..<7: f.dateFormat = "EEE HH:mm"
+        default: f.dateFormat = cal.component(.year, from: at) == cal.component(.year, from: now) ? "d MMM" : "d MMM yyyy"
+        }
+        return f.string(from: at)
     }
 
     /// An SF Symbol for its kind.
@@ -473,6 +588,8 @@ extension EventTrigger {
         case .files: "doc.badge.ellipsis"
         case .calendar: "calendar"
         case .webhook: "link"
+        case .shortcut: "square.2.layers.3d"
+        case .check: "checkmark.seal"
         case nil: "bolt"
         }
     }

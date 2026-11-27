@@ -40,6 +40,7 @@ It runs in the current folder and Group unless you give `--dir` or `--group`. Qu
 | `--cron EXPR` | A five-field cron expression instead of `--at`. |
 | `--once 'YYYY-MM-DD HH:MM'` | Run once, then, instead of on a schedule. |
 | `--trigger T` | Run when something happens ([Triggers](#triggers)). Repeat it for more. Without `--at`, `--cron` or `--once`, it runs only on its triggers. |
+| `--check-cmd CMD` | Run when a [command check](#command-checks) starts failing. Repeat it for more. |
 | `--events-only`, `--no-triggers` | Run only on its triggers; drop its triggers. |
 | `--cooldown SECONDS` | The least time between runs its triggers start (60 by default; 0 for none; at most 30 days). |
 | `--claude`, `--codex`, `--AGENT` | Which agent runs it (Claude Code by default). `AGENT` is the agent's id, such as `--gemini` or `--cursor`. |
@@ -97,9 +98,11 @@ A trigger starts a run when something happens, as well as at the automation's ti
 | Log | `log:REGEX@PANE` | A line in a [log pane](/hammock/docs/panes/) matches. It ignores case unless the pattern has a capital. |
 | Files | `files`, `files:GLOB`, `files:GLOB@DIR` | Files change in the automation's folder (or `DIR`), once they've settled. `*.go` matches names anywhere; `src/**/*.ts` matches paths. In a git repository, what `.gitignore` leaves out isn't watched; elsewhere, `node_modules` and build folders aren't. |
 | Calendar | `calendar:MINUTES[,title=TEXT][,calendar=NAME][,attendees]` | Minutes before an event whose title contains the text, in that calendar, with other people. Mac only. |
+| Command check | `--check-cmd CMD` | A command run every few minutes starts failing, changes its output, or passes again ([Command checks](#command-checks)). |
 | Webhook | `webhook` | Its [webhook](#webhooks) is called. |
+| Shortcuts | `shortcut` | Shortcuts runs it ([From Shortcuts](#from-shortcuts)). Mac only. |
 
-GitHub triggers watch the folder's GitHub repository (`gh repo set-default`'s, else the `upstream` remote's, else `origin`'s), or another one named after `@` (`github:release=v*@acme/widgets`, or **Repository** in the app), with the [GitHub CLI](https://cli.github.com), every couple of minutes, so install `gh` and run `gh auth login` first. Calendar triggers read your calendars in the Hammock app, which asks for access the first time; runs still start while the app is closed, for events it has already read. Nothing that's already so when you add a trigger starts a run. What happens in an automation's run, or in panes a run opened, never triggers an automation, so automations can't set each other off in a loop.
+GitHub triggers watch the folder's GitHub repository (`gh repo set-default`'s, else the `upstream` remote's, else `origin`'s), or another one named after `@` (`github:release=v*@acme/widgets`, or **Repository** in the app), with the [GitHub CLI](https://cli.github.com), every couple of minutes, so install `gh` and run `gh auth login` first. Calendar triggers read your calendars in the Hammock app, which asks for access the first time; runs still start while the app is closed, for events it has already read. Nothing that's already so when you add a trigger starts a run. Under each trigger in the automation's sheet (and in `hmk automation show`), a line says when it last checked and fired, or what's holding back a run it started, such as its cooldown. What happens in an automation's run, or in panes a run opened, never triggers an automation, so automations can't set each other off in a loop.
 
 ### What the run gets
 
@@ -131,12 +134,23 @@ A **command** gets the same details in environment variables: `$HMK_EVENT_URL`, 
 The run's record says what started it, such as **CI failed on #42**.
 
 :::caution
-What a trigger passes on is written by other people: a pull request's title, a comment, a log line, a webhook's body. Hammock gives it to the agent marked as data, not instructions, but write the prompt so the automation does nothing harmful whatever that text says, and keep the tools it may use to what it needs.
+What a trigger passes on is written by other people: a pull request's title, a comment, a log line, a webhook's body, the text a shortcut sends, such as a message you were sent. Hammock gives it to the agent marked as data, not instructions, but write the prompt so the automation does nothing harmful whatever that text says, and keep the tools it may use to what it needs.
 :::
 
 ### Bursts
 
 Runs started by triggers are at least a minute apart, or the automation's **At most every**: up to a month, or no limit. Events in between wait, and start one run together, which gets all of them. When the automation skips runs while one is going, they wait for it to end instead.
+
+### Command checks
+
+A command check runs a command in the automation's folder every few minutes (at least one), with no tab, and starts a run when it starts failing (exits with an error, or runs past its time limit), when its output changes, or when it passes again. A check still going when the next is due isn't started twice. The run gets the command's last output. In the app choose **Add Trigger ▸ Command Check…**; with `hmk`, give the options after `--check-cmd`:
+
+```sh
+hmk automation add "Site down" --check-cmd 'curl -fsS https://example.com/health' \
+  --check-every 5 --check-on fail --check-timeout 30 -- "The site's health check is failing: find out why."
+```
+
+`--check-on` is `fail` (the default), `change` or `recover`; `--check-timeout` is in seconds (60 by default).
 
 ### Webhooks
 
@@ -162,6 +176,16 @@ tailscale funnel --bg --set-path /hook https+insecure://100.64.0.2:7433/hook
 hmk trigger "Deploy check" --data "$(git log -1 --format=%s)"
 make test 2>&1 | tail -50 | hmk trigger "Fix the tests" --data -
 ```
+
+### From Shortcuts
+
+The **Run Hammock Automation** action in Shortcuts runs an automation on your Mac, or from your iPhone on a paired Mac (over [remote access](/hammock/docs/remote/)). Give it the automation, and optionally the **Text** of what happened (such as a message's content, up to 64 KB: the rest is cut, and the result says so) and a short **What Happened** label; on the Mac, files too. Its result is **Started**, **Queued** and why (its cooldown, or its last run still going), or **Failed** and why (Automations are off, it's paused, the Mac can't be reached). It only runs automations: it can't add, change or delete them.
+
+This lets Shortcuts' own automations start Hammock's: when a message or email arrives, a Focus starts, an alarm goes off, or a Bluetooth device connects. In the shortcut's automation, turn off **Confirm Before Run** and turn on **Allow Running When Locked**. Add the **Shortcuts** trigger to an automation that runs on nothing else.
+
+### From Tasker
+
+On Android, Tasker (or any app that sends intents) can run an automation. Open the automation in the Hammock app and tap **Run from Tasker…**: it shows what to fill in for Tasker's **Send Intent** action (action, package, **Broadcast Receiver** target, and `automation` and `secret` extras to copy), and an optional `text` extra for what happened. Each automation's secret is kept on the phone; **Make New Secret** stops the old one working. If the computer can't be reached or won't run it, the phone shows a notification.
 
 ## Examples of triggers
 

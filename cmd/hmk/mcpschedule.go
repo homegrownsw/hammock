@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -21,27 +22,35 @@ import (
 )
 
 type scheduleSaveArgs struct {
-	ID            string   `json:"id,omitempty" jsonschema:"to change an existing schedule (from automation_list); empty creates one"`
-	Name          string   `json:"name,omitempty" jsonschema:"a short name, e.g. 'Morning briefing' (default: from the prompt)"`
-	Kind          string   `json:"kind,omitempty" jsonschema:"an agent ('claude', the default, 'codex', or another agent Hammock knows) or 'command'"`
-	Prompt        string   `json:"prompt,omitempty" jsonschema:"the agent's first message (e.g. '/morning-briefing'), or for a command the shell command line. Required when creating"`
-	Dir           string   `json:"dir,omitempty" jsonschema:"the folder it runs in (absolute; default: your pane's)"`
-	At            string   `json:"at,omitempty" jsonschema:"time of day, HH:MM in local time, e.g. '08:30'"`
-	Days          string   `json:"days,omitempty" jsonschema:"with at: 'daily' (default), 'weekdays', 'weekends' or days like 'mon,wed,fri'"`
-	Cron          string   `json:"cron,omitempty" jsonschema:"instead of at/days: a 5-field cron expression in local time, e.g. '0 */2 * * *'"`
-	Notify        string   `json:"notify,omitempty" jsonschema:"'ready', 'problems', 'never' or 'default' (agents when ready, commands only about problems)"`
-	Overlap       string   `json:"overlap,omitempty" jsonschema:"if the last run is still going: 'skip' (default), 'stop' (stop it, start fresh) or 'both'"`
-	GiveUpMinutes int      `json:"give_up_minutes,omitempty" jsonschema:"stop a run waiting on the user this long (default 240)"`
-	KeepRuns      int      `json:"keep_runs,omitempty" jsonschema:"run tabs to keep (default 7)"`
-	AllowedTools  []string `json:"allowed_tools,omitempty" jsonschema:"claude: tools allowed in every run, as --allowedTools rules, e.g. 'Read', 'Bash(gh pr view:*)', 'mcp__slack__read'"`
-	CodexSandbox  string   `json:"codex_sandbox,omitempty" jsonschema:"codex: read-only, workspace-write or danger-full-access"`
-	CodexApproval string   `json:"codex_approval,omitempty" jsonschema:"codex: untrusted, on-failure, on-request or never"`
-	CloseOnOK     bool     `json:"close_on_success,omitempty" jsonschema:"command: close its tab after a clean exit"`
-	Once          string   `json:"once,omitempty" jsonschema:"instead of at/cron: run once, at this local date and time ('2026-12-23 17:00')"`
-	Triggers      []string `json:"triggers,omitempty" jsonschema:"run when something happens (replaces its triggers; [] drops them). Each one of: github:ci-failed, github:review-requested, github:reviewed, github:label=NAME, github:assigned, github:merged, github:commit[=BRANCH] (a new commit; default branch if none), github:release[=TAGS] (a new release or tag, TAGS a glob like v*), each in the folder's GitHub repository or, with @OWNER/NAME after it, another (github:release=vt-*@ghostty-org/ghostty); agent:finished or agent:needs-you, optionally @GROUP or @PANE; exit[@GROUP|@PANE] (a pane's command fails); log:REGEX@PANE (a log pane); files[:GLOB][@DIR]; calendar:MINUTES[,title=TEXT][,calendar=NAME][,attendees] (before matching events); webhook. The run's prompt gets what happened, fenced as untrusted data, or where it says {{event}}"`
-	EventsOnly    bool     `json:"events_only,omitempty" jsonschema:"run only on its triggers (and when run by hand), not at times (the default when creating one with triggers and no at, cron or once)"`
-	Cooldown      *int     `json:"cooldown_seconds,omitempty" jsonschema:"runs its triggers start are at least this far apart (default 60; 0: none; at most 2592000, 30 days): events in between wait, and start one run together"`
-	Description   string   `json:"description,omitempty" jsonschema:"why, in a sentence, shown to the user with the request"`
+	ID            string      `json:"id,omitempty" jsonschema:"to change an existing schedule (from automation_list); empty creates one"`
+	Name          string      `json:"name,omitempty" jsonschema:"a short name, e.g. 'Morning briefing' (default: from the prompt)"`
+	Kind          string      `json:"kind,omitempty" jsonschema:"an agent ('claude', the default, 'codex', or another agent Hammock knows) or 'command'"`
+	Prompt        string      `json:"prompt,omitempty" jsonschema:"the agent's first message (e.g. '/morning-briefing'), or for a command the shell command line. Required when creating"`
+	Dir           string      `json:"dir,omitempty" jsonschema:"the folder it runs in (absolute; default: your pane's)"`
+	At            string      `json:"at,omitempty" jsonschema:"time of day, HH:MM in local time, e.g. '08:30'"`
+	Days          string      `json:"days,omitempty" jsonschema:"with at: 'daily' (default), 'weekdays', 'weekends' or days like 'mon,wed,fri'"`
+	Cron          string      `json:"cron,omitempty" jsonschema:"instead of at/days: a 5-field cron expression in local time, e.g. '0 */2 * * *'"`
+	Notify        string      `json:"notify,omitempty" jsonschema:"'ready', 'problems', 'never' or 'default' (agents when ready, commands only about problems)"`
+	Overlap       string      `json:"overlap,omitempty" jsonschema:"if the last run is still going: 'skip' (default), 'stop' (stop it, start fresh) or 'both'"`
+	GiveUpMinutes int         `json:"give_up_minutes,omitempty" jsonschema:"stop a run waiting on the user this long (default 240)"`
+	KeepRuns      int         `json:"keep_runs,omitempty" jsonschema:"run tabs to keep (default 7)"`
+	AllowedTools  []string    `json:"allowed_tools,omitempty" jsonschema:"claude: tools allowed in every run, as --allowedTools rules, e.g. 'Read', 'Bash(gh pr view:*)', 'mcp__slack__read'"`
+	CodexSandbox  string      `json:"codex_sandbox,omitempty" jsonschema:"codex: read-only, workspace-write or danger-full-access"`
+	CodexApproval string      `json:"codex_approval,omitempty" jsonschema:"codex: untrusted, on-failure, on-request or never"`
+	CloseOnOK     bool        `json:"close_on_success,omitempty" jsonschema:"command: close its tab after a clean exit"`
+	Once          string      `json:"once,omitempty" jsonschema:"instead of at/cron: run once, at this local date and time ('2026-12-23 17:00')"`
+	Triggers      []string    `json:"triggers,omitempty" jsonschema:"run when something happens (replaces its triggers, but not its checks; [] drops them). Each one of: github:ci-failed|review-requested|reviewed|label=NAME|assigned|merged|commit[=BRANCH]|release[=TAGS], then @OWNER/NAME for another repository than the folder's; agent:finished|needs-you[@GROUP|PANE]; exit[@GROUP|PANE]; log:REGEX@PANE; files[:GLOB][@DIR]; calendar:MINUTES[,title=TEXT][,calendar=NAME][,attendees]; webhook; shortcut. What happened goes into the prompt, fenced as untrusted data, or where it says {{event}}. Details: https://homegrownsw.com/hammock/docs/automations/"`
+	Checks        []checkArgs `json:"checks,omitempty" jsonschema:"command checks: commands run every few minutes in its folder, with no pane, that start a run as they start failing, their output changes, or they pass again (replaces its checks; [] drops them)"`
+	EventsOnly    bool        `json:"events_only,omitempty" jsonschema:"run only on its triggers (and when run by hand), not at times (the default when creating one with triggers and no at, cron or once)"`
+	Cooldown      *int        `json:"cooldown_seconds,omitempty" jsonschema:"runs its triggers start are at least this far apart (default 60; 0: none; at most 2592000, 30 days): events in between wait, and start one run together"`
+	Description   string      `json:"description,omitempty" jsonschema:"why, in a sentence, shown to the user with the request"`
+}
+
+type checkArgs struct {
+	Command string `json:"command" jsonschema:"the shell command line to run"`
+	Every   int    `json:"every_minutes,omitempty" jsonschema:"how often (default 5, at least 1)"`
+	On      string `json:"on,omitempty" jsonschema:"'fail' (it starts failing: the default), 'change' (its output or exit status changes) or 'recover' (it passes again)"`
+	Timeout int    `json:"timeout_seconds,omitempty" jsonschema:"stop it after this long, as failing (default 60)"`
 }
 
 type scheduleIDArgs struct {
@@ -92,6 +101,9 @@ type triggerView struct {
 	Spec  string `json:"spec"`
 	Words string `json:"description"`
 	Error string `json:"error,omitempty"`
+	// When it last looked and fired, or what's holding back what it fired.
+	Status    string `json:"status,omitempty"`
+	LastCheck string `json:"last_check,omitempty"`
 }
 
 type runView struct {
@@ -113,7 +125,8 @@ func viewSchedule(w *world, s *pb.Schedule) scheduleView {
 		v.NextRun = time.UnixMilli(s.NextRunUnixMs).Format(time.RFC3339)
 	}
 	for _, t := range s.Events {
-		v.Triggers = append(v.Triggers, triggerView{Spec: schedtrig.Spec(t), Words: schedtrig.Describe(t, w.triggerName), Error: t.Error})
+		v.Triggers = append(v.Triggers, triggerView{Spec: schedtrig.Spec(t), Words: schedtrig.Describe(t, w.triggerName), Error: t.Error,
+			Status: schedtrig.Status(t, time.Now()), LastCheck: t.GetCheck().GetLastResult()})
 	}
 	if len(s.Events) > 0 {
 		v.Extra["cooldown_seconds"] = schedtrig.Cooldown(s)
@@ -175,7 +188,7 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 				sc.Cwd = me.Cwd
 				sc.GroupId = w.groupOfPane(s.self)
 			}
-			if a.At == "" && a.Cron == "" && a.Once == "" && len(a.Triggers) == 0 {
+			if a.At == "" && a.Cron == "" && a.Once == "" && len(a.Triggers) == 0 && len(a.Checks) == 0 {
 				return nil, nil, errors.New("say when: at (HH:MM, with days), cron, once, or triggers")
 			}
 		}
@@ -218,11 +231,31 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 		if a.Once != "" {
 			args = append(args, "--once", a.Once)
 		}
+		// Triggers replace its triggers, checks its checks.
+		isCheck := func(t *pb.EventTrigger) bool { return t.GetCheck() != nil }
 		if a.Triggers != nil {
-			args = append(args, "--no-triggers")
+			sc.Events = slices.DeleteFunc(sc.Events, func(t *pb.EventTrigger) bool { return !isCheck(t) })
 			for _, t := range a.Triggers {
 				args = append(args, "--trigger", t)
 			}
+		}
+		if a.Checks != nil {
+			sc.Events = slices.DeleteFunc(sc.Events, isCheck)
+			for _, c := range a.Checks {
+				args = append(args, "--check-cmd", c.Command)
+				if c.Every != 0 {
+					args = append(args, "--check-every", strconv.Itoa(c.Every))
+				}
+				if c.On != "" {
+					args = append(args, "--check-on", c.On)
+				}
+				if c.Timeout != 0 {
+					args = append(args, "--check-timeout", strconv.Itoa(c.Timeout))
+				}
+			}
+		}
+		if (a.Triggers != nil || a.Checks != nil) && len(sc.Events) == 0 && len(a.Triggers)+len(a.Checks) == 0 && sc.Timing == pb.Schedule_TIMING_EVENTS {
+			sc.Timing = pb.Schedule_TIMING_REPEAT
 		}
 		if a.EventsOnly {
 			args = append(args, "--events-only")
@@ -233,7 +266,7 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 		if a.At != "" || a.Cron != "" {
 			sc.Timing = pb.Schedule_TIMING_REPEAT
 		}
-		if a.ID == "" && a.At == "" && a.Cron == "" && a.Once == "" && len(a.Triggers) > 0 {
+		if a.ID == "" && a.At == "" && a.Cron == "" && a.Once == "" && len(a.Triggers)+len(a.Checks) > 0 {
 			args = append(args, "--events-only")
 		}
 		if a.Notify != "" {
@@ -279,9 +312,15 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 		if a.Data != "" && !a.Trigger {
 			return nil, nil, errors.New("data goes with trigger")
 		}
-		r, err := s.call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_RunSchedule{RunSchedule: &pb.RunSchedule{ScheduleId: a.ID, Early: a.Early, Trigger: a.Trigger, Data: a.Data}}})
+		r, err := s.call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_RunSchedule{RunSchedule: &pb.RunSchedule{ScheduleId: a.ID, Early: a.Early, Trigger: a.Trigger, Data: a.Data, StatusReply: a.Trigger}}})
 		if err != nil {
 			return nil, nil, err
+		}
+		if tr := r.GetTriggerReply(); tr != nil {
+			if tr.Status == pb.TriggerReply_STATUS_QUEUED {
+				return textResult(map[string]any{"queued": true, "why": tr.Reason}), nil, nil
+			}
+			return textResult(map[string]string{"tab_id": tr.TabId}), nil, nil
 		}
 		id := client.CreatedID(r)
 		if a.Trigger && id == "" {

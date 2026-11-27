@@ -966,6 +966,7 @@ message ServerMessage {
     EditorLinks editor_links = 75;                  // reply to ResolveEditorLinks
     ScheduleWebhookReply schedule_webhook_reply = 85; // reply to ScheduleWebhook
     PinReply pin_reply = 90;                        // reply to PinCommand
+    TriggerReply trigger_reply = 91;                // reply to RunSchedule with trigger and status_reply
   }
 }
 
@@ -2803,8 +2804,16 @@ message EventTrigger {
     FilesTrigger files = 6;
     CalendarTrigger calendar = 7;
     WebhookTrigger webhook = 8;
+    CommandCheckTrigger check = 10;
+    ShortcutTrigger shortcut = 11;
   }
   string error = 9;               // read only: why it can't fire now (gh isn't signed in…)
+  // Read only, the daemon's: when it last looked (a trigger that asks or
+  // runs something: GitHub, a command check), when it last fired, and why
+  // what it last fired is being held back ("" once its run has started).
+  int64 checked_unix_ms = 12;
+  int64 fired_unix_ms = 13;
+  string held = 14;
 }
 
 // The GitHub repository of the schedule's folder (its remote), or the one
@@ -2871,6 +2880,30 @@ message CalendarTrigger {
   bool with_attendees = 4;        // only events with other people
 }
 
+// A command run every every_minutes (in the schedule's folder, by the
+// login shell, with no pane), firing as on says. A check still going when
+// the next is due is left to finish (that one is skipped); one running
+// longer than timeout_seconds is stopped, and counts as failing. Its first
+// check only notes how things are.
+message CommandCheckTrigger {
+  string command = 1;
+  int32 every_minutes = 2;        // 1 to 10080 (0: 5)
+  enum On {
+    ON_FAIL = 0;                  // it starts failing (exits non-zero, or times out)
+    ON_CHANGE = 1;                // its output or exit status changes
+    ON_RECOVER = 2;               // it passes again after failing
+  }
+  On on = 3;
+  int32 timeout_seconds = 4;      // 0: 60 (at most every_minutes)
+  // Read only: how its last check went ("Passed", "Failed (exit 2)", "Timed out").
+  string last_result = 5;
+}
+
+// Shortcuts' Run Hammock Automation action (or Android's intent for
+// Tasker) starts it. Any automation can be run that way; this says it's
+// meant to be, for one that runs on nothing else. Mac only.
+message ShortcutTrigger {}
+
 // A POST to the schedule's secret URL on the remote access listener
 // (/hook/SECRET; ScheduleWebhook gives it). Its body is the event.
 message WebhookTrigger {}
@@ -2916,7 +2949,35 @@ message DeleteSchedule { string schedule_id = 1; string description = 2; }
 // one after), rather than as well as it.
 // trigger: as an event (hmk trigger), with data its details: its cooldown
 // applies, and the run is marked as triggered.
-message RunSchedule { string schedule_id = 1; bool early = 2; bool trigger = 3; string data = 4; }
+// source: where a trigger came from ("": hmk trigger; "shortcuts",
+// "tasker"), for its run's record. label: what happened, in the caller's
+// words (outside text: fenced with data). files: paths on this computer
+// given with it (Shortcuts on the Mac). status_reply: reply TriggerReply
+// (else Created when it started, Ok when it waits).
+message RunSchedule {
+  string schedule_id = 1;
+  bool early = 2;
+  bool trigger = 3;
+  string data = 4;
+  string source = 5;
+  string label = 6;
+  repeated string files = 7;
+  bool status_reply = 8;
+}
+// What a trigger did: started a run (tab_id), or queued it (reason: its
+// cooldown, the last run still going, Hammock starting, the Mac asleep).
+// A trigger that can't run is an error instead (Automations are off…).
+message TriggerReply {
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    STATUS_STARTED = 1;
+    STATUS_QUEUED = 2;
+  }
+  Status status = 1;
+  string reason = 2;
+  string tab_id = 3;
+  bool cut = 4;                   // the data was over 64 KB: only its start went in
+}
 message SetSchedulePaused { string schedule_id = 1; bool paused = 2; }
 // Skips the next run (skip = false: undoes that).
 message SkipScheduleRun { string schedule_id = 1; bool skip = 2; }

@@ -67,6 +67,8 @@ assets_plist="$(mktemp)"
 xcrun actool "$root/apple/Resources/Brand.xcassets" --compile "$app/Contents/Resources" --platform macosx \
   --minimum-deployment-target 26.0 --accent-color AccentColor --output-partial-info-plist "$assets_plist" >/dev/null
 rm -f "$assets_plist"
+# Shortcuts' Run Hammock Automation (App Intents' metadata, which SwiftPM doesn't make).
+"$root/scripts/mac-app-intents.sh" "$app/Contents/Resources" "$app/Contents/MacOS/Hammock" "$id"
 # The menu bar item (bin/Hammock Menu.app), then hmkd, the CLI, the pane
 # holder, the browser, simulator and screen hosts and the login items
 # (shared with the Xcode project's HammockMac target).

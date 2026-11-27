@@ -85,6 +85,8 @@ type schedState struct {
 	ready     bool                     // the daemon's state is all in: events may start runs
 	ghWake    chan struct{}            // look at GitHub now (schedgithub.go)
 	filesWake chan struct{}            // look at files now (schedfiles.go)
+	checkWake chan struct{}            // see which command checks are due now (schedcheck.go)
+	checking  map[string]bool          // command check trigger id → one of its checks is running
 }
 
 // schedMaker is the agent that made a schedule: its pane, and which agent

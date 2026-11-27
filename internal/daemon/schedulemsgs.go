@@ -70,8 +70,9 @@ func (d *Daemon) handleSchedule(c *conn, msg *pb.ClientMessage) (*pb.ServerMessa
 		var do func(s *pb.Schedule) (*pb.ServerMessage, error)
 		switch m := msg.Msg.(type) {
 		case *pb.ClientMessage_RunSchedule:
-			early, trigger, data := m.RunSchedule.Early, m.RunSchedule.Trigger, m.RunSchedule.Data
-			id, verb = m.RunSchedule.ScheduleId, "run the automation %s now"
+			rs := m.RunSchedule
+			early, trigger, data := rs.Early, rs.Trigger, rs.Data
+			id, verb = rs.ScheduleId, "run the automation %s now"
 			switch {
 			case trigger && data != "":
 				verb = "trigger the automation %s with: " + shownText(oneLine(data, 300))
@@ -80,12 +81,12 @@ func (d *Daemon) handleSchedule(c *conn, msg *pb.ClientMessage) (*pb.ServerMessa
 			case early:
 				verb = "run the automation %s now, instead of at its next time"
 			}
-			if len(data) > maxHookBody {
+			if len(data) > maxHookBody && rs.Source == "" { // (Shortcuts': cut)
 				return nil, fmt.Errorf("the data is over %d KB", maxHookBody>>10)
 			}
 			do = func(s *pb.Schedule) (*pb.ServerMessage, error) {
 				if trigger {
-					return d.triggerRun(s, data)
+					return d.triggerRun(s, rs)
 				}
 				if early {
 					return d.runEarly(s)

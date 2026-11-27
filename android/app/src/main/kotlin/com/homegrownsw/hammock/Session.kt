@@ -240,6 +240,7 @@ class Session(
         }
         persist()
         Push.forget(context, h.id)
+        AutomationIntent.forget(context, h.id)
         // Ask it to stop pushing here first, if it answers soon.
         scope.launch {
             val m = shown ?: if (h.deviceID != null) model(h, null).also { it.start() } else null

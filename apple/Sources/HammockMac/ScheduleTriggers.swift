@@ -25,22 +25,45 @@ struct ScheduleTriggersSection: View {
             }
             HStack {
                 Menu("Add Trigger") {
-                    Menu("GitHub") {
-                        ForEach(Self.githubEvents, id: \.0) { e, title in
-                            Button(title) { add(.github(.with { $0.event = e })) }
+                    Section("Hammock") {
+                        Menu("Agents") {
+                            Button("An Agent Finishes") { add(.agent(.with { $0.finished = true })) }
+                            Button("An Agent Needs You") { add(.agent(.with { $0.needsYou = true })) }
+                        }
+                        Menu("Commands") {
+                            Button("A Command Fails") { add(.exit(.init())) }
+                        }
+                        Menu("Log Lines") {
+                            Button("A Log Line Matches…") { add(.log(.with { $0.paneID = logPanes.first?.id ?? "" })) }
+                        }
+                        Menu("Files") {
+                            Button("Files Change…") { add(.files(.init())) }
                         }
                     }
-                    Button("An Agent Finishes or Needs You") { add(.agent(.with { $0.finished = true })) }
-                    Button("A Command Fails") { add(.exit(.init())) }
-                    Button("A Log Line Matches") { add(.log(.with { $0.paneID = logPanes.first?.id ?? "" })) }
-                    Button("Files Change") { add(.files(.init())) }
-                    if computerID.isEmpty || computerID == model.myUserID {
-                        Button("Before a Calendar Event") {
-                            add(.calendar(.with { $0.minutesBefore = 10 }))
-                            CalendarFeed.shared.requestAccess()
+                    Section("Code") {
+                        Menu("GitHub") {
+                            ForEach(Self.githubEvents, id: \.0) { e, title in
+                                Button(title) { add(.github(.with { $0.event = e })) }
+                            }
+                        }
+                        Button("Command Check…") { add(.check(.with { $0.everyMinutes = 5 })) }
+                    }
+                    if onThisMac {
+                        Section("Time and Place") {
+                            Menu("Calendar") {
+                                Button("Before an Event…") {
+                                    add(.calendar(.with { $0.minutesBefore = 10 }))
+                                    CalendarFeed.shared.requestAccess()
+                                }
+                            }
                         }
                     }
-                    Button("Webhook") { add(.webhook(.init())) }
+                    Section("Other") {
+                        if onThisMac {
+                            Button("Shortcuts") { add(.shortcut(.init())) }
+                        }
+                        Button("Webhook") { add(.webhook(.init())) }
+                    }
                 }
                 .fixedSize()
                 Spacer()
@@ -77,6 +100,9 @@ struct ScheduleTriggersSection: View {
     }
 
     private var logPanes: [Pane] { TriggerEditorRow.logPanes(model, computerID) }
+
+    /// It runs on this Mac (not a linked computer, which may not be one).
+    private var onThisMac: Bool { computerID.isEmpty || computerID == model.myUserID }
 
     private func add(_ kind: EventTrigger.OneOf_Kind) {
         events.append(.with { $0.kind = kind })
@@ -116,7 +142,24 @@ struct TriggerEditorRow: View {
                     .foregroundStyle(.orange)
                     .padding(.leading, 26)
             }
+            TimelineView(.periodic(from: .now, by: 30)) { tl in
+                if let line = statusLine(now: tl.date) {
+                    Text(line)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 26)
+                }
+            }
         }
+    }
+
+    /// When it last looked and fired (and a check's last result), or
+    /// what's holding back what it fired.
+    private func statusLine(now: Date) -> String? {
+        var parts: [String] = []
+        if case .check(let c) = trigger.kind, !c.lastResult.isEmpty { parts.append(c.lastResult) }
+        if let s = trigger.statusText(now: now) { parts.append(parts.isEmpty ? s : s.prefix(1).lowercased() + s.dropFirst()) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     @ViewBuilder
@@ -212,9 +255,48 @@ struct TriggerEditorRow: View {
                     if let e = webhookError { Text(e).font(.caption).foregroundStyle(.red) }
                 }
             }
+        case .check:
+            VStack(alignment: .leading, spacing: 4) {
+                TextField("Command", text: check(\.command), prompt: Text("make test"))
+                    .font(.system(.body, design: .monospaced))
+                Picker("Every", selection: check(\.everyMinutes)) {
+                    ForEach(everyChoices, id: \.self) { m in Text(EventTrigger.everyWords(Int(m)).replacingOccurrences(of: "every ", with: "")).tag(m) }
+                }
+                Picker("Run when it", selection: check(\.on)) {
+                    Text("Starts failing").tag(Hammock_V1_CommandCheckTrigger.On.fail)
+                    Text("Changes its output").tag(Hammock_V1_CommandCheckTrigger.On.change)
+                    Text("Passes again").tag(Hammock_V1_CommandCheckTrigger.On.recover)
+                }
+                Picker("Time limit", selection: check(\.timeoutSeconds)) {
+                    ForEach(timeoutChoices, id: \.self) { s in Text(s == 0 ? "1 minute" : s % 60 == 0 ? (s == 60 ? "1 minute" : "\(s / 60) minutes") : "\(s) seconds").tag(s) }
+                }
+            }
+        case .shortcut:
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Shortcuts runs it")
+                Text("With the Run Hammock Automation action, on this Mac or your iPhone.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Open Shortcuts") {
+                    NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Shortcuts.app"))
+                }
+                .controlSize(.small)
+            }
         case nil:
             Text("An unknown trigger")
         }
+    }
+
+    private var everyChoices: [Int32] {
+        let base: [Int32] = [1, 5, 10, 15, 30, 60, 180, 360, 720, 1440]
+        let cur = check(\.everyMinutes).wrappedValue
+        return base.contains(cur) || cur <= 0 ? base : (base + [cur]).sorted()
+    }
+
+    private var timeoutChoices: [Int32] {
+        let base: [Int32] = [0, 10, 30, 300, 900, 1800, 3600]
+        let cur = check(\.timeoutSeconds).wrappedValue
+        return base.contains(cur) ? base : (base + [cur]).sorted()
     }
 
     private var minuteChoices: [Int32] {
@@ -339,6 +421,11 @@ struct TriggerEditorRow: View {
                 set: { v in if case .files(var f) = trigger.kind { f[keyPath: kp] = v; trigger.kind = .files(f) } })
     }
 
+    private func check<T>(_ kp: WritableKeyPath<Hammock_V1_CommandCheckTrigger, T>) -> Binding<T> {
+        Binding(get: { if case .check(let c) = trigger.kind { return c[keyPath: kp] }; return Hammock_V1_CommandCheckTrigger()[keyPath: kp] },
+                set: { v in if case .check(var c) = trigger.kind { c[keyPath: kp] = v; trigger.kind = .check(c) } })
+    }
+
     private func calendar<T>(_ kp: WritableKeyPath<Hammock_V1_CalendarTrigger, T>) -> Binding<T> {
         Binding(get: { if case .calendar(let c) = trigger.kind { return c[keyPath: kp] }; return Hammock_V1_CalendarTrigger()[keyPath: kp] },
                 set: { v in if case .calendar(var c) = trigger.kind { c[keyPath: kp] = v; trigger.kind = .calendar(c) } })
@@ -352,6 +439,7 @@ extension EventTrigger {
         case .github(let g): g.event == .labeled && g.label.trimmingCharacters(in: .whitespaces).isEmpty ? "Which label?" : ""
         case .agent(let a): !a.finished && !a.needsYou ? "An agent trigger fires when it finishes, needs you, or both" : ""
         case .log(let l): l.paneID.isEmpty ? "Which log pane?" : l.pattern.trimmingCharacters(in: .whitespaces).isEmpty ? "What should the log line match?" : ""
+        case .check(let c): c.command.trimmingCharacters(in: .whitespaces).isEmpty ? "Which command should the check run?" : ""
         default: ""
         }
     }
@@ -412,7 +500,16 @@ enum ScheduleSamples {
             $0.groupName = "app"
             $0.minuteOfDay = 60
             $0.nextRunUnixMs = ms(-8 * 3600)
-            $0.events = [.with { $0.id = "tr_s5"; $0.kind = .files(.with { $0.glob = "src/**/*.go" }) }]
+            $0.events = [
+                .with { $0.id = "tr_s5"; $0.kind = .files(.with { $0.glob = "src/**/*.go" }); $0.firedUnixMs = ms(26 * 3600) },
+                .with {
+                    $0.id = "tr_s9"
+                    $0.kind = .check(.with { $0.command = "curl -fsS localhost:8080/health"; $0.everyMinutes = 5; $0.lastResult = "Passed" })
+                    $0.checkedUnixMs = ms(120)
+                    $0.firedUnixMs = ms(3 * 3600)
+                    $0.held = "waiting for its cooldown, until 14:05"
+                },
+            ]
         }
         return [ci, prep, tests]
     }

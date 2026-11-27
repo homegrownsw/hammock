@@ -59,6 +59,23 @@ type schedEvent struct {
 	Fields  [][2]string `json:"fields,omitempty"` // its details, in order: ("number", "42"), ("title", …)
 	Body    string      `json:"body,omitempty"`   // longer text from outside: a comment, a log line, a webhook's body
 	At      int64       `json:"at"`               // when it happened (ms)
+	// BodyCap is how much of Body goes into the run, when more than
+	// maxEventBody may (what Shortcuts sends: up to 64 KB).
+	BodyCap int `json:"cap,omitempty"`
+}
+
+// fieldCap is how much of an event's detail goes into a run: a list of
+// files more than the rest.
+func fieldCap(name string) int {
+	if name == "files" {
+		return maxEventBody
+	}
+	return maxEventField
+}
+
+// bodyCap is how much of ev's body goes into a run with n events.
+func (ev *schedEvent) bodyCap(n int) int {
+	return max(ev.BodyCap, maxEventBody) / max(n, 1)
 }
 
 // maxPending is how many events wait for one task's next run (the oldest
@@ -74,6 +91,7 @@ type trigState struct {
 	SeenAt map[string]int64 `json:"seen_at,omitempty"` // GitHub: what it's seen, and when it first did (ms)
 	Branch string           `json:"branch,omitempty"`  // GitHub: the folder's branch, last time it looked
 	Primed bool             `json:"primed,omitempty"`  // GitHub: it's had a first look
+	Check  *checkState      `json:"check,omitempty"`   // a command check: what it last saw (schedcheck.go)
 }
 
 // trigIndex is what the log feed checks every line against, without
@@ -110,7 +128,12 @@ func cooldownOf(s *pb.Schedule) time.Duration {
 // (tryEvents). queued: it waits (for the cooldown, the last run, the
 // computer to wake). Callers hold d.mu.
 func (d *Daemon) fireEvent(s *pb.Schedule, ev *schedEvent) (r *pb.ScheduleRun, queued bool, err error) {
-	if d.stopped || d.sched.off || s.Paused {
+	switch {
+	case d.stopped:
+		return nil, false, errors.New("Hammock is stopping")
+	case d.sched.off:
+		return nil, false, errors.New("Automations are off")
+	case s.Paused:
 		return nil, false, errors.New("it's paused")
 	}
 	if ev.At == 0 {
@@ -122,34 +145,93 @@ func (d *Daemon) fireEvent(s *pb.Schedule, ev *schedEvent) (r *pb.ScheduleRun, q
 	}
 	d.sched.pending[s.Id] = q
 	d.savePending()
+	if t := triggerOf(s, ev.Trigger); t != nil {
+		t.FiredUnixMs = ev.At // (saved by tryEvents)
+	}
 	r, started, err := d.tryEvents(s, schedNow())
+	if !started {
+		d.saveSchedule(s) // (when it fired)
+	}
 	return r, !started, err
+}
+
+// triggerOf is s's trigger id (nil: none, or "").
+func triggerOf(s *pb.Schedule, id string) *pb.EventTrigger {
+	if id == "" {
+		return nil
+	}
+	for _, t := range s.Events {
+		if t.Id == id {
+			return t
+		}
+	}
+	return nil
+}
+
+// heldWhy says why s's waiting events can't start a run now ("" if they
+// can). Callers hold d.mu.
+func (d *Daemon) heldWhy(s *pb.Schedule, now time.Time) string {
+	switch {
+	case !d.sched.ready:
+		return "waiting for Hammock to start"
+	case !schedAwake():
+		return "waiting for the computer to wake"
+	}
+	if last, ok := d.sched.lastEvent[s.Id]; ok && now.Sub(last) < cooldownOf(s) {
+		return "waiting for its cooldown, until " + last.Add(cooldownOf(s)).In(schedZone()).Format("15:04")
+	}
+	if s.Overlap == pb.Schedule_OVERLAP_SKIP && slices.ContainsFunc(s.Runs, runActive) {
+		return "waiting for the last run to end"
+	}
+	return ""
 }
 
 // tryEvents starts one run of s for the events waiting for it, if it may
 // now: the daemon's state is all in, the computer's fully awake, the
 // cooldown since the last such run is up, and (when s skips runs while
-// one is going) its last run has ended. Callers hold d.mu.
+// one is going) its last run has ended. Its triggers say what holds back
+// what they fired. Callers hold d.mu.
 func (d *Daemon) tryEvents(s *pb.Schedule, now time.Time) (*pb.ScheduleRun, bool, error) {
 	q := d.sched.pending[s.Id]
-	if len(q) == 0 || !d.sched.ready || !schedAwake() {
+	if len(q) == 0 {
 		return nil, false, nil
 	}
-	if last, ok := d.sched.lastEvent[s.Id]; ok && now.Sub(last) < cooldownOf(s) {
+	if why := d.heldWhy(s, now); why != "" {
+		if d.noteHeld(s, q, why) {
+			d.saveSchedule(s)
+		}
 		return nil, false, nil
-	}
-	if s.Overlap == pb.Schedule_OVERLAP_SKIP && slices.ContainsFunc(s.Runs, runActive) {
-		return nil, false, nil // they wait for it to end
 	}
 	delete(d.sched.pending, s.Id)
 	d.savePending()
 	d.sched.lastEvent[s.Id] = now
+	d.noteHeld(s, nil, "") // (saved below)
 	r, err := d.startRunFor(s, time.Time{}, false, q)
 	if err != nil {
 		d.log.Warn("event run", "schedule", s.Id, "err", err)
 	}
 	d.saveSchedule(s)
 	return r, true, err
+}
+
+// noteHeld says on each of s's triggers with an event in q why it's held
+// back (and clears it from the rest). changed: s needs saving. Callers
+// hold d.mu.
+func (d *Daemon) noteHeld(s *pb.Schedule, q []*schedEvent, why string) (changed bool) {
+	waiting := map[string]bool{}
+	for _, ev := range q {
+		waiting[ev.Trigger] = true
+	}
+	for _, t := range s.Events {
+		h := ""
+		if waiting[t.Id] {
+			h = why
+		}
+		if t.Held != h {
+			t.Held, changed = h, true
+		}
+	}
+	return changed
 }
 
 // firePending starts runs for events that have waited, once they may (and
@@ -160,6 +242,9 @@ func (d *Daemon) firePending(now time.Time) {
 		if s == nil || s.Paused || d.sched.off {
 			delete(d.sched.pending, id)
 			d.savePending()
+			if s != nil && d.noteHeld(s, nil, "") {
+				d.saveSchedule(s)
+			}
 			continue
 		}
 		_, _, _ = d.tryEvents(s, now)
@@ -215,11 +300,15 @@ func eventPrompt(prompt string, evs []*schedEvent) string {
 		b.WriteString("event: " + ev.Kind + "\n")
 		b.WriteString("summary: " + oneLine(shownText(ev.Summary), 200) + "\n")
 		for _, f := range ev.Fields {
-			if v := cleanEventText(f[1], maxEventField); v != "" {
+			switch v := cleanEventText(f[1], fieldCap(f[0])); {
+			case v == "":
+			case f[0] == "files": // a path a line
+				fmt.Fprintf(&b, "files:\n  %s\n", strings.ReplaceAll(v, "\n", "\n  "))
+			default:
 				fmt.Fprintf(&b, "%s: %s\n", f[0], strings.ReplaceAll(v, "\n", " "))
 			}
 		}
-		if body := cleanEventText(ev.Body, maxEventBody/len(evs)); body != "" {
+		if body := cleanEventText(ev.Body, ev.bodyCap(len(evs))); body != "" {
 			b.WriteString("\n" + body + "\n")
 		}
 	}
@@ -248,10 +337,10 @@ func eventEnv(evs []*schedEvent) map[string]string {
 			}
 			return '_'
 		}, f[0])
-		env[key] = cleanEventText(f[1], maxEventField)
+		env[key] = cleanEventText(f[1], fieldCap(f[0]))
 	}
 	if ev.Body != "" {
-		env["HMK_EVENT_BODY"] = cleanEventText(ev.Body, maxEventBody)
+		env["HMK_EVENT_BODY"] = cleanEventText(ev.Body, ev.bodyCap(1))
 	}
 	type jsonEvent struct {
 		Kind    string            `json:"kind"`
@@ -262,10 +351,10 @@ func eventEnv(evs []*schedEvent) map[string]string {
 	}
 	var all []jsonEvent
 	for _, e := range evs {
-		j := jsonEvent{Kind: e.Kind, Summary: e.Summary, Fields: map[string]string{}, Body: cleanEventText(e.Body, maxEventBody/len(evs)),
+		j := jsonEvent{Kind: e.Kind, Summary: e.Summary, Fields: map[string]string{}, Body: cleanEventText(e.Body, e.bodyCap(len(evs))),
 			At: time.UnixMilli(e.At).Format(time.RFC3339)}
 		for _, f := range e.Fields {
-			j.Fields[f[0]] = cleanEventText(f[1], maxEventField)
+			j.Fields[f[0]] = cleanEventText(f[1], fieldCap(f[0]))
 		}
 		all = append(all, j)
 	}
@@ -355,21 +444,35 @@ func (d *Daemon) cleanEvents(s, old *pb.Schedule) error {
 	if len(s.Events) > maxTriggers {
 		return fmt.Errorf("at most %d triggers", maxTriggers)
 	}
-	known := map[string]bool{}
+	known := map[string]*pb.EventTrigger{}
 	for _, t := range old.GetEvents() {
-		known[t.Id] = true
+		known[t.Id] = t
 	}
 	seen := map[string]bool{}
 	var out []*pb.EventTrigger
 	for _, in := range s.Events {
 		t := proto.CloneOf(in)
-		if t.Id == "" || !known[t.Id] || seen[t.Id] {
+		if t.Id == "" || known[t.Id] == nil || seen[t.Id] {
 			t.Id = newID("tr")
 		}
 		seen[t.Id] = true
-		t.Error = ""
+		// What it's seen is the daemon's: kept from before, while it's the
+		// same trigger.
+		t.Error, t.CheckedUnixMs, t.FiredUnixMs, t.Held = "", 0, 0, ""
+		if c := t.GetCheck(); c != nil {
+			c.LastResult = ""
+		}
 		if err := d.cleanTrigger(s, t); err != nil {
 			return err
+		}
+		if o := known[t.Id]; o != nil && schedtrig.Kind(o) == schedtrig.Kind(t) {
+			t.FiredUnixMs, t.Held = o.FiredUnixMs, o.Held
+			if schedtrig.Spec(o) == schedtrig.Spec(t) {
+				t.CheckedUnixMs = o.CheckedUnixMs
+				if c := t.GetCheck(); c != nil {
+					c.LastResult = o.GetCheck().GetLastResult()
+				}
+			}
 		}
 		out = append(out, t)
 	}
@@ -416,6 +519,9 @@ func (d *Daemon) cleanTrigger(s *pb.Schedule, t *pb.EventTrigger) error {
 	case *pb.EventTrigger_Calendar:
 		clean("title", &k.Calendar.Title, 200)
 		clean("calendar", &k.Calendar.Calendar, 100)
+	case *pb.EventTrigger_Check:
+		// Shown whole when an agent asks to save it: one line.
+		clean("command", &k.Check.Command, maxCheckCommand)
 	}
 	if bad != nil {
 		return bad
@@ -513,6 +619,25 @@ func (d *Daemon) cleanTrigger(s *pb.Schedule, t *pb.EventTrigger) error {
 		}
 		c.Title, c.Calendar = strings.TrimSpace(c.Title), strings.TrimSpace(c.Calendar)
 	case *pb.EventTrigger_Webhook:
+	case *pb.EventTrigger_Shortcut:
+		if runtime.GOOS != "darwin" {
+			return errors.New("Shortcuts triggers need a Mac")
+		}
+	case *pb.EventTrigger_Check:
+		c := k.Check
+		if c.Command == "" {
+			return errors.New("which command should the check run?")
+		}
+		if c.EveryMinutes < 0 || c.EveryMinutes > schedtrig.CheckEveryMax {
+			return fmt.Errorf("a check runs every 1 to %d minutes", schedtrig.CheckEveryMax)
+		}
+		if c.TimeoutSeconds < 0 || c.TimeoutSeconds > schedtrig.CheckTimeoutMax {
+			return fmt.Errorf("a check's time limit is up to %d seconds", schedtrig.CheckTimeoutMax)
+		}
+		if _, ok := pb.CommandCheckTrigger_On_name[int32(c.On)]; !ok {
+			return errors.New("an unknown check (from a newer Hammock?)")
+		}
+		c.EveryMinutes = int32(schedtrig.CheckEvery(c))
 	default:
 		return errors.New("a trigger with no kind (from a newer Hammock?)")
 	}
@@ -581,7 +706,7 @@ func (d *Daemon) triggersChanged() {
 // wakeWatchers tells the GitHub and files watchers to look again now (a
 // trigger was added or changed). Callers hold d.mu.
 func (d *Daemon) wakeWatchers() {
-	for _, c := range []chan struct{}{d.sched.ghWake, d.sched.filesWake} {
+	for _, c := range []chan struct{}{d.sched.ghWake, d.sched.filesWake, d.sched.checkWake} {
 		if c == nil {
 			continue
 		}
@@ -609,6 +734,9 @@ func (d *Daemon) loadTriggers() {
 	d.sched.hooks = map[string]string{}
 	d.sched.lastEvent = map[string]time.Time{}
 	d.sched.pending = map[string][]*schedEvent{}
+	if d.sched.checking == nil {
+		d.sched.checking = map[string]bool{}
+	}
 	_ = json.Unmarshal([]byte(d.store.Setting("schedule_triggers")), &d.sched.trig)
 	_ = json.Unmarshal([]byte(d.store.Setting("schedule_hooks")), &d.sched.hooks)
 	_ = json.Unmarshal([]byte(d.store.Setting("schedule_pending")), &d.sched.pending)
@@ -921,16 +1049,71 @@ func (d *Daemon) fireLogMatch(w logWatch, paneID string, e *pb.LogEntry) {
 
 // ---------- hmk trigger ----------
 
-// triggerRun is hmk trigger: s's run as an event, data its details.
+// triggerSources are where a trigger may say it came from (RunSchedule's
+// source): its event's kind, and its run's record.
+var triggerSources = map[string]struct{ kind, summary, source string }{
+	"":          {"manual", "Triggered by hmk", "hmk trigger"},
+	"shortcuts": {"shortcuts", "From Shortcuts", "Shortcuts"},
+	"tasker":    {"tasker", "From Tasker", "an Android app (Tasker)"},
+}
+
+// maxTriggerFiles is how many files a trigger may name.
+const maxTriggerFiles = 50
+
+// triggerRun is hmk trigger, or Shortcuts' Run Hammock Automation: s's run
+// as an event, m.data (and its label and files) its details. From
+// Shortcuts, data over maxHookBody is cut (and the reply says so).
 // Callers hold d.mu.
-func (d *Daemon) triggerRun(s *pb.Schedule, data string) (*pb.ServerMessage, error) {
-	ev := &schedEvent{Kind: "manual", Summary: "Triggered by hmk", Source: "hmk trigger"}
-	if data != "" {
-		ev.Summary, ev.Body = "Triggered with data", data
+func (d *Daemon) triggerRun(s *pb.Schedule, m *pb.RunSchedule) (*pb.ServerMessage, error) {
+	src, ok := triggerSources[m.Source]
+	if !ok {
+		return nil, fmt.Errorf("unknown source %q", m.Source)
+	}
+	ev := &schedEvent{Kind: src.kind, Summary: src.summary, Source: src.source}
+	if m.Source == "" && m.Data != "" {
+		ev.Summary = "Triggered with data"
+	}
+	data, cut := m.Data, false
+	if len(data) > maxHookBody {
+		data, cut = cleanEventText(data, maxHookBody), true
+	}
+	ev.Body = data
+	if m.Source != "" {
+		ev.BodyCap = maxHookBody
+		// It's attributed to the trigger that says Shortcuts runs it, if any.
+		for _, t := range s.Events {
+			if t.GetShortcut() != nil {
+				ev.Trigger = t.Id
+				break
+			}
+		}
+	}
+	if l := strings.TrimSpace(m.Label); l != "" {
+		ev.Fields = append(ev.Fields, [2]string{"what", l})
+	}
+	if len(m.Files) > maxTriggerFiles {
+		return nil, fmt.Errorf("at most %d files", maxTriggerFiles)
+	}
+	var files []string
+	for _, f := range m.Files {
+		if !filepath.IsAbs(f) || strings.ContainsFunc(f, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+			return nil, fmt.Errorf("%q isn't a file's path", f)
+		}
+		files = append(files, filepath.Clean(f))
+	}
+	if len(files) > 0 {
+		ev.Fields = append(ev.Fields, [2]string{"files", strings.Join(files, "\n")})
 	}
 	r, queued, err := d.fireEvent(s, ev)
 	if err != nil {
 		return nil, err
+	}
+	if m.StatusReply {
+		tr := &pb.TriggerReply{Status: pb.TriggerReply_STATUS_STARTED, TabId: r.GetTabId(), Cut: cut}
+		if queued {
+			tr.Status, tr.Reason = pb.TriggerReply_STATUS_QUEUED, d.heldWhy(s, schedNow())
+		}
+		return &pb.ServerMessage{Msg: &pb.ServerMessage_TriggerReply{TriggerReply: tr}}, nil
 	}
 	if queued {
 		return &pb.ServerMessage{Msg: &pb.ServerMessage_Ok{Ok: &pb.Ok{}}}, nil
