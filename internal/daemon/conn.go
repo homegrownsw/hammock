@@ -1676,6 +1676,10 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		return nil, d.takeIntroductions(c, m.IntroduceComputers)
 	case *pb.ClientMessage_SshAgentCall:
 		return d.sshAgentCall(c, msg.Id, m.SshAgentCall)
+	case *pb.ClientMessage_PeerRecord:
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return nil, d.takePeerRecord(c, m.PeerRecord)
 	case *pb.ClientMessage_UnlinkRequest:
 		if c.peer == "" {
 			return nil, errors.New("only for other computers")

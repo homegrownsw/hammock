@@ -11,12 +11,35 @@ struct DevicesSettings: View {
     @State private var status = Hammock_V1_Devices()
     @State private var error: String?
     @State private var gate = NetworkGate()
+    /// Turning remote access off while computers are linked: asked first.
+    @State private var confirmOff = false
     private var focus = DevicesSettingsFocus.shared
 
     /// sample: what to show before the daemon's asked (debug snapshots).
     init(model: AppModel, sample: Hammock_V1_Devices? = nil) {
         self.model = model
         if let sample { _status = State(initialValue: sample) }
+    }
+
+    /// The computers linked with this one, by name: those that take
+    /// connections (they'd lose this Mac's Groups), or that connect out only
+    /// themselves (the link goes quiet both ways).
+    private func linkedNames(outOnly: Bool) -> [String] {
+        model.linkedComputers.filter { !$0.needsLinking && $0.outOnly == outOnly }.map(\.name)
+    }
+
+    private var confirmOffTitle: String {
+        let names = linkedNames(outOnly: false)
+        return names.isEmpty ? "Turn off remote access?" : names.formatted(.list(type: .and)) + " will no longer see this Mac's Groups."
+    }
+
+    private var confirmOffMessage: String {
+        var s = linkedNames(outOnly: false).isEmpty ? "" : "This Mac will still see theirs. "
+        let quiet = linkedNames(outOnly: true)
+        if !quiet.isEmpty {
+            s += quiet.formatted(.list(type: .and)) + " connect\(quiet.count == 1 ? "s" : "") out only too, so neither side reaches the other until one turns remote access on. "
+        }
+        return s + "Paired devices can't connect, and aren't notified."
     }
 
     var body: some View {
@@ -40,11 +63,16 @@ struct DevicesSettings: View {
             Section {
                 Toggle("Allow paired devices to connect remotely", isOn: $remote)
                     .settingAnchor("devices.remote")
-                    // Linked computers reach this one through it too; and it
-                    // can't come on without this Mac's identity and certificate.
-                    .disabled(remote ? model.hasLinkedComputers : !status.remoteUnavailable.isEmpty)
+                    // It can't come on without this Mac's identity and certificate.
+                    .disabled(!remote && !status.remoteUnavailable.isEmpty)
                     .onChange(of: remote) { _, on in
                         guard on != model.remoteEnabled else { return }
+                        if !on, model.hasLinkedComputers {
+                            // They'd stop seeing this Mac's Groups: asked first.
+                            remote = true
+                            confirmOff = true
+                            return
+                        }
                         Task {
                             // The first time: where to listen.
                             if on, !(await gate.ensure(model)) {
@@ -80,8 +108,8 @@ struct DevicesSettings: View {
                 Text("Direct, encrypted connections on the networks below. Everything a paired device does is logged.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                if model.hasLinkedComputers {
-                    Text("Linked computers need this on. Unlink them to turn it off.")
+                if !remote, model.hasLinkedComputers {
+                    Text("Linked computers can't see this Mac's Groups.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -133,6 +161,23 @@ struct DevicesSettings: View {
         }
         .formStyle(.grouped)
         .settingsScrollTarget()
+        .alert(confirmOffTitle, isPresented: $confirmOff) {
+            Button("Turn Off") {
+                Task {
+                    do {
+                        try await model.setRemoteAccess(false)
+                        remote = false
+                        error = nil
+                    } catch {
+                        self.error = error.localizedDescription
+                    }
+                    await reload()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(confirmOffMessage)
+        }
         .task {
             remote = model.remoteEnabled
             // Networks come and go (Wi-Fi, a VPN): keep the list current.

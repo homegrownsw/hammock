@@ -37,6 +37,10 @@ type peerLink struct {
 	stop   chan struct{}
 	closed bool
 	redial chan struct{} // dial again now, not after the backoff (kick: the network changed)
+	// This computer's own record waiting to go up the link, and whether its
+	// sender is running (sendRecord). Under d.mu.
+	rec        *pb.Computers
+	recSending bool
 
 	// guarded by d.mu
 	groups map[string]*pb.Group
@@ -543,8 +547,46 @@ func (l *peerLink) signIn(ctx context.Context, cl *client.Client) error {
 	l.cmu.Unlock()
 	d.mu.Lock()
 	d.presenceChanged()
+	if l.linked {
+		// This computer's own record, once subscribed (so it's online there
+		// as it's taken): one that links out only isn't subscribed to, and
+		// one that did until now is dialled again once it hears it doesn't.
+		// (An earlier build there answers it with an error, ignored.)
+		l.sendRecord(d.computersState(true))
+	}
 	d.mu.Unlock()
 	return nil
+}
+
+// sendRecord sends cs (this computer's own record, as linked computers are
+// sent it) up the link, if it's connected: else it goes when it connects
+// (signIn). One sender per link, always sending the latest, so an older
+// record never lands after a newer one. Callers hold d.mu.
+func (l *peerLink) sendRecord(cs *pb.Computers) {
+	l.rec = cs
+	if l.recSending {
+		return
+	}
+	l.recSending = true
+	go func() {
+		d := l.d
+		for {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			cl, err := l.connected(ctx, 5*time.Second)
+			d.mu.Lock()
+			cs := l.rec
+			if err != nil || cs == nil {
+				l.recSending = false // (kept: signIn sends the latest)
+				d.mu.Unlock()
+				cancel()
+				return
+			}
+			l.rec = nil
+			d.mu.Unlock()
+			_ = cl.Send(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_PeerRecord{PeerRecord: cs}})
+			cancel()
+		}
+	}()
 }
 
 // serve relays what the host sends until the connection ends.

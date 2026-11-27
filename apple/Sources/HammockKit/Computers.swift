@@ -70,6 +70,8 @@ extension Computer {
         // Introduced by a computer after that one was unlinked.
         if suspect { return "\(kind) · introduced by a computer since unlinked: check its code" }
         if certChanged { return "\(kind) · its certificate changed: check its code" }
+        // Its remote access is off: it reaches this one, never the other way.
+        if outOnly { return "\(kind) · \(online ? "online" : "offline") · connects out only" }
         if online { return "\(kind) · online" }
         guard lastSeenUnixMs > 0 else { return "\(kind) · offline" }
         let seen = Date(timeIntervalSince1970: Double(lastSeenUnixMs) / 1000)
@@ -151,9 +153,11 @@ extension AppModel {
 
     /// Links with a computer (an address from discovery, or a hammock://link/
     /// link). Returns once linked; throws if not (declined, codes differ).
-    public func linkComputer(_ address: String) async throws {
+    /// outOnly: with remote access off, keep it off: only this computer sees
+    /// the other's Groups (else linking turns it on).
+    public func linkComputer(_ address: String, outOnly: Bool = false) async throws {
         guard let conn = connection else { throw DaemonError.closed }
-        try await conn.call { $0.linkComputer = .with { $0.address = address } }
+        try await conn.call { $0.linkComputer = .with { $0.address = address; $0.outOnly = outOnly } }
     }
 
     /// Answers a link request: the codes match, or not.

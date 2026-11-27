@@ -31,6 +31,7 @@ var gateExempt = map[string][]string{
 		"SetColors", "SetComputerTint", "SetGroupFolder", "SetGroupIcon", "SetGroupIconImage", "SetProfile",
 		"SetRemoteAccess", "SetRemoteNetworks", "SetSchedulePaused", "ShowOutput", "ShowPairing", "ShutdownDaemon",
 		"SkipScheduleRun", "SshAgentCall", "SshSetup", "StopSharing", "UnlinkComputer",
+		"PeerRecord", // a linked computer's (ownerCheck), never a guest's
 	},
 	// peer.go: the group, tab or pane a message is about, so a guest's daemon sends it to the host. Not named:
 	// about nothing hosted elsewhere (handled here).
@@ -44,7 +45,7 @@ var gateExempt = map[string][]string{
 		"RespondLink", "RestartRemoteAccess", "ResumeSession", "RevokeDevice", "RevokeInvite", "ScreenInput", "ScreenSnapshot",
 		"ServerStatus", "SessionExcerpts", "SetApprovalKey", "SetColors", "SetComputerTint", "SetMediaView",
 		"SetMember", "SetProfile", "SetRemoteAccess", "SetRemoteNetworks", "ShowPairing", "ShutdownDaemon",
-		"SshAgentCall", "SshSetup", "Subscribe", "UnlinkComputer", "UnlinkRequest",
+		"SshAgentCall", "SshSetup", "Subscribe", "UnlinkComputer", "UnlinkRequest", "PeerRecord",
 	},
 	// caller.go: what an agent in a pane may do. Not named: refused to agents.
 	"agentCheck": {
@@ -59,6 +60,7 @@ var gateExempt = map[string][]string{
 		"SetProfile", "SetRemoteAccess", "SetRemoteNetworks", "ShowPairing", "SshAgentCall", "SshSetup",
 		"SetComposerDraft", "StopSharing", "UnlinkComputer", "UnlinkRequest", "UploadFile",
 		"PinCommand", // design notes are you telling an agent something
+		"PeerRecord",
 	},
 	// computers.go: what your other computers may ask of this one. Not named: refused to them.
 	"ownerCheck": {

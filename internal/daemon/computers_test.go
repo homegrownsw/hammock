@@ -127,11 +127,17 @@ func linkReq(t *testing.T, tc *testComputer, code string) *pb.LinkRequest {
 // link links a with b, both people saying the codes match.
 func link(t *testing.T, a, b *testComputer) {
 	t.Helper()
+	linkWith(t, a, b, false)
+}
+
+// linkWith is link, out only from a if outOnly (and a's remote access is off).
+func linkWith(t *testing.T, a, b *testComputer, outOnly bool) {
+	t.Helper()
 	done := make(chan error, 1)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		_, err := a.c.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_LinkComputer{LinkComputer: &pb.LinkComputer{Address: b.addr}}})
+		_, err := a.c.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_LinkComputer{LinkComputer: &pb.LinkComputer{Address: b.addr, OutOnly: outOnly}}})
 		done <- err
 	}()
 	go func() {
@@ -715,18 +721,11 @@ func restartComputer(t *testing.T, tc *testComputer) *testComputer {
 	return &testComputer{d: d, dir: tc.dir, addr: tc.addr, c: c, uid: tc.uid}
 }
 
-// Remote access stays on while computers are linked (they reach this one
-// through it), and Stop All Sharing leaves them connected.
-func TestLinkedNeedsRemoteAndSurvivesStopSharing(t *testing.T) {
+// Stop All Sharing leaves linked computers connected.
+func TestLinkedSurvivesStopSharing(t *testing.T) {
 	a, b := startComputer(t), startComputer(t)
 	link(t, a, b)
 	waitComputers(t, a, "a knows b", hasComputer(b.uid, true))
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	_, err := a.c.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_SetRemoteAccess{SetRemoteAccess: &pb.SetRemoteAccess{}}})
-	if err == nil || !strings.Contains(err.Error(), "unlink them first") {
-		t.Fatalf("remote off while linked: %v", err)
-	}
 	call(t, a.c, &pb.ClientMessage{Msg: &pb.ClientMessage_StopSharing{StopSharing: &pb.StopSharing{}}})
 	time.Sleep(300 * time.Millisecond)
 	waitComputers(t, a, "b still online on a", hasComputer(b.uid, true))

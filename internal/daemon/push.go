@@ -223,8 +223,8 @@ const maxPushPhones = 32
 // sorted, for its record as linked computers get it: none while phones
 // can't connect to act on them (as push). Callers hold d.mu.
 func (d *Daemon) pushPhones() []string {
-	if d.idErr != nil {
-		return nil
+	if d.idErr != nil || d.outOnly() {
+		return nil // (remote access off: none pushed to, push)
 	}
 	recs, _ := d.store.Records("push")
 	var out []string
@@ -488,8 +488,8 @@ func attentionPush(item *pb.AttentionItem, who string) (event, body string) {
 // away: now, or when you become so, if pending (called holding d.mu) still
 // says it's waiting on you then. Callers hold d.mu.
 func (d *Daemon) push(event, collapse string, n pushNote, pending func() bool) {
-	if d.idErr != nil {
-		return // phones can't connect to act on it (identityGate)
+	if d.idErr != nil || d.outOnly() {
+		return // phones can't connect to act on it (identityGate; remote access off: nothing goes out)
 	}
 	if pushed != nil {
 		pushed(event, collapse)
@@ -536,7 +536,7 @@ func (d *Daemon) pushWhenAway(event, collapse string, n pushNote, pending func()
 	}
 	var to []target
 	d.mu.Lock()
-	if pending != nil && !pending() {
+	if pending != nil && !pending() || d.outOnly() { // (remote access turned off meanwhile)
 		d.mu.Unlock()
 		return
 	}
@@ -574,7 +574,7 @@ func (d *Daemon) pushWhenAway(event, collapse string, n pushNote, pending func()
 // pushNow sends n to these phones now, whether or not you're at the Mac
 // (a Hammock Key request asks here and there at once). Callers hold d.mu.
 func (d *Daemon) pushNow(deviceIDs []string, n pushNote, collapse string) {
-	if d.idErr != nil {
+	if d.idErr != nil || d.outOnly() {
 		return // as push
 	}
 	recs, err := d.store.Records("push")
@@ -643,8 +643,8 @@ func (d *Daemon) noteBadge(deviceID string, r *pb.RegisterPush, count int) {
 // count, a phone left showing a number is told so, with a silent push of
 // its own if it isn't getting one already. Callers hold d.mu.
 func (d *Daemon) clearPushes(u *pb.StateUpdate) {
-	if len(d.pushSent) == 0 && len(d.pushBadge) == 0 {
-		return
+	if len(d.pushSent) == 0 && len(d.pushBadge) == 0 || d.outOnly() {
+		return // (remote access off: nothing goes out, as push)
 	}
 	told := map[string][]string{}
 	for _, l := range [][]string{u.ClearedAttentionIds, u.ResolvedGrantIds, u.ResolvedJoinIds, u.ResolvedHammockKeyIds} {

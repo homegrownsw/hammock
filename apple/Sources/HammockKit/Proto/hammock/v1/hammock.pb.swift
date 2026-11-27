@@ -2659,7 +2659,8 @@ public nonisolated struct Hammock_V1_ClientMessage: Sendable {
 
   /// Listens on remote access's networks afresh, with the same settings, while
   /// it's on: what turning it off and on again would do, without turning
-  /// it off (refused while a computer is linked). Local clients only.
+  /// it off (which would turn linked computers' links out only). Local
+  /// clients only.
   public var restartRemoteAccess: Hammock_V1_RestartRemoteAccess {
     get {
       if case .restartRemoteAccess(let v)? = msg {return v}
@@ -2708,6 +2709,18 @@ public nonisolated struct Hammock_V1_ClientMessage: Sendable {
       return Hammock_V1_PinCommand()
     }
     set {msg = .pinCommand(newValue)}
+  }
+
+  /// A linked computer that links out only (Computer.out_only) sends its
+  /// own record over its link, as the others send theirs to the links
+  /// they're subscribed by: on connecting, and when it changes. Linked
+  /// computers only. No reply.
+  public var peerRecord: Hammock_V1_Computers {
+    get {
+      if case .peerRecord(let v)? = msg {return v}
+      return Hammock_V1_Computers()
+    }
+    set {msg = .peerRecord(newValue)}
   }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -2942,7 +2955,8 @@ public nonisolated struct Hammock_V1_ClientMessage: Sendable {
     case resolveEditorLinks(Hammock_V1_ResolveEditorLinks)
     /// Listens on remote access's networks afresh, with the same settings, while
     /// it's on: what turning it off and on again would do, without turning
-    /// it off (refused while a computer is linked). Local clients only.
+    /// it off (which would turn linked computers' links out only). Local
+    /// clients only.
     case restartRemoteAccess(Hammock_V1_RestartRemoteAccess)
     /// What you've typed in a pane's agent view message box, not yet sent,
     /// so your other devices show it too. Your own devices only (not guests
@@ -2958,6 +2972,11 @@ public nonisolated struct Hammock_V1_ClientMessage: Sendable {
     /// Design notes on a browser or simulator pane (pins.go): drop a pin,
     /// note it, send them all to an agent. Replies PinReply.
     case pinCommand(Hammock_V1_PinCommand)
+    /// A linked computer that links out only (Computer.out_only) sends its
+    /// own record over its link, as the others send theirs to the links
+    /// they're subscribed by: on connecting, and when it changes. Linked
+    /// computers only. No reply.
+    case peerRecord(Hammock_V1_Computers)
 
   }
 
@@ -5061,7 +5080,9 @@ public nonisolated struct Hammock_V1_RevokeDevice: Sendable {
   public init() {}
 }
 
-/// Turns the Tailscale listener on or off (persisted).
+/// Turns remote access on or off (persisted). Off, nothing connects here:
+/// computers still linked see none of this one's Groups, and their links
+/// are out only from here (Computer.out_only); phones aren't notified.
 public nonisolated struct Hammock_V1_SetRemoteAccess: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -8673,6 +8694,15 @@ public nonisolated struct Hammock_V1_Computer: @unchecked Sendable {
     set {_uniqueStorage()._pushPhones = newValue}
   }
 
+  /// It accepts no connections (its remote access is off): it dials the
+  /// computers it's linked with, and they never dial it, nor see its Groups.
+  /// Its record comes over its own link (ClientMessage.peer_record); it's
+  /// online while that link is up. It has no addresses.
+  public var outOnly: Bool {
+    get {_storage._outOnly}
+    set {_uniqueStorage()._outOnly = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -8916,58 +8946,115 @@ public nonisolated struct Hammock_V1_LegacyUnlink: Sendable {
 }
 
 /// A link waiting on its code check, on both computers.
-public nonisolated struct Hammock_V1_LinkRequest: Sendable {
+public nonisolated struct Hammock_V1_LinkRequest: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  public var id: String = String()
+  public var id: String {
+    get {_storage._id}
+    set {_uniqueStorage()._id = newValue}
+  }
 
   /// the other computer
-  public var name: String = String()
+  public var name: String {
+    get {_storage._name}
+    set {_uniqueStorage()._name = newValue}
+  }
 
-  public var model: String = String()
+  public var model: String {
+    get {_storage._model}
+    set {_uniqueStorage()._model = newValue}
+  }
 
-  public var kind: String = String()
+  public var kind: String {
+    get {_storage._kind}
+    set {_uniqueStorage()._kind = newValue}
+  }
 
-  public var os: String = String()
+  public var os: String {
+    get {_storage._os}
+    set {_uniqueStorage()._os = newValue}
+  }
 
   /// "482 913": the same on both if nobody's in between
-  public var code: String = String()
+  public var code: String {
+    get {_storage._code}
+    set {_uniqueStorage()._code = newValue}
+  }
 
   /// the other computer's key
-  public var fingerprint: String = String()
+  public var fingerprint: String {
+    get {_storage._fingerprint}
+    set {_uniqueStorage()._fingerprint = newValue}
+  }
 
   /// the other computer asked
-  public var incoming: Bool = false
+  public var incoming: Bool {
+    get {_storage._incoming}
+    set {_uniqueStorage()._incoming = newValue}
+  }
 
   /// answered here; waiting on the other computer
-  public var acceptedHere: Bool = false
+  public var acceptedHere: Bool {
+    get {_storage._acceptedHere}
+    set {_uniqueStorage()._acceptedHere = newValue}
+  }
 
   /// the other computer said they match
-  public var acceptedThere: Bool = false
+  public var acceptedThere: Bool {
+    get {_storage._acceptedThere}
+    set {_uniqueStorage()._acceptedThere = newValue}
+  }
 
-  public var createdUnixMs: Int64 = 0
+  public var createdUnixMs: Int64 {
+    get {_storage._createdUnixMs}
+    set {_uniqueStorage()._createdUnixMs = newValue}
+  }
 
   /// Who Tailscale says it is (not what it calls itself): its host name and
   /// the login that owns it, when it came over Tailscale.
-  public var tailscaleHost: String = String()
+  public var tailscaleHost: String {
+    get {_storage._tailscaleHost}
+    set {_uniqueStorage()._tailscaleHost = newValue}
+  }
 
-  public var tailscaleLogin: String = String()
+  public var tailscaleLogin: String {
+    get {_storage._tailscaleLogin}
+    set {_uniqueStorage()._tailscaleLogin = newValue}
+  }
 
   /// When this computer unlinked the other one (0: never), and at which
   /// computer's request ("" a person here): it's asking to be linked again.
-  public var unlinkedUnixMs: Int64 = 0
+  public var unlinkedUnixMs: Int64 {
+    get {_storage._unlinkedUnixMs}
+    set {_uniqueStorage()._unlinkedUnixMs = newValue}
+  }
 
-  public var unlinkedBy: String = String()
+  public var unlinkedBy: String {
+    get {_storage._unlinkedBy}
+    set {_uniqueStorage()._unlinkedBy = newValue}
+  }
 
   /// Where it came from, when not over Tailscale: its address and the
   /// network ("192.168.1.30 on Wi-Fi").
-  public var source: String = String()
+  public var source: String {
+    get {_storage._source}
+    set {_uniqueStorage()._source = newValue}
+  }
+
+  /// The link is out only (Computer.out_only): the asking computer's remote
+  /// access is off, so it sees this one's Groups, never the other way.
+  public var outOnly: Bool {
+    get {_storage._outOnly}
+    set {_uniqueStorage()._outOnly = newValue}
+  }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
+
+  fileprivate var _storage = _StorageClass.defaultInstance
 }
 
 /// The computers on your tailnet owned by your Tailscale user (as `tailscale
@@ -9031,15 +9118,19 @@ public nonisolated struct Hammock_V1_DiscoveredComputer: Sendable {
 
 /// Starts linking with a computer: address is host:port (from
 /// DiscoverComputers) or a hammock://link/ link (CreateLinkInvite on the other
-/// computer). Turns remote access on here. Replies Ok once linked, or Error
-/// (declined, codes differ, unreachable). While it waits, both computers
-/// show a LinkRequest with the code.
+/// computer). Turns remote access on here, unless out_only: then, while it's
+/// off, this computer links out only (Computer.out_only): it sees the other's
+/// Groups, and the other never connects here. Replies Ok once linked, or
+/// Error (declined, codes differ, unreachable). While it waits, both
+/// computers show a LinkRequest with the code.
 public nonisolated struct Hammock_V1_LinkComputer: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
   public var address: String = String()
+
+  public var outOnly: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -14456,7 +14547,7 @@ nonisolated extension Hammock_V1_UsageWindow: SwiftProtobuf.Message, SwiftProtob
 
 nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ClientMessage"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{2}\u{9}hello\0\u{1}subscribe\0\u{3}create_group\0\u{3}rename_group\0\u{3}close_group\0\u{3}create_tab\0\u{3}rename_tab\0\u{3}close_tab\0\u{3}create_pane\0\u{3}close_pane\0\u{3}attach_pane\0\u{3}detach_pane\0\u{1}input\0\u{1}resize\0\u{1}focus\0\u{3}read_pane\0\u{3}signal_pane\0\u{1}presence\0\u{3}clear_attention\0\u{3}set_layout\0\u{3}request_grant\0\u{3}respond_grant\0\u{3}move_tab\0\u{3}create_pairing\0\u{3}list_devices\0\u{3}revoke_device\0\u{1}pair\0\u{1}authenticate\0\u{3}set_remote_access\0\u{3}switch_agent\0\u{3}set_colors\0\u{3}set_group_icon\0\u{3}shutdown_daemon\0\u{3}list_audit\0\u{3}browser_navigate\0\u{3}watch_agent\0\u{3}agent_answer\0\u{3}agent_send\0\u{3}read_agent_file\0\u{3}create_invite\0\u{3}revoke_invite\0\u{3}respond_join\0\u{3}set_member\0\u{3}stop_sharing\0\u{4}\u{2}set_profile\0\u{3}join_shared\0\u{3}leave_shared\0\u{3}peer_hello\0\u{3}peer_join\0\u{3}upload_file\0\u{3}move_group\0\u{3}register_push\0\u{3}browser_call\0\u{3}browser_logs\0\u{3}simulator_call\0\u{3}merge_tab\0\u{3}break_out_pane\0\u{3}replace_pane\0\u{3}show_pairing\0\u{3}open_media\0\u{3}close_media\0\u{3}media_ack\0\u{3}browser_input\0\u{3}browser_menu_choice\0\u{3}list_sessions\0\u{3}resume_session\0\u{3}watch_log\0\u{3}read_log\0\u{3}clear_log\0\u{3}start_agent\0\u{3}list_folders\0\u{3}read_session\0\u{3}read_group_icon\0\u{3}set_group_icon_image\0\u{3}session_excerpts\0\u{3}reopen_closed\0\u{3}discover_computers\0\u{3}link_computer\0\u{3}respond_link\0\u{3}unlink_computer\0\u{3}set_computer_tint\0\u{3}create_link_invite\0\u{3}peer_link_hello\0\u{3}peer_link_reveal\0\u{3}peer_link_confirm\0\u{4}\u{2}introduce_computers\0\u{3}peer_intro_link\0\u{3}unlink_request\0\u{3}ssh_agent_call\0\u{3}set_group_folder\0\u{3}list_displays\0\u{3}screen_input\0\u{3}set_media_view\0\u{3}server_status\0\u{3}end_screen_session\0\u{3}screen_snapshot\0\u{3}save_schedule\0\u{3}delete_schedule\0\u{3}run_schedule\0\u{3}set_schedule_paused\0\u{3}skip_schedule_run\0\u{3}show_output\0\u{3}float_pane\0\u{3}hammock_key_command\0\u{3}respond_hammock_key\0\u{3}set_approval_key\0\u{3}ssh_setup\0\u{3}set_remote_networks\0\u{3}editor_push\0\u{3}editor_select\0\u{3}editor_command\0\u{3}read_editor\0\u{3}list_files\0\u{3}config_written\0\u{3}prove_app\0\u{3}read_diff\0\u{3}read_diff_file\0\u{3}diff_command\0\u{3}read_review\0\u{3}list_reviews\0\u{3}review_command\0\u{3}read_repo\0\u{3}hold_pane\0\u{3}sleep_pane\0\u{3}open_window\0\u{3}read_editor_image\0\u{3}restart_pane\0\u{3}list_dir\0\u{3}files_command\0\u{3}resolve_editor_links\0\u{3}restart_remote_access\0\u{3}set_composer_draft\0\u{3}cancel_limit_resume\0\u{4}\u{6}schedule_webhook\0\u{3}calendar_events\0\u{4}\u{13}remove_worktree\0\u{4}\u{5}pin_command\0\u{b}set_group_agents\0\u{c}6\u{1}\u{c}`\u{1}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{2}\u{9}hello\0\u{1}subscribe\0\u{3}create_group\0\u{3}rename_group\0\u{3}close_group\0\u{3}create_tab\0\u{3}rename_tab\0\u{3}close_tab\0\u{3}create_pane\0\u{3}close_pane\0\u{3}attach_pane\0\u{3}detach_pane\0\u{1}input\0\u{1}resize\0\u{1}focus\0\u{3}read_pane\0\u{3}signal_pane\0\u{1}presence\0\u{3}clear_attention\0\u{3}set_layout\0\u{3}request_grant\0\u{3}respond_grant\0\u{3}move_tab\0\u{3}create_pairing\0\u{3}list_devices\0\u{3}revoke_device\0\u{1}pair\0\u{1}authenticate\0\u{3}set_remote_access\0\u{3}switch_agent\0\u{3}set_colors\0\u{3}set_group_icon\0\u{3}shutdown_daemon\0\u{3}list_audit\0\u{3}browser_navigate\0\u{3}watch_agent\0\u{3}agent_answer\0\u{3}agent_send\0\u{3}read_agent_file\0\u{3}create_invite\0\u{3}revoke_invite\0\u{3}respond_join\0\u{3}set_member\0\u{3}stop_sharing\0\u{4}\u{2}set_profile\0\u{3}join_shared\0\u{3}leave_shared\0\u{3}peer_hello\0\u{3}peer_join\0\u{3}upload_file\0\u{3}move_group\0\u{3}register_push\0\u{3}browser_call\0\u{3}browser_logs\0\u{3}simulator_call\0\u{3}merge_tab\0\u{3}break_out_pane\0\u{3}replace_pane\0\u{3}show_pairing\0\u{3}open_media\0\u{3}close_media\0\u{3}media_ack\0\u{3}browser_input\0\u{3}browser_menu_choice\0\u{3}list_sessions\0\u{3}resume_session\0\u{3}watch_log\0\u{3}read_log\0\u{3}clear_log\0\u{3}start_agent\0\u{3}list_folders\0\u{3}read_session\0\u{3}read_group_icon\0\u{3}set_group_icon_image\0\u{3}session_excerpts\0\u{3}reopen_closed\0\u{3}discover_computers\0\u{3}link_computer\0\u{3}respond_link\0\u{3}unlink_computer\0\u{3}set_computer_tint\0\u{3}create_link_invite\0\u{3}peer_link_hello\0\u{3}peer_link_reveal\0\u{3}peer_link_confirm\0\u{4}\u{2}introduce_computers\0\u{3}peer_intro_link\0\u{3}unlink_request\0\u{3}ssh_agent_call\0\u{3}set_group_folder\0\u{3}list_displays\0\u{3}screen_input\0\u{3}set_media_view\0\u{3}server_status\0\u{3}end_screen_session\0\u{3}screen_snapshot\0\u{3}save_schedule\0\u{3}delete_schedule\0\u{3}run_schedule\0\u{3}set_schedule_paused\0\u{3}skip_schedule_run\0\u{3}show_output\0\u{3}float_pane\0\u{3}hammock_key_command\0\u{3}respond_hammock_key\0\u{3}set_approval_key\0\u{3}ssh_setup\0\u{3}set_remote_networks\0\u{3}editor_push\0\u{3}editor_select\0\u{3}editor_command\0\u{3}read_editor\0\u{3}list_files\0\u{3}config_written\0\u{3}prove_app\0\u{3}read_diff\0\u{3}read_diff_file\0\u{3}diff_command\0\u{3}read_review\0\u{3}list_reviews\0\u{3}review_command\0\u{3}read_repo\0\u{3}hold_pane\0\u{3}sleep_pane\0\u{3}open_window\0\u{3}read_editor_image\0\u{3}restart_pane\0\u{3}list_dir\0\u{3}files_command\0\u{3}resolve_editor_links\0\u{3}restart_remote_access\0\u{3}set_composer_draft\0\u{3}cancel_limit_resume\0\u{4}\u{6}schedule_webhook\0\u{3}calendar_events\0\u{4}\u{13}remove_worktree\0\u{4}\u{5}pin_command\0\u{3}peer_record\0\u{b}set_group_agents\0\u{c}6\u{1}\u{c}`\u{1}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -16246,6 +16337,19 @@ nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProt
           self.msg = .pinCommand(v)
         }
       }()
+      case 176: try {
+        var v: Hammock_V1_Computers?
+        var hadOneofValue = false
+        if let current = self.msg {
+          hadOneofValue = true
+          if case .peerRecord(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.msg = .peerRecord(v)
+        }
+      }()
       default: break
       }
     }
@@ -16807,6 +16911,10 @@ nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProt
     case .pinCommand?: try {
       guard case .pinCommand(let v)? = self.msg else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 175)
+    }()
+    case .peerRecord?: try {
+      guard case .peerRecord(let v)? = self.msg else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 176)
     }()
     case nil: break
     }
@@ -26474,7 +26582,7 @@ nonisolated extension Hammock_V1_Computers: SwiftProtobuf.Message, SwiftProtobuf
 
 nonisolated extension Hammock_V1_Computer: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Computer"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}user_id\0\u{1}name\0\u{1}model\0\u{1}kind\0\u{1}os\0\u{1}tint\0\u{3}this_computer\0\u{1}online\0\u{3}last_seen_unix_ms\0\u{1}fingerprint\0\u{3}linked_unix_ms\0\u{3}last_input_unix_ms\0\u{1}addresses\0\u{3}cert_sha256\0\u{2}\u{4}notifies\0\u{2}\u{4}key\0\u{2}\u{2}refused\0\u{3}idle_ms\0\u{3}cert_changed\0\u{1}suspect\0\u{2}\u{3}chain\0\u{3}lan_subnets\0\u{1}icon\0\u{3}default_agent\0\u{3}push_phones\0\u{c}\u{f}\u{1}\u{c}\u{10}\u{1}\u{c}\u{11}\u{1}\u{c}\u{13}\u{1}\u{c}\u{14}\u{1}\u{c}\u{15}\u{1}\u{c}\u{17}\u{1}\u{c}\u{1c}\u{1}\u{c}\u{1d}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}user_id\0\u{1}name\0\u{1}model\0\u{1}kind\0\u{1}os\0\u{1}tint\0\u{3}this_computer\0\u{1}online\0\u{3}last_seen_unix_ms\0\u{1}fingerprint\0\u{3}linked_unix_ms\0\u{3}last_input_unix_ms\0\u{1}addresses\0\u{3}cert_sha256\0\u{2}\u{4}notifies\0\u{2}\u{4}key\0\u{2}\u{2}refused\0\u{3}idle_ms\0\u{3}cert_changed\0\u{1}suspect\0\u{2}\u{3}chain\0\u{3}lan_subnets\0\u{1}icon\0\u{3}default_agent\0\u{3}push_phones\0\u{3}out_only\0\u{c}\u{f}\u{1}\u{c}\u{10}\u{1}\u{c}\u{11}\u{1}\u{c}\u{13}\u{1}\u{c}\u{14}\u{1}\u{c}\u{15}\u{1}\u{c}\u{17}\u{1}\u{c}\u{1c}\u{1}\u{c}\u{1d}\u{1}")
 
   fileprivate class _StorageClass {
     var _userID: String = String()
@@ -26502,6 +26610,7 @@ nonisolated extension Hammock_V1_Computer: SwiftProtobuf.Message, SwiftProtobuf.
     var _icon: String = String()
     var _defaultAgent: String = String()
     var _pushPhones: [String] = []
+    var _outOnly: Bool = false
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -26537,6 +26646,7 @@ nonisolated extension Hammock_V1_Computer: SwiftProtobuf.Message, SwiftProtobuf.
       _icon = source._icon
       _defaultAgent = source._defaultAgent
       _pushPhones = source._pushPhones
+      _outOnly = source._outOnly
     }
   }
 
@@ -26580,6 +26690,7 @@ nonisolated extension Hammock_V1_Computer: SwiftProtobuf.Message, SwiftProtobuf.
         case 32: try { try decoder.decodeSingularStringField(value: &_storage._icon) }()
         case 33: try { try decoder.decodeSingularStringField(value: &_storage._defaultAgent) }()
         case 34: try { try decoder.decodeRepeatedStringField(value: &_storage._pushPhones) }()
+        case 35: try { try decoder.decodeSingularBoolField(value: &_storage._outOnly) }()
         default: break
         }
       }
@@ -26663,6 +26774,9 @@ nonisolated extension Hammock_V1_Computer: SwiftProtobuf.Message, SwiftProtobuf.
       if !_storage._pushPhones.isEmpty {
         try visitor.visitRepeatedStringField(value: _storage._pushPhones, fieldNumber: 34)
       }
+      if _storage._outOnly != false {
+        try visitor.visitSingularBoolField(value: _storage._outOnly, fieldNumber: 35)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -26697,6 +26811,7 @@ nonisolated extension Hammock_V1_Computer: SwiftProtobuf.Message, SwiftProtobuf.
         if _storage._icon != rhs_storage._icon {return false}
         if _storage._defaultAgent != rhs_storage._defaultAgent {return false}
         if _storage._pushPhones != rhs_storage._pushPhones {return false}
+        if _storage._outOnly != rhs_storage._outOnly {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -27150,104 +27265,177 @@ nonisolated extension Hammock_V1_LegacyUnlink: SwiftProtobuf.Message, SwiftProto
 
 nonisolated extension Hammock_V1_LinkRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".LinkRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{1}name\0\u{1}model\0\u{1}kind\0\u{1}os\0\u{1}code\0\u{1}fingerprint\0\u{1}incoming\0\u{3}accepted_here\0\u{3}accepted_there\0\u{3}created_unix_ms\0\u{3}tailscale_host\0\u{3}tailscale_login\0\u{3}unlinked_unix_ms\0\u{3}unlinked_by\0\u{1}source\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{1}name\0\u{1}model\0\u{1}kind\0\u{1}os\0\u{1}code\0\u{1}fingerprint\0\u{1}incoming\0\u{3}accepted_here\0\u{3}accepted_there\0\u{3}created_unix_ms\0\u{3}tailscale_host\0\u{3}tailscale_login\0\u{3}unlinked_unix_ms\0\u{3}unlinked_by\0\u{1}source\0\u{3}out_only\0")
+
+  fileprivate class _StorageClass {
+    var _id: String = String()
+    var _name: String = String()
+    var _model: String = String()
+    var _kind: String = String()
+    var _os: String = String()
+    var _code: String = String()
+    var _fingerprint: String = String()
+    var _incoming: Bool = false
+    var _acceptedHere: Bool = false
+    var _acceptedThere: Bool = false
+    var _createdUnixMs: Int64 = 0
+    var _tailscaleHost: String = String()
+    var _tailscaleLogin: String = String()
+    var _unlinkedUnixMs: Int64 = 0
+    var _unlinkedBy: String = String()
+    var _source: String = String()
+    var _outOnly: Bool = false
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _id = source._id
+      _name = source._name
+      _model = source._model
+      _kind = source._kind
+      _os = source._os
+      _code = source._code
+      _fingerprint = source._fingerprint
+      _incoming = source._incoming
+      _acceptedHere = source._acceptedHere
+      _acceptedThere = source._acceptedThere
+      _createdUnixMs = source._createdUnixMs
+      _tailscaleHost = source._tailscaleHost
+      _tailscaleLogin = source._tailscaleLogin
+      _unlinkedUnixMs = source._unlinkedUnixMs
+      _unlinkedBy = source._unlinkedBy
+      _source = source._source
+      _outOnly = source._outOnly
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    while let fieldNumber = try decoder.nextFieldNumber() {
-      // The use of inline closures is to circumvent an issue where the compiler
-      // allocates stack space for every case branch when no optimizations are
-      // enabled. https://github.com/apple/swift-protobuf/issues/1034
-      switch fieldNumber {
-      case 1: try { try decoder.decodeSingularStringField(value: &self.id) }()
-      case 2: try { try decoder.decodeSingularStringField(value: &self.name) }()
-      case 3: try { try decoder.decodeSingularStringField(value: &self.model) }()
-      case 4: try { try decoder.decodeSingularStringField(value: &self.kind) }()
-      case 5: try { try decoder.decodeSingularStringField(value: &self.os) }()
-      case 6: try { try decoder.decodeSingularStringField(value: &self.code) }()
-      case 7: try { try decoder.decodeSingularStringField(value: &self.fingerprint) }()
-      case 8: try { try decoder.decodeSingularBoolField(value: &self.incoming) }()
-      case 9: try { try decoder.decodeSingularBoolField(value: &self.acceptedHere) }()
-      case 10: try { try decoder.decodeSingularBoolField(value: &self.acceptedThere) }()
-      case 11: try { try decoder.decodeSingularInt64Field(value: &self.createdUnixMs) }()
-      case 12: try { try decoder.decodeSingularStringField(value: &self.tailscaleHost) }()
-      case 13: try { try decoder.decodeSingularStringField(value: &self.tailscaleLogin) }()
-      case 14: try { try decoder.decodeSingularInt64Field(value: &self.unlinkedUnixMs) }()
-      case 15: try { try decoder.decodeSingularStringField(value: &self.unlinkedBy) }()
-      case 16: try { try decoder.decodeSingularStringField(value: &self.source) }()
-      default: break
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularStringField(value: &_storage._id) }()
+        case 2: try { try decoder.decodeSingularStringField(value: &_storage._name) }()
+        case 3: try { try decoder.decodeSingularStringField(value: &_storage._model) }()
+        case 4: try { try decoder.decodeSingularStringField(value: &_storage._kind) }()
+        case 5: try { try decoder.decodeSingularStringField(value: &_storage._os) }()
+        case 6: try { try decoder.decodeSingularStringField(value: &_storage._code) }()
+        case 7: try { try decoder.decodeSingularStringField(value: &_storage._fingerprint) }()
+        case 8: try { try decoder.decodeSingularBoolField(value: &_storage._incoming) }()
+        case 9: try { try decoder.decodeSingularBoolField(value: &_storage._acceptedHere) }()
+        case 10: try { try decoder.decodeSingularBoolField(value: &_storage._acceptedThere) }()
+        case 11: try { try decoder.decodeSingularInt64Field(value: &_storage._createdUnixMs) }()
+        case 12: try { try decoder.decodeSingularStringField(value: &_storage._tailscaleHost) }()
+        case 13: try { try decoder.decodeSingularStringField(value: &_storage._tailscaleLogin) }()
+        case 14: try { try decoder.decodeSingularInt64Field(value: &_storage._unlinkedUnixMs) }()
+        case 15: try { try decoder.decodeSingularStringField(value: &_storage._unlinkedBy) }()
+        case 16: try { try decoder.decodeSingularStringField(value: &_storage._source) }()
+        case 17: try { try decoder.decodeSingularBoolField(value: &_storage._outOnly) }()
+        default: break
+        }
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    if !self.id.isEmpty {
-      try visitor.visitSingularStringField(value: self.id, fieldNumber: 1)
-    }
-    if !self.name.isEmpty {
-      try visitor.visitSingularStringField(value: self.name, fieldNumber: 2)
-    }
-    if !self.model.isEmpty {
-      try visitor.visitSingularStringField(value: self.model, fieldNumber: 3)
-    }
-    if !self.kind.isEmpty {
-      try visitor.visitSingularStringField(value: self.kind, fieldNumber: 4)
-    }
-    if !self.os.isEmpty {
-      try visitor.visitSingularStringField(value: self.os, fieldNumber: 5)
-    }
-    if !self.code.isEmpty {
-      try visitor.visitSingularStringField(value: self.code, fieldNumber: 6)
-    }
-    if !self.fingerprint.isEmpty {
-      try visitor.visitSingularStringField(value: self.fingerprint, fieldNumber: 7)
-    }
-    if self.incoming != false {
-      try visitor.visitSingularBoolField(value: self.incoming, fieldNumber: 8)
-    }
-    if self.acceptedHere != false {
-      try visitor.visitSingularBoolField(value: self.acceptedHere, fieldNumber: 9)
-    }
-    if self.acceptedThere != false {
-      try visitor.visitSingularBoolField(value: self.acceptedThere, fieldNumber: 10)
-    }
-    if self.createdUnixMs != 0 {
-      try visitor.visitSingularInt64Field(value: self.createdUnixMs, fieldNumber: 11)
-    }
-    if !self.tailscaleHost.isEmpty {
-      try visitor.visitSingularStringField(value: self.tailscaleHost, fieldNumber: 12)
-    }
-    if !self.tailscaleLogin.isEmpty {
-      try visitor.visitSingularStringField(value: self.tailscaleLogin, fieldNumber: 13)
-    }
-    if self.unlinkedUnixMs != 0 {
-      try visitor.visitSingularInt64Field(value: self.unlinkedUnixMs, fieldNumber: 14)
-    }
-    if !self.unlinkedBy.isEmpty {
-      try visitor.visitSingularStringField(value: self.unlinkedBy, fieldNumber: 15)
-    }
-    if !self.source.isEmpty {
-      try visitor.visitSingularStringField(value: self.source, fieldNumber: 16)
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      if !_storage._id.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._id, fieldNumber: 1)
+      }
+      if !_storage._name.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._name, fieldNumber: 2)
+      }
+      if !_storage._model.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._model, fieldNumber: 3)
+      }
+      if !_storage._kind.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._kind, fieldNumber: 4)
+      }
+      if !_storage._os.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._os, fieldNumber: 5)
+      }
+      if !_storage._code.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._code, fieldNumber: 6)
+      }
+      if !_storage._fingerprint.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._fingerprint, fieldNumber: 7)
+      }
+      if _storage._incoming != false {
+        try visitor.visitSingularBoolField(value: _storage._incoming, fieldNumber: 8)
+      }
+      if _storage._acceptedHere != false {
+        try visitor.visitSingularBoolField(value: _storage._acceptedHere, fieldNumber: 9)
+      }
+      if _storage._acceptedThere != false {
+        try visitor.visitSingularBoolField(value: _storage._acceptedThere, fieldNumber: 10)
+      }
+      if _storage._createdUnixMs != 0 {
+        try visitor.visitSingularInt64Field(value: _storage._createdUnixMs, fieldNumber: 11)
+      }
+      if !_storage._tailscaleHost.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._tailscaleHost, fieldNumber: 12)
+      }
+      if !_storage._tailscaleLogin.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._tailscaleLogin, fieldNumber: 13)
+      }
+      if _storage._unlinkedUnixMs != 0 {
+        try visitor.visitSingularInt64Field(value: _storage._unlinkedUnixMs, fieldNumber: 14)
+      }
+      if !_storage._unlinkedBy.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._unlinkedBy, fieldNumber: 15)
+      }
+      if !_storage._source.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._source, fieldNumber: 16)
+      }
+      if _storage._outOnly != false {
+        try visitor.visitSingularBoolField(value: _storage._outOnly, fieldNumber: 17)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hammock_V1_LinkRequest, rhs: Hammock_V1_LinkRequest) -> Bool {
-    if lhs.id != rhs.id {return false}
-    if lhs.name != rhs.name {return false}
-    if lhs.model != rhs.model {return false}
-    if lhs.kind != rhs.kind {return false}
-    if lhs.os != rhs.os {return false}
-    if lhs.code != rhs.code {return false}
-    if lhs.fingerprint != rhs.fingerprint {return false}
-    if lhs.incoming != rhs.incoming {return false}
-    if lhs.acceptedHere != rhs.acceptedHere {return false}
-    if lhs.acceptedThere != rhs.acceptedThere {return false}
-    if lhs.createdUnixMs != rhs.createdUnixMs {return false}
-    if lhs.tailscaleHost != rhs.tailscaleHost {return false}
-    if lhs.tailscaleLogin != rhs.tailscaleLogin {return false}
-    if lhs.unlinkedUnixMs != rhs.unlinkedUnixMs {return false}
-    if lhs.unlinkedBy != rhs.unlinkedBy {return false}
-    if lhs.source != rhs.source {return false}
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._id != rhs_storage._id {return false}
+        if _storage._name != rhs_storage._name {return false}
+        if _storage._model != rhs_storage._model {return false}
+        if _storage._kind != rhs_storage._kind {return false}
+        if _storage._os != rhs_storage._os {return false}
+        if _storage._code != rhs_storage._code {return false}
+        if _storage._fingerprint != rhs_storage._fingerprint {return false}
+        if _storage._incoming != rhs_storage._incoming {return false}
+        if _storage._acceptedHere != rhs_storage._acceptedHere {return false}
+        if _storage._acceptedThere != rhs_storage._acceptedThere {return false}
+        if _storage._createdUnixMs != rhs_storage._createdUnixMs {return false}
+        if _storage._tailscaleHost != rhs_storage._tailscaleHost {return false}
+        if _storage._tailscaleLogin != rhs_storage._tailscaleLogin {return false}
+        if _storage._unlinkedUnixMs != rhs_storage._unlinkedUnixMs {return false}
+        if _storage._unlinkedBy != rhs_storage._unlinkedBy {return false}
+        if _storage._source != rhs_storage._source {return false}
+        if _storage._outOnly != rhs_storage._outOnly {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -27369,7 +27557,7 @@ nonisolated extension Hammock_V1_DiscoveredComputer: SwiftProtobuf.Message, Swif
 
 nonisolated extension Hammock_V1_LinkComputer: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".LinkComputer"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}address\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}address\0\u{3}out_only\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -27378,6 +27566,7 @@ nonisolated extension Hammock_V1_LinkComputer: SwiftProtobuf.Message, SwiftProto
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularStringField(value: &self.address) }()
+      case 2: try { try decoder.decodeSingularBoolField(value: &self.outOnly) }()
       default: break
       }
     }
@@ -27387,11 +27576,15 @@ nonisolated extension Hammock_V1_LinkComputer: SwiftProtobuf.Message, SwiftProto
     if !self.address.isEmpty {
       try visitor.visitSingularStringField(value: self.address, fieldNumber: 1)
     }
+    if self.outOnly != false {
+      try visitor.visitSingularBoolField(value: self.outOnly, fieldNumber: 2)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hammock_V1_LinkComputer, rhs: Hammock_V1_LinkComputer) -> Bool {
     if lhs.address != rhs.address {return false}
+    if lhs.outOnly != rhs.outOnly {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

@@ -874,7 +874,8 @@ func (d *Daemon) revokeDevice(id string) error {
 
 // restartRemote listens afresh while remote access is on, with the same
 // settings: what turning it off and on again would do, without turning it
-// off (refused while a computer is linked) or changing what's remembered.
+// off (which would link linked computers out only for a moment) or changing
+// what's remembered.
 // Remote clients are disconnected, and come back. It says why if it
 // listens nowhere (on the chosen networks,
 // watchNetworks tries again every few seconds). actor: who asked
@@ -924,11 +925,10 @@ func (d *Daemon) restartRemote(actor string) error {
 	return nil
 }
 
-// setRemoteAccess turns remote access on or off and remembers it. Callers hold d.mu.
+// setRemoteAccess turns remote access on or off and remembers it. Off,
+// computers still linked are linked out only from here (they're told, and
+// stop dialling this one); on, they dial it again. Callers hold d.mu.
 func (d *Daemon) setRemoteAccess(on bool) error {
-	if !on && d.linkedCount() > 0 {
-		return errors.New("your linked computers reach this one through remote access: unlink them first (Settings ▸ Devices ▸ Your Computers, or hmk computers unlink)")
-	}
 	if on {
 		if err := d.startRemote(); err != nil {
 			return err
@@ -936,5 +936,16 @@ func (d *Daemon) setRemoteAccess(on bool) error {
 	} else {
 		d.stopRemote()
 	}
-	return d.store.SetSetting("remote", strconv.FormatBool(on))
+	if err := d.store.SetSetting("remote", strconv.FormatBool(on)); err != nil {
+		return err
+	}
+	if d.comp.self != nil {
+		d.refreshLinked() // (out only, or not: the record says)
+		for uid := range d.comp.links {
+			if d.isLinked(uid) {
+				d.ensureLink(uid) // (one that's out only: dialled while this one is too)
+			}
+		}
+	}
+	return nil
 }

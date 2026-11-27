@@ -38,6 +38,11 @@ import (
 // computers it's linked with, made by a person (the code check) or by an
 // introduction from one it was linked with then (links.go), and its own
 // list of keys it refuses. Nothing is relayed or gossiped.
+//
+// A computer with remote access off links out only (Computer.out_only): it
+// dials the computers it's linked with and sees their Groups, and they never
+// dial it, nor see its Groups, nor ask it for anything (its SSH keys, an
+// introduction, an unlink). Its record goes up its own link (peer_record).
 
 // linkPalette is the badge colours given to computers as they're linked.
 var linkPalette = []string{"#2563EB", "#7C3AED", "#15803D", "#C2410C", "#DB2777", "#0891B2", "#A16207", "#4F46E5"}
@@ -220,20 +225,25 @@ func (d *Daemon) refreshSelf(publish bool) {
 	want := &pb.Computer{
 		UserId: d.id.me.UserId, Name: d.macName(), Model: hw.model, Kind: hw.kind, Os: hw.os,
 		Fingerprint: keyFingerprint(d.id.me.UserId), Addresses: addrs, CertSha256: d.remote.fingerprint,
-		Key: d.id.key.Public().(ed25519.PublicKey), LanSubnets: lan,
+		Key: d.id.key.Public().(ed25519.PublicKey), LanSubnets: lan, OutOnly: d.outOnly(),
 	}
 	if want.CertSha256 == "" {
 		want.CertSha256 = s.CertSha256
 	}
-	if len(want.Addresses) == 0 {
+	switch {
+	case want.OutOnly:
+		// Reached nowhere: the others never dial it.
+		want.Addresses, want.LanSubnets = nil, nil
+	case len(want.Addresses) == 0:
 		want.Addresses, want.LanSubnets = s.Addresses, s.LanSubnets
 	}
 	if s.UserId == want.UserId && s.Name == want.Name && s.Model == want.Model && s.Kind == want.Kind && s.Os == want.Os &&
-		slices.Equal(s.Addresses, want.Addresses) && slices.Equal(s.LanSubnets, want.LanSubnets) && s.CertSha256 == want.CertSha256 && bytes.Equal(s.Key, want.Key) {
+		slices.Equal(s.Addresses, want.Addresses) && slices.Equal(s.LanSubnets, want.LanSubnets) && s.CertSha256 == want.CertSha256 &&
+		bytes.Equal(s.Key, want.Key) && s.OutOnly == want.OutOnly {
 		return
 	}
 	s.UserId, s.Name, s.Model, s.Kind, s.Os, s.Fingerprint, s.Key = want.UserId, want.Name, want.Model, want.Kind, want.Os, want.Fingerprint, want.Key
-	s.Addresses, s.LanSubnets, s.CertSha256 = want.Addresses, want.LanSubnets, want.CertSha256
+	s.Addresses, s.LanSubnets, s.CertSha256, s.OutOnly = want.Addresses, want.LanSubnets, want.CertSha256, want.OutOnly
 	d.saveSelf()
 	if publish {
 		d.publishComputers()
@@ -295,6 +305,41 @@ func (d *Daemon) linkOf(uid string) *peerLink {
 	return nil
 }
 
+// outOnly: this computer accepts no connections (remote access is turned
+// off: as chosen, not whether it's listening this moment), so it links out
+// only. Callers hold d.mu.
+func (d *Daemon) outOnly() bool {
+	if s := d.store.Setting("remote"); s != "" {
+		return s != "true"
+	}
+	return !d.cfg.Remote
+}
+
+// linksOutOnly: linked computer uid links out only (Computer.out_only): this
+// one never dials it, and it may not ask this one for its SSH keys. Callers
+// hold d.mu.
+func (d *Daemon) linksOutOnly(uid string) bool {
+	return d.comp.links[uid].GetRecord().GetOutOnly()
+}
+
+// reachable: linked computer uid is connected now: this one's link to it is
+// up, or, one that links out only, its link here is. Callers hold d.mu.
+func (d *Daemon) reachable(uid string) bool {
+	if !d.isLinked(uid) {
+		return false
+	}
+	if d.linksOutOnly(uid) {
+		for c := range d.conns {
+			if c.peer == uid && c.subscribed && c.ctx.Err() == nil {
+				return true
+			}
+		}
+		return false
+	}
+	pl := d.linkOf(uid)
+	return pl != nil && pl.online
+}
+
 // onLinked: id (a Group, tab, pane) is on a linked computer. Callers hold d.mu.
 func (d *Daemon) onLinked(id string) bool {
 	l := d.routes[id]
@@ -313,6 +358,9 @@ func (d *Daemon) selfRecord(forPeer bool) *pb.Computer {
 		hw := knownHardware(self)
 		self.UserId, self.Fingerprint = d.id.me.UserId, keyFingerprint(d.id.me.UserId)
 		self.Name, self.Model, self.Kind, self.Os = cmpOr(d.id.me.DeviceName, "This computer"), hw.model, hw.kind, hw.os
+	}
+	if self.OutOnly = d.outOnly(); self.OutOnly {
+		self.Addresses, self.LanSubnets = nil, nil // (as refreshSelf keeps it: before it's run, too)
 	}
 	self.Notifies = d.canNotify()
 	self.DefaultAgent = d.defaultAgent()
@@ -342,9 +390,7 @@ func (d *Daemon) computersState(forPeer bool) *pb.Computers {
 		x := proto.CloneOf(l.Record)
 		x.ThisComputer, x.Refused, x.Suspect, x.CertChanged, x.Online = false, l.Refused, l.Suspect, l.CertChanged, false
 		x.PushPhones = nil // between your computers only
-		if pl := d.linkOf(uid); pl != nil && pl.online && d.isLinked(uid) {
-			x.Online = true
-		}
+		x.Online = d.reachable(uid)
 		others = append(others, x)
 	}
 	slices.SortFunc(others, func(a, b *pb.Computer) int {
@@ -358,6 +404,11 @@ func (d *Daemon) computersState(forPeer bool) *pb.Computers {
 	best := int64(-1)
 	if self.Notifies {
 		out.ActiveId, best = d.id.me.UserId, self.LastInputUnixMs
+	}
+	if d.outOnly() {
+		// None of the others sees this one's Groups, so none notifies of
+		// them: this one does, itself, whoever was used last.
+		return out
 	}
 	for _, r := range others {
 		if r.Online && r.Notifies && r.LastInputUnixMs > best {
@@ -406,6 +457,16 @@ func (d *Daemon) publishComputers() {
 	if proto.Equal(local, d.comp.sentLocal) && proto.Equal(peers, d.comp.sentPeers) {
 		return
 	}
+	// Out only, nobody subscribes here: its record goes up its own links,
+	// with its idle time (and once more on the way back, so they dial it
+	// again).
+	if peers.List[0].OutOnly || len(d.comp.sentPeers.GetList()) > 0 && d.comp.sentPeers.List[0].OutOnly {
+		for _, l := range d.links {
+			if l.linked {
+				l.sendRecord(d.computersState(true))
+			}
+		}
+	}
 	d.comp.sentLocal, d.comp.sentPeers, d.comp.sentInput = local, peers, d.comp.self.LastInputUnixMs
 	d.publish(&pb.StateUpdate{Computers: local})
 }
@@ -416,10 +477,13 @@ func (d *Daemon) publishComputers() {
 // a tick (noteInput), so that's allowed for: a moment's reading there
 // isn't taken for leaving. Callers hold d.mu.
 func (d *Daemon) inUseElsewhere() bool {
+	if d.outOnly() {
+		return false // (computersState: none of them notifies of this one's Groups)
+	}
 	cutoff := time.Now().Add(-awayAfter - inputResend - inputTick).UnixMilli()
 	for uid, l := range d.comp.links {
 		r := l.Record
-		if pl := d.linkOf(uid); pl != nil && pl.online && d.isLinked(uid) && r.Notifies && r.LastInputUnixMs > cutoff {
+		if d.reachable(uid) && r.Notifies && r.LastInputUnixMs > cutoff {
 			return true
 		}
 	}
@@ -513,7 +577,7 @@ func (d *Daemon) noteInput(at time.Time) {
 	// computer's clock: see mergeComputers.)
 	others := int64(0)
 	for uid, l := range d.comp.links {
-		if pl := d.linkOf(uid); pl != nil && pl.online && d.isLinked(uid) && l.Record.Notifies {
+		if d.reachable(uid) && l.Record.Notifies {
 			others = max(others, l.Record.LastInputUnixMs)
 		}
 	}
@@ -578,12 +642,21 @@ func (d *Daemon) mergeComputers(cs *pb.Computers, from string) {
 		n.Icon = ""
 	}
 	n.CertSha256 = l.CertSha256 // pinned: a changed one means linking again
+	if n.OutOnly && len(n.Addresses) == 0 {
+		// Where it was reached, kept: one that's out only too dials it there,
+		// in case it takes connections again (ensureLink).
+		n.Addresses, n.LanSubnets = l.Record.Addresses, l.Record.LanSubnets
+	}
 	if proto.Equal(n, l.Record) {
 		return
 	}
+	wasOut := l.Record.OutOnly
 	l.Record = n
 	d.persist(d.store.PutRecord("complink", from, l))
 	d.ensureLink(from) // (its addresses may be new)
+	if wasOut && !n.OutOnly {
+		d.deliverUnlinks() // held while it was out only: before anything dials it
+	}
 	if d.linkedCount() > 0 {
 		d.ensureOwnTint()
 	}
@@ -709,6 +782,17 @@ func (d *Daemon) ensureLink(uid string) *peerLink {
 		return nil
 	}
 	r := sl.Record
+	if r.OutOnly && !d.outOnly() {
+		// It dials this one: none from here (one made while it took
+		// connections goes). (Both out only: each dials where the other
+		// was reached, so whichever takes connections again is found.)
+		for key, l := range d.links {
+			if l.tok.HostUserId == uid && l.linked {
+				d.closeLink(key, l)
+			}
+		}
+		return nil
+	}
 	addrs := slices.Clone(r.Addresses)
 	if at := sl.ReachedAt; at != "" && !slices.Contains(addrs, at) {
 		addrs = append([]string{at}, addrs...)
@@ -787,10 +871,12 @@ func (d *Daemon) unlinkComputer(uid string, forget bool) error {
 		return errors.New("no such linked computer")
 	case forget:
 		name := d.comp.links[uid].Record.GetName()
+		d.tellNotLinked(uid)
 		d.dropComputer(uid, false, nil)
 		d.audit("user", "computer-removed", uid, name+", here only")
 	default:
 		name := d.comp.links[uid].Record.GetName()
+		d.tellNotLinked(uid)
 		d.unlinkHere(uid, "", me, time.Now().UnixMilli(), true)
 		d.audit("user", "computer-unlinked", uid, name)
 		// Those it had unlinked here aren't told anything (nothing goes to
@@ -809,6 +895,30 @@ func (d *Daemon) unlinkComputer(uid string, forget bool) error {
 	d.publishComputers()
 	d.deliverUnlinks()
 	return nil
+}
+
+// tellNotLinked tells uid, over this computer's own link to it, that this
+// one doesn't link with it any more, when this one links out only: it never
+// dials here to hear so. Best effort (its link must be up), before the link
+// is dropped. Callers hold d.mu.
+func (d *Daemon) tellNotLinked(uid string) {
+	l := d.linkOf(uid)
+	if l == nil || !d.outOnly() {
+		return
+	}
+	l.cmu.Lock()
+	cl := l.cl
+	l.cl = nil // (closed here once it's told, not by the link)
+	l.cmu.Unlock()
+	if cl == nil {
+		return
+	}
+	go func() {
+		defer cl.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, _ = cl.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_PeerRecord{PeerRecord: &pb.Computers{NotLinked: true}}})
+	}()
 }
 
 // resendPeer gives uid's connections here a fresh view: one that
@@ -1044,10 +1154,15 @@ func (d *Daemon) linkComputer(c *conn, id uint64, m *pb.LinkComputer) (*pb.Serve
 	}
 	d.warmRemote()
 	d.mu.Lock()
-	err = d.ensureRemote()
+	if m.OutOnly && !d.remote.on {
+		// Remote access stays off: this computer links out only.
+		err = d.loadCert() // (its record names its certificate, for the code)
+	} else if err = d.ensureRemote(); err != nil {
+		err = fmt.Errorf("linking needs remote access: %w", err)
+	}
 	d.mu.Unlock()
 	if err != nil {
-		return nil, fmt.Errorf("linking needs remote access: %w", err)
+		return nil, err
 	}
 	go func() {
 		reply := &pb.ServerMessage{ReplyTo: id}
@@ -1124,7 +1239,7 @@ func (d *Daemon) runLink(addrs, lan []string, cert, want string) error {
 		unlinkedBy = d.nameOf(refusal.By)
 	}
 	d.mu.Unlock()
-	if len(self.Addresses) == 0 {
+	if len(self.Addresses) == 0 && !self.OutOnly {
 		return errors.New("this computer isn't listening on any network the other could reach it on: choose one in Settings ▸ Devices ▸ Remote Access (or hmk remote networks)")
 	}
 
@@ -1150,7 +1265,7 @@ func (d *Daemon) runLink(addrs, lan []string, cert, want string) error {
 		Code:        linkCode(self.UserId, self.CertSha256, uid, fp, nonce, pn.Nonce),
 		Fingerprint: keyFingerprint(uid), CreatedUnixMs: time.Now().UnixMilli(),
 		TailscaleHost: src.host, TailscaleLogin: src.login, Source: src.source,
-		UnlinkedUnixMs: refusal.GetUnixMs(), UnlinkedBy: unlinkedBy,
+		UnlinkedUnixMs: refusal.GetUnixMs(), UnlinkedBy: unlinkedBy, OutOnly: self.OutOnly,
 	}}
 	d.mu.Lock()
 	d.comp.attempts[a.req.Id] = a
@@ -1458,7 +1573,8 @@ func (d *Daemon) peerLinkHello(c *conn, m *pb.PeerLinkHello, src tsSource) (*pb.
 	switch {
 	case c.peer == "":
 		return nil, errors.New("only for other computers")
-	case len(m.Commitment) != 32 || m.Computer.GetUserId() != c.peer || m.Computer.GetCertSha256() == "" || len(m.Computer.GetAddresses()) == 0:
+	case len(m.Commitment) != 32 || m.Computer.GetUserId() != c.peer || m.Computer.GetCertSha256() == "" ||
+		len(m.Computer.GetAddresses()) == 0 && !m.Computer.GetOutOnly():
 		return nil, errors.New("bad link request")
 	case !bytes.Equal(m.Computer.GetKey(), c.peerKey):
 		// The key it signed in with, not one that only hashes to its id.
@@ -1481,7 +1597,7 @@ func (d *Daemon) peerLinkHello(c *conn, m *pb.PeerLinkHello, src tsSource) (*pb.
 	a := &linkAttempt{c: c, peer: c.peer, commit: m.Commitment, nonce: nonce, their: their, req: &pb.LinkRequest{
 		Id: newID("lk"), Name: their.Name, Model: their.Model, Kind: their.Kind, Os: their.Os,
 		Fingerprint: keyFingerprint(c.peer), Incoming: true, CreatedUnixMs: time.Now().UnixMilli(),
-		TailscaleHost: src.host, TailscaleLogin: src.login, Source: src.source,
+		TailscaleHost: src.host, TailscaleLogin: src.login, Source: src.source, OutOnly: their.OutOnly,
 	}}
 	if r := d.comp.refusals[c.peer]; r != nil {
 		// A computer you unlinked (lost, stolen?) asking to be linked again.
@@ -1632,6 +1748,27 @@ func (d *Daemon) linkConnClosed(c *conn) {
 			d.resolveLink(id, "") // nobody to tell
 		}
 	}
+	if d.linksOutOnly(c.peer) {
+		d.publishComputers() // (offline, if that was its link)
+	}
+}
+
+// takePeerRecord is a linked computer's own record, sent up its link
+// (ClientMessage.peer_record): how one that links out only keeps this one
+// up to date, and says it does (or no longer does). Callers hold d.mu.
+func (d *Daemon) takePeerRecord(c *conn, cs *pb.Computers) error {
+	if c.peer == "" || !d.isLinked(c.peer) {
+		return errors.New("only for linked computers")
+	}
+	if cs.NotLinked {
+		// It unlinked this one (tellNotLinked): said on purpose, so not
+		// taken for a link just made catching up (mergeComputers' grace).
+		d.refuseLink(c.peer)
+		return nil
+	}
+	d.mergeComputers(cs, c.peer)
+	d.publishComputers() // (online, too: its link is up)
+	return nil
 }
 
 // ---------- the owner's scope ----------
@@ -1695,7 +1832,12 @@ func (d *Daemon) ownerCheck(c *conn, msg *pb.ClientMessage) (ignore bool, err er
 		// (that one doesn't let its agents answer: agentCheck).
 		return false, nil
 	case *pb.ClientMessage_SshAgentCall:
+		if d.linksOutOnly(c.peer) {
+			return false, errors.New("not over a link out only") // neither way
+		}
 		return false, nil // this computer's SSH keys, for a pane there (sshagent.go)
+	case *pb.ClientMessage_PeerRecord:
+		return false, nil // its own record, from a computer that links out only
 	case *pb.ClientMessage_ReopenClosed:
 		return false, here(&m.ReopenClosed.ComputerId) // its newest close here
 	case *pb.ClientMessage_SetComputerTint:

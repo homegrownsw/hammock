@@ -251,6 +251,7 @@ func TestPushClearsBadge(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer d.Shutdown()
+	_ = d.store.SetSetting("remote", "true") // (off, nothing's pushed)
 	key := make([]byte, 32)
 	_, _ = rand.Read(key)
 	d.mu.Lock()
@@ -531,6 +532,7 @@ func TestPushAgentPrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer d.Shutdown()
+	_ = d.store.SetSetting("remote", "true") // (off, nothing's pushed)
 	key := make([]byte, 32)
 	_, _ = rand.Read(key)
 	events := []string{"needs_input", "finished", "errored", "program_needs_input"}

@@ -32,7 +32,16 @@ Groups as their **owner**.
   match because the asker's nonce was fixed first. Each side links only
   once its person says the codes match (`RespondLink`, `PeerLinkConfirm`).
   Linking turns remote access on (Tailscale only), and it stays on while
-  any computer is linked.
+  any computer is linked. *(Amended 2026-11-27: not any more. A computer
+  with remote access off links **out only**: it asks with
+  `LinkComputer.out_only` and keeps it off. It dials the computers it's
+  linked with and sees their Groups as their owner; its record says
+  `out_only`, with no addresses, so they never dial it, and it sends that
+  record up its own link (`peer_record`), being subscribed to by nobody. It
+  isn't introduced (nobody could dial it), takes no unlink requests, and SSH
+  keys aren't lent over its links either way. Turning remote access off on
+  a linked computer makes its links out only; on, two-way again. While
+  it's off, nothing is pushed to phones.)*
 - **Only your own Tailscale user's computers can ask.** The asked computer
   looks up where the request came from in `tailscale status` and refuses it
   unless that node belongs to its own Tailscale user (on a tailnet shared

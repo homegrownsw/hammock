@@ -227,7 +227,8 @@ func (a *App) computerItems(act func(id, title, hint, kw string, run func())) {
 		}
 		if len(c.Addresses) > 0 {
 			act("link-again:"+c.UserId, "Link "+c.Name+" Again…", "", "link again code check certificate "+computerState(c)+" "+c.Name, func() {
-				a.linkComputer(c.Addresses[0], nil)
+				// (Remote access off here: it stays off, the link out only.)
+				a.linkComputer(c.Addresses[0], nil, len(a.computers.List) > 0 && a.computers.List[0].OutOnly)
 			})
 		}
 		if needsLinking(c) {
@@ -426,15 +427,34 @@ func (a *App) openLinkComputer() {
 			lines = append(lines, none)
 		}
 		lines = append(lines, "", "Or type an address (host or host:port: over a VPN, say), or paste a hammock://link/ link.")
-		a.openDialog(&dialog{title: "Link a Computer", okLabel: "Link", lines: lines,
-			fields: []*field{{label: "Computer", value: first}},
-			submit: func(v []string) { a.linkComputer(strings.TrimSpace(v[0]), found.GetList()) }})
+		fields := []*field{{label: "Computer", value: first}}
+		off := a.computers != nil && len(a.computers.List) > 0 && a.computers.List[0].OutOnly
+		if off {
+			// Remote access is off: it may stay off (out only).
+			lines = append(lines, "Remote access is off here: y lets it see this computer's Groups too (turning remote access on), n links out only.")
+			fields = append(fields, &field{label: "Both ways? (y/n)"})
+		}
+		a.openDialog(&dialog{title: "Link a Computer", okLabel: "Link", lines: lines, fields: fields,
+			submit: func(v []string) {
+				outOnly := false
+				if off {
+					switch ans := strings.ToLower(strings.TrimSpace(v[1])); {
+					case strings.HasPrefix(ans, "y"):
+					case strings.HasPrefix(ans, "n"):
+						outOnly = true
+					default:
+						a.flash("⚠ Answer y or n: may it see this computer's Groups too?")
+						return
+					}
+				}
+				a.linkComputer(strings.TrimSpace(v[0]), found.GetList(), outOnly)
+			}})
 	})
 }
 
 // linkComputer links with target (a name from found, or an address or
 // link). It runs until the code is checked on both, so off a.call.
-func (a *App) linkComputer(target string, found []*pb.DiscoveredComputer) {
+func (a *App) linkComputer(target string, found []*pb.DiscoveredComputer, outOnly bool) {
 	if target == "" {
 		return
 	}
@@ -448,11 +468,15 @@ func (a *App) linkComputer(target string, found []*pb.DiscoveredComputer) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 		defer cancel()
-		_, err := a.c.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_LinkComputer{LinkComputer: &pb.LinkComputer{Address: target}}})
+		_, err := a.c.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_LinkComputer{LinkComputer: &pb.LinkComputer{Address: target, OutOnly: outOnly}}})
 		a.actions <- func() {
 			a.linking = false
 			if err != nil {
 				a.flash("⚠ " + err.Error())
+				return
+			}
+			if outOnly {
+				a.flash("Linked, out only: its Groups show among yours")
 				return
 			}
 			a.flash("Linked: its Groups show among yours")

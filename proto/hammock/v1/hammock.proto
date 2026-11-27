@@ -657,7 +657,8 @@ message ClientMessage {
     ResolveEditorLinks resolve_editor_links = 141;
     // Listens on remote access's networks afresh, with the same settings, while
     // it's on: what turning it off and on again would do, without turning
-    // it off (refused while a computer is linked). Local clients only.
+    // it off (which would turn linked computers' links out only). Local
+    // clients only.
     RestartRemoteAccess restart_remote_access = 142;
     // What you've typed in a pane's agent view message box, not yet sent,
     // so your other devices show it too. Your own devices only (not guests
@@ -673,6 +674,11 @@ message ClientMessage {
     // Design notes on a browser or simulator pane (pins.go): drop a pin,
     // note it, send them all to an agent. Replies PinReply.
     PinCommand pin_command = 175;
+    // A linked computer that links out only (Computer.out_only) sends its
+    // own record over its link, as the others send theirs to the links
+    // they're subscribed by: on connecting, and when it changes. Linked
+    // computers only. No reply.
+    Computers peer_record = 176;
   }
   reserved 96;  // ShareMembership (an earlier design)
 }
@@ -1159,7 +1165,9 @@ message SetRemoteNetworks {
 }
 message RevokeDevice { string device_id = 1; }
 
-// Turns the Tailscale listener on or off (persisted).
+// Turns remote access on or off (persisted). Off, nothing connects here:
+// computers still linked see none of this one's Groups, and their links
+// are out only from here (Computer.out_only); phones aren't notified.
 message SetRemoteAccess { bool enabled = 1; }
 // Listens again while remote access is on, with the same settings (hmk remote restart).
 message RestartRemoteAccess {}
@@ -2358,6 +2366,11 @@ message Computer {
   // it's sent to leaves them to it for its agents, so a phone paired with
   // both is told once. At most 32.
   repeated string push_phones = 34;
+  // It accepts no connections (its remote access is off): it dials the
+  // computers it's linked with, and they never dial it, nor see its Groups.
+  // Its record comes over its own link (ClientMessage.peer_record); it's
+  // online while that link is up. It has no addresses.
+  bool out_only = 35;
 }
 
 // A computer this one is linked with, as kept here (not sent).
@@ -2455,6 +2468,9 @@ message LinkRequest {
   // Where it came from, when not over Tailscale: its address and the
   // network ("192.168.1.30 on Wi-Fi").
   string source = 16;
+  // The link is out only (Computer.out_only): the asking computer's remote
+  // access is off, so it sees this one's Groups, never the other way.
+  bool out_only = 17;
 }
 
 // The computers on your tailnet owned by your Tailscale user (as `tailscale
@@ -2477,10 +2493,15 @@ message DiscoveredComputer {
 
 // Starts linking with a computer: address is host:port (from
 // DiscoverComputers) or a hammock://link/ link (CreateLinkInvite on the other
-// computer). Turns remote access on here. Replies Ok once linked, or Error
-// (declined, codes differ, unreachable). While it waits, both computers
-// show a LinkRequest with the code.
-message LinkComputer { string address = 1; }
+// computer). Turns remote access on here, unless out_only: then, while it's
+// off, this computer links out only (Computer.out_only): it sees the other's
+// Groups, and the other never connects here. Replies Ok once linked, or
+// Error (declined, codes differ, unreachable). While it waits, both
+// computers show a LinkRequest with the code.
+message LinkComputer {
+  string address = 1;
+  bool out_only = 2;
+}
 // The person's answer to a LinkRequest: the codes match, or not.
 message RespondLink { string id = 1; bool accept = 2; }
 // Unlinks a computer here, refusing its key for good, and asks each

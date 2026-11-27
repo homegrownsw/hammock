@@ -509,7 +509,7 @@ func (d *Daemon) liveTick() {
 	idle := idleTime() // off the lock: it asks IOKit
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.idErr != nil {
+	if d.idErr != nil || d.outOnly() {
 		return // as push
 	}
 	h := &d.live

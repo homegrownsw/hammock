@@ -51,6 +51,9 @@ var afterIntroCall func(*Daemon)
 var ignoresUnlinks sync.Map
 
 var (
+	// errOutOnly: a request for a computer that links out only, which nobody
+	// may ask anything: kept, and sent if it takes connections again.
+	errOutOnly       = errors.New("it links out only: nothing connects to it")
 	errNotLinkedHere = errors.New("this computer doesn't link with yours")
 	errTooManyAsks   = errors.New("too many requests: try again shortly")
 )
@@ -203,8 +206,8 @@ func (d *Daemon) nameOf(uid string) string {
 func (d *Daemon) introductionsFor(to string) []*pb.Computer {
 	var out []*pb.Computer
 	for uid, l := range d.comp.links {
-		if uid == to || !d.isLinked(uid) || len(l.Record.GetKey()) == 0 {
-			continue
+		if uid == to || !d.isLinked(uid) || len(l.Record.GetKey()) == 0 || l.Record.GetOutOnly() {
+			continue // (one that links out only is linked by a person, with each computer: nobody can dial it)
 		}
 		r := proto.CloneOf(l.Record)
 		r.CertSha256, r.Online, r.Notifies, r.LastInputUnixMs, r.LastSeenUnixMs = l.CertSha256, false, false, 0, 0
@@ -276,7 +279,7 @@ func (d *Daemon) takeIntroductions(c *conn, m *pb.IntroduceComputers) error {
 		// waiting for its code to be checked here does.)
 		if uid == "" || uid == d.id.me.UserId || uid == c.peer || d.isLinked(uid) || d.heldForCode(uid) || d.comp.denied[uid] ||
 			d.badChain(localChain(r.Chain)) ||
-			userIDFor(r.Key) != uid || !d.keyMatches(uid, r.Key) || r.CertSha256 == "" || len(r.Addresses) == 0 || len(r.Addresses) > 8 {
+			userIDFor(r.Key) != uid || !d.keyMatches(uid, r.Key) || r.CertSha256 == "" || len(r.Addresses) == 0 || len(r.Addresses) > 8 || r.OutOnly {
 			continue
 		}
 		if len(r.Chain) >= maxChain {
@@ -302,7 +305,7 @@ func (d *Daemon) takeIntroductions(c *conn, m *pb.IntroduceComputers) error {
 }
 
 // runIntros links the computers introduced here: the one of each pair with
-// the smaller user id dials the other, and both check, then, that they're
+// the smaller user id (or the one that links out only) dials the other, and both check, then, that they're
 // still linked with a computer that introduced them. It also offers the
 // introductions again now and then, so one that failed is tried again.
 func (d *Daemon) runIntros() {
@@ -329,7 +332,8 @@ func (d *Daemon) runIntros() {
 				delete(d.comp.intros, uid)
 				continue
 			}
-			if d.id.me.UserId < uid && !in.dialing && !time.Now().Before(in.next) {
+			// (One that links out only can't be dialled: it dials, whichever id is smaller.)
+			if (d.id.me.UserId < uid || d.outOnly()) && !in.dialing && !time.Now().Before(in.next) {
 				// Each on its own: one that's off doesn't hold up the rest.
 				in.dialing = true
 				chains := map[string][]*pb.IntroHop{}
@@ -772,6 +776,8 @@ func (d *Daemon) runDeliveries() {
 					if r.GetUnlinkTaken().GetNotLinked() && p.UserId != d.id.me.UserId && !p.Suspect {
 						d.addNote(to + " unlinked " + d.nameOf(p.UserId) + " as you asked, but doesn't link with this computer (another of your computers asked it not to): link them again.")
 					}
+				case errors.Is(err, errOutOnly) && p.UserId != d.id.me.UserId:
+					d.addNote(to + " connects out only, so it can't be asked to unlink " + d.nameOf(p.UserId) + ": unlink it there too.")
 				case err.Error() == errNotLinkedHere.Error() && p.UserId != d.id.me.UserId && !p.Suspect:
 					// Kept: linking them again sends it.
 					d.addNote(to + " didn't take your request to unlink " + d.nameOf(p.UserId) + ": it doesn't link with this computer. Link them again, and it's sent.")
@@ -802,7 +808,11 @@ func (d *Daemon) deliverUnlink(p *pb.PendingUnlink) (*pb.ServerMessage, error) {
 	d.mu.Lock()
 	l := d.linkOf(p.To)
 	up := l != nil && l.online
+	out := d.linksOutOnly(p.To)
 	d.mu.Unlock()
+	if out {
+		return nil, errOutOnly
+	}
 	if up {
 		return l.call(msg)
 	}

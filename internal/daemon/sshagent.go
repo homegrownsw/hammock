@@ -38,6 +38,9 @@ import (
 // phone), and every signature made elsewhere goes in the audit log, here
 // and on the computer whose key it was.
 //
+// Never over a link out only (Computer.out_only), either way: a computer
+// with remote access off neither lends its keys nor borrows the others'.
+//
 // ssh-agent-forwarding = false in ~/.config/hammock/config turns it off:
 // panes get no keys from elsewhere, and this computer doesn't lend its
 // keys. (Panes still use Hammock's agent: your own agent's keys pass through,
@@ -478,7 +481,11 @@ func (d *Daemon) computerName(uid string) string {
 func (d *Daemon) sshCall(uid string, m *pb.SshAgentCall, timeout time.Duration) (*pb.SshAgentReply, error) {
 	d.mu.Lock()
 	l := d.linkOf(uid)
+	out := d.outOnly() || d.linksOutOnly(uid)
 	d.mu.Unlock()
+	if out {
+		return nil, errors.New("not over a link out only") // neither way (ADR-0013)
+	}
 	if l == nil {
 		return nil, errors.New("not linked")
 	}
@@ -540,7 +547,7 @@ func (d *Daemon) sshAgentCall(c *conn, id uint64, m *pb.SshAgentCall) (*pb.Serve
 	own := d.sshHub.upstream() // (reads files: not under d.mu)
 	d.mu.Lock()
 	peer := c.peer
-	linked := peer != "" && d.isLinked(peer)
+	linked := peer != "" && d.isLinked(peer) && !d.linksOutOnly(peer)
 	name := d.computerName(peer)
 	me := cmpOr(d.id.me.DeviceName, "that computer")
 	lastUsed := time.UnixMilli(d.comp.self.LastInputUnixMs)

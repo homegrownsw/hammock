@@ -592,7 +592,7 @@ func (d *Daemon) setRemoteNetworks(m *pb.SetRemoteNetworks) error {
 	d.mu.Lock()
 	if len(nets) == 0 && d.remote.on && d.linkedCount() > 0 {
 		d.mu.Unlock()
-		return errors.New("your linked computers reach this one through remote access: keep a network chosen, or unlink them first")
+		return errors.New("your linked computers reach this one through remote access: keep a network chosen, or turn remote access off (they'll link out only from here)")
 	}
 	d.mu.Unlock()
 	if err := hammockconfig.SetRepeated("remote-network", nets); err != nil {

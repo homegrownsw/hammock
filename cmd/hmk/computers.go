@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/term"
+
 	"github.com/homegrownsw/hammock/internal/client"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
@@ -89,6 +91,13 @@ func printComputers(w *world) {
 			state = "online"
 		case c.LastSeenUnixMs > 0:
 			state = "offline, last seen " + time.UnixMilli(c.LastSeenUnixMs).Format("2006-01-02 15:04")
+		}
+		if c.OutOnly && !c.Refused && !c.Suspect {
+			if c.ThisComputer {
+				state += ", connects out only (remote access is off: the others can't see or reach it)"
+			} else {
+				state += ", connects out only (it can't be reached: its Groups don't show here)"
+			}
 		}
 		active := " "
 		if c.UserId == w.computers.ActiveId {
@@ -299,16 +308,57 @@ func runLink(c *client.Client, w *world, args []string) error {
 		}
 		target = match.Addresses[0]
 	}
+	outOnly, err := chooseOutOnly(w, args)
+	if err != nil {
+		return err
+	}
 	done := make(chan error, 1)
 	go func() {
-		_, err := c.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_LinkComputer{LinkComputer: &pb.LinkComputer{Address: target}}})
+		_, err := c.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_LinkComputer{LinkComputer: &pb.LinkComputer{Address: target, OutOnly: outOnly}}})
 		done <- err
 	}()
 	if err := answerLink(ctx, c, nil, false, done); err != nil {
 		return err
 	}
+	if outOnly {
+		fmt.Println("Linked, out only: its Groups show among yours, and it can't see or reach this computer.")
+		return nil
+	}
 	fmt.Println("Linked. Its Groups show among yours, and yours there.")
 	return nil
+}
+
+// chooseOutOnly decides, with remote access off here, whether hmk link
+// keeps it off (--out-only: the other computer won't see this one's Groups)
+// or turns it on (--both-ways), asking if neither was given.
+func chooseOutOnly(w *world, args []string) (bool, error) {
+	off := w.computers != nil && len(w.computers.List) > 0 && w.computers.List[0].OutOnly
+	switch {
+	case !off:
+		if hasFlag(args, "--out-only") {
+			fmt.Fprintln(os.Stderr, "Remote access is on here, so it links both ways (hmk remote off first to link out only).")
+		}
+		return false, nil
+	case hasFlag(args, "--out-only"):
+		return true, nil
+	case hasFlag(args, "--both-ways"):
+		return false, nil
+	case !term.IsTerminal(int(os.Stdin.Fd())):
+		return false, errors.New("remote access is off here: add --out-only to link without it (the other computer won't see this one's Groups), or --both-ways to turn it on")
+	}
+	in := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Print("Let it see this computer's Groups too? This turns on remote access. [y/n] ")
+		line, err := in.ReadString('\n')
+		switch a := strings.ToLower(strings.TrimSpace(line)); {
+		case strings.HasPrefix(a, "y"):
+			return false, nil
+		case strings.HasPrefix(a, "n"):
+			return true, nil
+		case err != nil:
+			return false, errors.New("no answer: add --out-only or --both-ways")
+		}
+	}
 }
 
 // isLinkAddress: hmk link's target is used as it is (host:port, an IP, a

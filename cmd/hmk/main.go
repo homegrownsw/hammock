@@ -54,7 +54,8 @@ Usage:
   hmk ssh setup [--apply] [--apply-jj]     how ssh, git and jj signing in Hammock's panes reach Hammock's agent
                                             (--apply: add Hammock's block to ~/.ssh/config; --apply-jj: add
                                             Hammock's file to jj's config, so jj can sign with the Hammock Key)
-  hmk remote on|off                        allow paired devices (and linked computers) on the networks chosen
+  hmk remote on|off                        allow paired devices (and linked computers) on the networks chosen;
+                                            off, nothing connects here (links go out only from here)
   hmk remote restart                       listen again, with the same settings, while it's on (when
                                             phones or computers can't reach this one)
   hmk remote networks [--json]             the networks remote access may listen on (* chosen), and extra addresses
@@ -69,6 +70,8 @@ Usage:
                                             and Hammock on your chosen local networks (Bonjour)
   hmk link COMPUTER|ADDRESS|LINK           link another computer of yours: each shows the other's
                                             Groups (check the code on both; it links with the rest too)
+  hmk link COMPUTER --out-only|--both-ways  with remote access off here: keep it off (only this one
+                                            sees the other's Groups), or turn it on (both ways)
   hmk link --accept | --invite             answer a link asked from another computer (for one
                                             without the app) | print a link to this computer
   hmk link --again COMPUTER                link again one that doesn't link with this one, waits

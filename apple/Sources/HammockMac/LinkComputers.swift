@@ -73,6 +73,15 @@ struct LinkComputerSheet: View {
     /// up to listMax, then scrolls (a tailnet can have dozens of devices).
     @State private var listHeight: CGFloat = 0
     private let listMax: CGFloat = 360
+    /// With remote access off: the computer chosen, asked whether it sees
+    /// this Mac's Groups too (turning remote access on) before linking.
+    @State private var bothWays: Pick?
+    /// Linking it both ways once remote access has a network to listen on.
+    @State private var pending: Pick?
+    /// The link made is out only (remote access stayed off).
+    @State private var linkedOutOnly = false
+
+    struct Pick { let address: String; let name: String }
 
     /// The code this side shows once both have exchanged nonces.
     private var request: LinkRequest? { model.linkRequests.first { !$0.incoming } }
@@ -85,7 +94,12 @@ struct LinkComputerSheet: View {
                 NetworkChooser(model: model, status: choosing) { ok in
                     if ok {
                         self.choosing = nil
-                        Task { await begin() }
+                        if let p = pending {
+                            pending = nil
+                            link(p, outOnly: false)
+                        } else {
+                            Task { await begin() }
+                        }
                     } else {
                         dismiss()
                     }
@@ -96,9 +110,13 @@ struct LinkComputerSheet: View {
                 Label("Linked with \(linked)", systemImage: "checkmark.circle.fill")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(.green)
-                Text("Its Groups show among yours, with its badge, and this Mac's show there. Use the footer to see one computer at a time.")
+                Text(linkedOutOnly
+                     ? "Its Groups show among yours, with its badge. It can't see or reach this Mac. Use the footer to see one computer at a time."
+                     : "Its Groups show among yours, with its badge, and this Mac's show there. Use the footer to see one computer at a time.")
                     .foregroundStyle(.secondary)
                 HStack { Spacer(); Button("Done") { dismiss() }.keyboardShortcut(.defaultAction) }
+            } else if let bothWays {
+                askBothWays(bothWays)
             } else if showLink {
                 linkByHand
             } else {
@@ -123,8 +141,9 @@ struct LinkComputerSheet: View {
     }
 
     private func prepare() async {
-        // Linking turns remote access on: somewhere to listen, first.
-        if let s = try? await model.deviceStatus(), s.needsNetworkChoice, !s.networks.isEmpty {
+        // Linking turns remote access on: somewhere to listen, first. (Off,
+        // it's asked once a computer is chosen: it may stay off.)
+        if model.remoteEnabled, let s = try? await model.deviceStatus(), s.needsNetworkChoice, !s.networks.isEmpty {
             choosing = s
         } else {
             await begin()
@@ -183,7 +202,9 @@ struct LinkComputerSheet: View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Link a Computer").font(.title3.weight(.bold))
-                Text("Your computers running Hammock, on your tailnet and on the local networks this Mac listens on. A linked computer's Groups show here, and this Mac's show there.")
+                Text(model.remoteEnabled
+                     ? "Your computers running Hammock, on your tailnet and on the local networks this Mac listens on. A linked computer's Groups show here, and this Mac's show there."
+                     : "Your computers running Hammock, on your tailnet and local networks. A linked computer's Groups show here.")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -215,7 +236,9 @@ struct LinkComputerSheet: View {
                     .frame(height: min(max(listHeight, 1), listMax))
                 }
             }
-            Label("Linking turns on remote access on both computers, on the networks each listens on (Settings ▸ Devices). Your other linked computers link with it too.", systemImage: "info.circle")
+            Label(model.remoteEnabled
+                  ? "Linking turns on remote access on both computers, on the networks each listens on (Settings ▸ Devices). Your other linked computers link with it too."
+                  : "Remote access is off on this Mac: you choose whether the computer you link sees this Mac's Groups too.", systemImage: "info.circle")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -351,12 +374,51 @@ struct LinkComputerSheet: View {
 
     private func start(_ address: String, name: String) {
         guard !address.isEmpty else { return }
-        linking = name
+        if model.remoteEnabled {
+            link(Pick(address: address, name: name), outOnly: false)
+        } else {
+            bothWays = Pick(address: address, name: name)
+        }
+    }
+
+    /// "Let Studio see this Mac's Groups too?": yes turns remote access on
+    /// (somewhere to listen first, if it has nowhere); no links out only.
+    private func askBothWays(_ p: Pick) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Let \(p.name) see this Mac's Groups too?").font(.title3.weight(.bold))
+            Text("This turns on remote access. If not, only this Mac sees the other's Groups, and nothing connects to this Mac.")
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Button("Cancel") { bothWays = nil }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("No") {
+                    bothWays = nil
+                    link(p, outOnly: true)
+                }
+                Button("Yes") {
+                    bothWays = nil
+                    Task {
+                        if let s = try? await model.deviceStatus(), s.needsNetworkChoice, !s.networks.isEmpty {
+                            pending = p
+                            choosing = s
+                        } else {
+                            link(p, outOnly: false)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func link(_ p: Pick, outOnly: Bool) {
+        linking = p.name
         error = nil
         Task {
             do {
-                try await model.linkComputer(address)
-                linked = name
+                try await model.linkComputer(p.address, outOnly: outOnly)
+                linkedOutOnly = outOnly
+                linked = p.name
             } catch {
                 self.error = error.localizedDescription
             }
@@ -376,7 +438,9 @@ struct CodeCheck: View {
                 Text(request.incoming ? "\(request.name) wants to link" : "Check the code on \(request.name)")
                     .font(.title3.weight(.bold))
                 Text(request.incoming
-                     ? "Link only if \(request.name) shows the same code. Its Groups will show here, and this Mac's there."
+                     ? (request.outOnly
+                        ? "Link only if \(request.name) shows the same code. This Mac's Groups will show there. \(request.name) connects out only, so its Groups won't show here."
+                        : "Link only if \(request.name) shows the same code. Its Groups will show here, and this Mac's there.")
                      : "\(request.name) is showing a code too. Link only if they're the same.")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

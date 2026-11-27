@@ -16,7 +16,7 @@ Remote access lets your paired devices and linked computers connect to this Mac 
 
 Every device and computer still has to be paired or linked first, and signs in with its own key.
 
-Turn it on in Settings ▸ Devices: switch on **Allow paired devices to connect remotely**, then choose the networks under **Networks Hammock listens on**. It can't be turned off while any computers are linked.
+Turn it on in Settings ▸ Devices: switch on **Allow paired devices to connect remotely**, then choose the networks under **Networks Hammock listens on**. Off, nothing connects to this computer and it sends your phone no notifications; computers linked with it stay linked, [out only](#linking-out-only).
 
 **Extra addresses**, such as a DNS name, a VPN endpoint or a port forwarded from your router (`mac.example.net:7433`), go into pairing codes and links too: add one when your phone reaches this Mac at an address the Mac can't see itself. Hammock's usual port is 7433.
 
@@ -44,7 +44,7 @@ In Settings ▸ Devices, click **Show Pairing Code** (or File ▸ Pair a Device�
 
 Link your other Macs and Linux servers, and each one shows the others' Groups in its sidebar, badged with the computer they're on. You can open tabs, start agents and type in panes on any of them from whichever one you're at.
 
-To link one, choose File ▸ Link a Computer… (⌃⌘L). It lists the computers running Hammock it can find on your own tailnet and on the networks this Mac listens on; on a VPN, type the address. Both computers then show a six-digit code. Choose **They Match** on both only if they're the same, or **They're Different** if not. Linking turns remote access on for both, and the new computer links with your other linked computers too.
+To link one, choose File ▸ Link a Computer… (⌃⌘L). It lists the computers running Hammock it can find on your own tailnet and on the networks this Mac listens on; on a VPN, type the address. Both computers then show a six-digit code. Choose **They Match** on both only if they're the same, or **They're Different** if not. Linking turns remote access on for both (unless you [link out only](#linking-out-only)), and the new computer links with your other linked computers too.
 
 Off Tailscale, the other computer must be linking too (Link a Computer open, or `hmk link --accept`).
 
@@ -71,6 +71,12 @@ To unlink, use Settings ▸ Devices ▸ Your Computers, or `hmk computers unlink
 :::caution
 A linked computer has full control of yours, and you of it: anything you can do in Hammock there, it can do here. Link only your own computers.
 :::
+
+### Linking out only
+
+For a computer nothing may connect to, such as a work laptop. With remote access off there, link from it and answer **No** when it asks whether the other computer may see its Groups (or `hmk link COMPUTER --out-only`). Remote access stays off: it sees the other computer's Groups and has full control of them, and the other never connects to it, sees none of its Groups, and lists it as *connects out only*.
+
+Over a link out only, SSH keys aren't used either way, and the computer isn't linked with your others automatically: link it with each. Turning remote access off on a linked computer makes all its links out only; turning it on makes them two-way again. Two computers that both connect out only can't reach each other until one turns it on. A computer that connects out only can't be asked to unlink another: unlink it there too.
 
 ### Your SSH keys on linked computers
 
