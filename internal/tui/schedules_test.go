@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -95,38 +94,6 @@ func TestNextRunText(t *testing.T) {
 	}
 }
 
-func TestScheduleFromFieldsKeepsTheRest(t *testing.T) {
-	base := &pb.Schedule{Id: "sc1", Name: "Old", GroupId: "g", Kind: "claude", Prompt: "old", Cwd: "/tmp",
-		Overlap: pb.Schedule_OVERLAP_RUN_BOTH, KeepRuns: 3, GiveUpMinutes: 30, AllowedTools: []string{"Bash(git:*)"},
-		Runs: []*pb.ScheduleRun{{Id: "r"}}, NextRunUnixMs: 5}
-	s, err := scheduleFromFields(base, []string{" Nightly ", "command", "make test", "~/x", "weekends 22:00", "never"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	home, _ := os.UserHomeDir()
-	if s.Id != "sc1" || s.Name != "Nightly" || s.Kind != "command" || s.Prompt != "make test" || s.Cwd != home+"/x" ||
-		!slices.Equal(s.Weekdays, []int32{0, 6}) || s.MinuteOfDay != 22*60 || s.Notify != pb.Schedule_NOTIFY_NEVER {
-		t.Errorf("%v", s)
-	}
-	if s.Overlap != pb.Schedule_OVERLAP_RUN_BOTH || s.KeepRuns != 3 || s.GiveUpMinutes != 30 || len(s.AllowedTools) != 1 || s.GroupId != "g" {
-		t.Errorf("advanced fields lost: %v", s)
-	}
-	if s.Runs != nil || s.NextRunUnixMs != 0 || len(base.Runs) != 1 {
-		t.Errorf("daemon's fields sent back, or base changed: %v / %v", s, base)
-	}
-	for _, v := range [][]string{
-		{"", "bash", "x", "/tmp", "daily 9:00", ""},
-		{"", "claude", " ", "/tmp", "daily 9:00", ""},
-		{"", "claude", "x", "", "daily 9:00", ""},
-		{"", "claude", "x", "/tmp", "daily", ""},
-		{"", "claude", "x", "/tmp", "daily 9:00", "loudly"},
-	} {
-		if _, err := scheduleFromFields(&pb.Schedule{}, v); err == nil {
-			t.Errorf("%q: no error", v)
-		}
-	}
-}
-
 func TestApplySchedules(t *testing.T) {
 	a, _ := paletteApp()
 	a.apply(&pb.StateUpdate{Full: true, Schedules: []*pb.Schedule{{Id: "a", Name: "b"}, {Id: "b", Name: "A"}}})
@@ -210,32 +177,6 @@ func TestScheduleListDraws(t *testing.T) {
 	a.overlay.key(a, keysOf([]byte("\x1b")))
 	if back, ok := a.overlay.(*scheduleView); !ok || back.selID != "sc1" {
 		t.Errorf("after Cancel: %T", a.overlay)
-	}
-}
-
-func TestScheduleDialogShowsMistakes(t *testing.T) {
-	animations = false
-	defer func() { animations = true }()
-	a := scheduleApp()
-	a.openNewSchedule("g", "", "claude")
-	d := a.overlay.(*dialog)
-	if d.fields[3].value != "/tmp/work" || d.fields[4].value != "weekdays 09:00" || d.fields[1].value != "claude" {
-		t.Errorf("prefilled %q %q %q", d.fields[1].value, d.fields[3].value, d.fields[4].value)
-	}
-	d.fields[2].value = "Summarise my inbox"
-	d.fields[4].value = "weekdays 25:00"
-	d.finish(a, true)
-	d2, ok := a.overlay.(*dialog)
-	if !ok || !strings.Contains(d2.errText, "can't read") || d2.fields[2].value != "Summarise my inbox" {
-		t.Fatalf("%T %+v", a.overlay, a.overlay)
-	}
-	d2.draw(a)
-	out := screenText(a.scr)
-	t.Log("\n" + out)
-	for _, want := range []string{"New Automation", "Runs as a new tab in Work.", "⚠ can't read", "More options in the Mac app"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("missing %q", want)
-		}
 	}
 }
 
@@ -372,21 +313,5 @@ func TestScheduleTriggersWords(t *testing.T) {
 		if got := scheduleWhen(c.s); got != c.want {
 			t.Errorf("%v: %q, want %q", c.s, got, c.want)
 		}
-	}
-	// The When field round-trips once and triggers.
-	once := &pb.Schedule{Timing: pb.Schedule_TIMING_ONCE, OnceUnixMs: time.Date(2026, 12, 23, 17, 0, 0, 0, time.Local).UnixMilli(), Prompt: "x", Cwd: "/tmp"}
-	got, err := scheduleFromFields(once, []string{"", "claude", "x", "/tmp", whenField(once), ""})
-	if err != nil || got.Timing != pb.Schedule_TIMING_ONCE || got.OnceUnixMs != once.OnceUnixMs {
-		t.Fatalf("once: %v %v", got, err)
-	}
-	ev := &pb.Schedule{Timing: pb.Schedule_TIMING_EVENTS, Events: []*pb.EventTrigger{ci}, Prompt: "x", Cwd: "/tmp"}
-	if got, err := scheduleFromFields(ev, []string{"", "claude", "x", "/tmp", whenField(ev), ""}); err != nil || got.Timing != pb.Schedule_TIMING_EVENTS || len(got.Events) != 1 {
-		t.Fatalf("triggers: %v %v", got, err)
-	}
-	if got, err := scheduleFromFields(ev, []string{"", "claude", "x", "/tmp", "weekdays 09:00", ""}); err != nil || got.Timing != pb.Schedule_TIMING_REPEAT || len(got.Events) != 1 {
-		t.Fatalf("a time as well: %v %v", got, err)
-	}
-	if _, err := scheduleFromFields(&pb.Schedule{}, []string{"", "claude", "x", "/tmp", "triggers", ""}); err == nil {
-		t.Fatal("triggers with none")
 	}
 }

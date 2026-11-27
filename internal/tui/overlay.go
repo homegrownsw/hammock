@@ -24,7 +24,7 @@ type overlay interface {
 }
 
 func (a *App) closeOverlay() {
-	a.overlay = nil
+	a.overlay, a.under = nil, nil
 	a.dirty = true
 }
 
@@ -119,14 +119,32 @@ type menu struct {
 	sel   int
 	top   int // the first item shown, when there are more than fit (scrolled)
 	open  *spring
+	back  func() // on Esc or a click outside: what it came from (nil: nothing)
 }
 
-func (a *App) openMenu(x, y int, items []menuItem) {
+func (a *App) openMenu(x, y int, items []menuItem) { a.openMenuBack(x, y, items, nil) }
+
+// openMenuBack opens a menu that goes back to where it came from (back)
+// on Esc or a click outside it, as a submenu or a choice in an editor does.
+// The first item that can be chosen starts selected, for the keyboard.
+func (a *App) openMenuBack(x, y int, items []menuItem, back func()) {
 	items = slices.DeleteFunc(withoutToolsOff(items), func(it menuItem) bool { return it.hidden })
-	m := &menu{x: x, y: y, items: items, sel: -1, open: newSpring(gentle)}
+	m := &menu{x: x, y: y, items: items, sel: -1, open: newSpring(gentle), back: back}
+	if back != nil {
+		m.move(1)
+		m.reveal(a)
+	}
 	m.open.from(0)
 	m.open.to(1)
 	a.overlay = m
+}
+
+// dismiss closes the menu without choosing, going back if it came from somewhere.
+func (m *menu) dismiss(a *App) {
+	a.closeOverlay()
+	if m.back != nil {
+		m.back()
+	}
 }
 
 func (m *menu) size() (int, int) {
@@ -245,8 +263,13 @@ func (m *menu) key(a *App, ks []key) {
 	for _, k := range ks {
 		switch k.name {
 		case "esc":
-			a.closeOverlay()
+			m.dismiss(a)
 			return
+		case "left":
+			if m.back != nil { // out of a submenu, as ← does in a menu bar's
+				m.dismiss(a)
+				return
+			}
 		case "up", "shift-tab":
 			m.move(-1)
 			m.reveal(a)
@@ -260,6 +283,11 @@ func (m *menu) key(a *App, ks []key) {
 		case "enter":
 			m.choose(a)
 			return
+		case "right":
+			if m.back != nil && m.sel >= 0 && strings.HasSuffix(m.items[m.sel].hint, "›") {
+				m.choose(a) // into a submenu
+				return
+			}
 		}
 	}
 }
@@ -289,7 +317,7 @@ func (m *menu) mouse(a *App, ev mouseEv) {
 	if !r.contains(ev.x, ev.y) {
 		m.sel = -1
 		if ev.press {
-			a.closeOverlay()
+			m.dismiss(a)
 		}
 	}
 }
@@ -323,6 +351,9 @@ func (a *App) tabMenu(id string, x, y int) {
 	}
 	if canSchedule(a.group(t.GroupId)) {
 		items = append(items, menuItem{label: "Automate This…", run: func() { a.scheduleThis(t) }})
+	}
+	if sc := a.runSchedule(a.panes[t.FocusedPaneId]); sc != nil {
+		items = append(items, menuItem{label: "Edit Automation…", run: func() { a.openScheduleEditor(sc, nil) }})
 	}
 	var moves []menuItem
 	for _, sp := range a.groups {
@@ -554,6 +585,7 @@ type paletteList struct {
 	placeholder string
 	items       []paletteItem
 	back        *paletteList
+	cancel      func() // Esc with no back, or a click outside: what it came from (an editor)
 }
 
 func (a *App) openPalette() {
@@ -646,6 +678,12 @@ func (a *App) paletteItems() []paletteItem {
 	act("new-schedule", "New Automation…", "", "schedule scheduled task cron routine recurring timer automation trigger claude codex command every day weekdays", func() {
 		a.openNewSchedule(a.currentGroup(), "", "claude")
 	})
+	if len(a.schedules) > 0 {
+		act("edit-schedule", "Edit Automation…", "", "schedule scheduled task automation change triggers when only if prompt options", a.openEditAutomation)
+	}
+	if sc := a.runSchedule(a.panes[a.focus]); sc != nil {
+		act("edit-this-schedule", "Edit “"+truncate(sc.Name, 40)+"”", "", "automation schedule run change triggers this", func() { a.openScheduleEditor(sc, nil) })
+	}
 	// Only the sessions in the folders open in the Group you're in (yours,
 	// here or on a linked computer; not one shared with you).
 	if g := a.group(a.currentGroup()); g != nil && (g.HostUserId == "" || a.computerOf(g) != nil) {
@@ -1021,6 +1059,10 @@ func (p *palette) key(a *App, ks []key) {
 	for _, k := range ks {
 		switch k.name {
 		case "esc":
+			if p.list != nil && p.list.back == nil && p.list.cancel != nil {
+				p.dismiss(a)
+				return
+			}
 			if p.list != nil { // back a step
 				p.list, p.query, p.sel = p.list.back, "", 0
 				a.dirty = true
@@ -1080,7 +1122,15 @@ func (p *palette) mouse(a *App, m mouseEv) {
 		return
 	}
 	if m.press && !r.contains(m.x, m.y) {
-		a.closeOverlay()
+		p.dismiss(a)
+	}
+}
+
+// dismiss closes the palette, going back to what its list came from.
+func (p *palette) dismiss(a *App) {
+	a.closeOverlay()
+	if p.list != nil && p.list.cancel != nil {
+		p.list.cancel()
 	}
 }
 

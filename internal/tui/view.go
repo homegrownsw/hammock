@@ -116,6 +116,9 @@ func (a *App) render() {
 	a.drawDragGhost()
 	a.drawToast()
 	if a.overlay != nil {
+		if a.under != nil && a.under != a.overlay {
+			a.under.draw(a)
+		}
 		a.overlay.draw(a)
 	}
 	if a.pics.pending.Len() > 0 {

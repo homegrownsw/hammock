@@ -26,7 +26,7 @@ func menuTool(label string) string {
 		return "editor"
 	case strings.HasPrefix(label, "Review "):
 		return "diff"
-	case label == "Automate This…", label == "New Automation…":
+	case label == "Automate This…", label == "New Automation…", label == "Edit Automation…":
 		return "schedules"
 	}
 	return ""
@@ -46,7 +46,7 @@ func paletteTool(id string) string {
 		return "editor"
 	case "review-changes", "review-uncommitted", "review-branch", "review-last-commit", "new-diff-tab", "split-diff":
 		return "diff"
-	case "schedules", "new-schedule", "schedule-tab":
+	case "schedules", "new-schedule", "schedule-tab", "edit-schedule", "edit-this-schedule":
 		return "schedules"
 	}
 	return ""

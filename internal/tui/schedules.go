@@ -23,10 +23,8 @@ import (
 //
 // The daemon runs agents and commands on a schedule (internal/daemon/
 // schedules.go), each run a new tab in the schedule's Group. Here: the
-// Scheduled Tasks list (⌃B @), with each one's recent runs, and the dialog
-// that makes or edits one. Only the simple fields: the rest (overlap, give
-// up, runs kept, tools, Codex's sandbox) stay as they are, or at their
-// defaults, and are set in the Mac app or with hmk schedule.
+// Automations list (⌃B @), with each one's recent runs; the editor that
+// makes or edits one is schededit.go.
 
 // applySchedules takes a state update's schedules.
 func (a *App) applySchedules(u *pb.StateUpdate) {
@@ -321,19 +319,6 @@ func parseClock(w string) (int32, bool) {
 	return int32(h*60 + m), true
 }
 
-func parseKind(v string) (string, error) {
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "":
-		return "claude", nil
-	case "command", "cmd", "shell":
-		return "command", nil
-	}
-	if ag := agents.Parse(v); ag != nil && ag.Schedulable {
-		return ag.ID, nil
-	}
-	return "", fmt.Errorf("Kind is %s or command, not “%s”", strings.Join(scheduleKinds(), ", "), strings.TrimSpace(v))
-}
-
 // scheduleKinds are the agents a schedule can run.
 func scheduleKinds() []string {
 	var out []string
@@ -343,25 +328,6 @@ func scheduleKinds() []string {
 		}
 	}
 	return out
-}
-
-var notifyWords = map[pb.Schedule_Notify]string{
-	pb.Schedule_NOTIFY_DEFAULT: "", pb.Schedule_NOTIFY_READY: "ready",
-	pb.Schedule_NOTIFY_PROBLEMS: "problems", pb.Schedule_NOTIFY_NEVER: "never",
-}
-
-func parseNotify(v string) (pb.Schedule_Notify, error) {
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "", "default":
-		return pb.Schedule_NOTIFY_DEFAULT, nil
-	case "ready", "always", "done":
-		return pb.Schedule_NOTIFY_READY, nil
-	case "problems", "problem", "errors", "failures":
-		return pb.Schedule_NOTIFY_PROBLEMS, nil
-	case "never", "none", "off", "no":
-		return pb.Schedule_NOTIFY_NEVER, nil
-	}
-	return 0, fmt.Errorf("Notify is ready, problems or never, not “%s”", strings.TrimSpace(v))
 }
 
 func kindName(k string) string {
@@ -640,13 +606,13 @@ func promptPreview(detail string) (lines []string, more int, whole bool) {
 	return lines, more, whole
 }
 
-// ---------- the dialog ----------
+// ---------- making one ----------
 
-// openNewSchedule asks for a new scheduled task in group ("": the daemon
-// picks the Group working in its folder, or makes one), in dir ("": the
-// Group's folder), running kind.
+// openNewSchedule opens the editor on a new automation in group ("": the
+// daemon picks the Group working in its folder, or makes one), in dir ("":
+// the Group's folder), running kind.
 func (a *App) openNewSchedule(group, dir, kind string) {
-	a.openScheduleDialog(a.newSchedule(group, dir, kind), nil, "", nil)
+	a.openScheduleEditor(a.newSchedule(group, dir, kind), nil)
 }
 
 // newSchedule is a new schedule's starting point: weekdays at 09:00.
@@ -684,7 +650,7 @@ func (a *App) scheduleThis(t *pb.Tab) {
 	}
 	s := a.newSchedule(t.GroupId, dir, kind)
 	if agent == nil || agent.SessionId == "" {
-		a.openScheduleDialog(s, nil, "", nil)
+		a.openScheduleEditor(s, nil)
 		return
 	}
 	s.Name = t.Name
@@ -702,139 +668,12 @@ func (a *App) scheduleThis(t *pb.Tab) {
 					s.Name = si.Title
 				}
 				if m := ex.Messages; len(m) > 0 {
-					s.Prompt = strings.Join(strings.Fields(m[0].Text), " ")
+					s.Prompt = strings.TrimSpace(m[0].Text)
 				}
 			}
-			a.openScheduleDialog(s, nil, "", nil)
+			a.openScheduleEditor(s, nil)
 		}
 	}()
-}
-
-// openScheduleDialog makes (base without an id) or edits a schedule. vals
-// are the fields as last typed, and errText what the daemon said about
-// them; back runs on Cancel (the list it came from).
-func (a *App) openScheduleDialog(base *pb.Schedule, vals []string, errText string, back func()) {
-	if vals == nil {
-		vals = []string{base.Name, cmp.Or(base.Kind, "claude"), base.Prompt, shortPath(base.Cwd), whenField(base), notifyWords[base.Notify]}
-	}
-	title, ok := "New Automation", "Save"
-	if base.Id != "" {
-		title, ok = "Edit “"+truncate(base.Name, 36)+"”", "Save"
-	}
-	where := "Runs as a new tab in the Group working in its folder."
-	if base.GroupId != "" {
-		name := base.GroupName
-		if g := a.group(base.GroupId); g != nil {
-			name = iconTitle(g, a.groupTitle(g))
-		}
-		where = "Runs as a new tab in " + name + "."
-	}
-	labels := []string{"Name", "Kind", "Prompt", "Folder", "When", "Notify"}
-	if strings.EqualFold(strings.TrimSpace(vals[1]), "command") {
-		labels[2] = "Command"
-	}
-	fields := make([]*field, len(labels))
-	for i, l := range labels {
-		fields[i] = &field{label: l, value: vals[i]}
-	}
-	a.openDialog(&dialog{title: title, okLabel: ok, fields: fields, errText: errText, cancel: back,
-		lines: []string{
-			where,
-			"Kind: claude, codex or command (the prompt is then its command line).",
-			"When: every day / weekdays / weekends / mon,wed HH:MM, cron M H D M W,",
-			"once YYYY-MM-DD HH:MM, or triggers (only on its triggers: hmk automation edit --trigger).",
-			"Notify: ready, problems or never (blank: ready for agents, problems for commands).",
-			"More options in the Mac app or `hmk automation`.",
-			"",
-		},
-		submit: func(v []string) {
-			s, err := scheduleFromFields(base, v)
-			if err != nil {
-				a.openScheduleDialog(base, v, err.Error(), back)
-				return
-			}
-			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer cancel()
-				r, err := a.c.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_SaveSchedule{SaveSchedule: &pb.SaveSchedule{Schedule: s}}})
-				a.actions <- func() {
-					if err != nil {
-						if a.overlay == nil {
-							a.openScheduleDialog(base, v, err.Error(), back)
-						} else {
-							a.flash("⚠ " + err.Error())
-						}
-						return
-					}
-					saved := r.GetScheduleReply().GetSchedule()
-					if saved != nil {
-						if a.schedules == nil {
-							a.schedules = map[string]*pb.Schedule{}
-						}
-						a.schedules[saved.Id] = saved // before its state update, so the list has it
-						when := nextRunText(saved.NextRunUnixMs, time.Now())
-						if when == "" {
-							a.flash("Saved “" + saved.Name + "”")
-						} else {
-							a.flash("Saved “" + saved.Name + "”: next run " + when)
-						}
-						if back != nil && a.overlay == nil {
-							a.openSchedules(saved.Id)
-						}
-					}
-				}
-			}()
-		}})
-}
-
-// scheduleFromFields is base with the dialog's fields (name, kind, prompt,
-// folder, when, notify) put in; the rest of base stays as it was.
-func scheduleFromFields(base *pb.Schedule, v []string) (*pb.Schedule, error) {
-	s := &pb.Schedule{}
-	if base != nil {
-		s = cloneSchedule(base)
-	}
-	kind, err := parseKind(v[1])
-	if err != nil {
-		return nil, err
-	}
-	timing, once, err := parseTiming(v[4])
-	if err != nil {
-		return nil, err
-	}
-	var days []int32
-	var minute int32
-	var cron string
-	if timing == pb.Schedule_TIMING_REPEAT {
-		if days, minute, cron, err = parseWhen(v[4]); err != nil {
-			return nil, err
-		}
-	} else {
-		days, minute, cron = s.Weekdays, s.MinuteOfDay, ""
-	}
-	if timing == pb.Schedule_TIMING_EVENTS && len(s.Events) == 0 {
-		return nil, errors.New("it has no triggers: add them with hmk automation edit --trigger, or give a time")
-	}
-	s.Timing, s.OnceUnixMs = timing, once
-	notify, err := parseNotify(v[5])
-	if err != nil {
-		return nil, err
-	}
-	s.Name, s.Kind, s.Prompt = strings.TrimSpace(v[0]), kind, strings.TrimSpace(v[2])
-	if s.Prompt == "" {
-		if kind == "command" {
-			return nil, errors.New("give the command to run")
-		}
-		return nil, errors.New("give the agent a prompt")
-	}
-	s.Cwd = expandTilde(strings.TrimSpace(v[3]))
-	if s.Cwd == "" {
-		return nil, errors.New("give the folder it runs in")
-	}
-	s.Weekdays, s.MinuteOfDay, s.Cron, s.Notify = days, minute, cron, notify
-	// The daemon's own fields aren't sent back.
-	s.Runs, s.NextRunUnixMs, s.Error = nil, 0, ""
-	return s, nil
 }
 
 func cloneSchedule(s *pb.Schedule) *pb.Schedule { return proto.CloneOf(s) }
@@ -1174,7 +1013,7 @@ func (v *scheduleView) key(a *App, ks []key) {
 			switch k.r {
 			case 'n':
 				back := func() { a.openSchedules(v.selID) }
-				a.openScheduleDialog(a.newSchedule(a.currentGroup(), "", "claude"), nil, "", back)
+				a.openScheduleEditor(a.newSchedule(a.currentGroup(), "", "claude"), back)
 				return
 			case 'q':
 				a.closeOverlay()
@@ -1193,7 +1032,7 @@ func (v *scheduleView) key(a *App, ks []key) {
 			case 's':
 				a.toggleSkip(sc)
 			case 'e':
-				a.openScheduleDialog(sc, nil, "", func() { a.openSchedules(sc.Id) })
+				a.openScheduleEditor(sc, func() { a.openSchedules(sc.Id) })
 				return
 			case 'd':
 				a.confirmDeleteSchedule(sc)
@@ -1285,7 +1124,7 @@ func (a *App) scheduleMenu(sc *pb.Schedule, x, y int) {
 		{label: runEarlyLabel(sc, time.Now()), hint: "R", disabled: !canRunEarly(sc), run: func() { a.runScheduleNow(sc, true) }},
 		{label: pause, hint: "p", run: func() { a.setSchedulePaused(sc, !sc.Paused); back() }},
 		{label: skip, hint: "s", disabled: sc.NextRunUnixMs == 0, run: func() { a.toggleSkip(sc); back() }},
-		{label: "Edit…", hint: "e", run: func() { a.openScheduleDialog(sc, nil, "", back) }},
+		{label: "Edit…", hint: "e", run: func() { a.openScheduleEditor(sc, back) }},
 		{label: "Copy Webhook URL", disabled: !hasWebhook(sc), run: func() { a.copyWebhook(sc) }},
 		{sep: true},
 		{label: "Delete…", hint: "⌫", danger: true, run: func() { a.confirmDeleteSchedule(sc) }},

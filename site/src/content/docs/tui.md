@@ -21,6 +21,10 @@ Browser and simulator panes show live pictures in terminals that can draw them (
 
 ⌃B k opens the command palette. ⌃B s opens the TUI's Settings: tab layout, animations, Nerd Font icons, sidebar width, the editor, and which [kinds of pane](/hammock/docs/panes/#turning-a-kind-of-pane-off) Hammock offers. They win over the config file; every key is in the [config reference](/hammock/docs/reference/config/#tui).
 
+## Automations
+
+⌃B @ lists your [automations](/hammock/docs/automations/) and their recent runs. n makes one and e edits the selected one, with its triggers, Only If conditions and options: see [Making one in the TUI](/hammock/docs/automations/#making-one-in-the-tui).
+
 ## Editor panes
 
 The TUI draws editor panes itself, without syntax colours, and edits the same buffer as the Mac and phone apps ([keys below](#keys)). To use `$VISUAL` or `$EDITOR` instead, set `editor-tui-external = true`: focusing an editor pane opens the file there, and Hammock takes each save.

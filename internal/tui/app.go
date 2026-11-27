@@ -92,6 +92,7 @@ type App struct {
 	clickCount int
 	mousePane  string // pane a press was forwarded to, so its release goes there too
 	overlay    overlay
+	under      overlay // drawn, still, under overlay: the automation editor a menu or prompt of it opened from
 	toast      string
 	toastAt    time.Time
 	toastFor   time.Duration          // how long it shows: longer for an error (flash.go)

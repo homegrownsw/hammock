@@ -40,6 +40,10 @@ Only agents that can resume a session offer these. Each run's prompt is typed in
 
 **If still running** is then **Wait for it to finish** (the default) or **Skip this run**, and **Keep the last** doesn't apply. A tab of yours stays yours: a run never closes it, stops its agent (giving up only marks the run), or clears its Needs You items. If the tab lets its agent do more than the automation would, such as Claude Code started with `--dangerously-skip-permissions`, the automation says so.
 
+## Making one in the TUI
+
+In [the TUI](/hammock/docs/tui/), the palette's **New Automation…** and **Edit Automation…**, n and e in the Automations list (⌃B @), and a run's tab menu open the same editor, as rows: ↑ and ↓ move, ↵ changes a row, ⌫ removes a trigger or condition, a adds a trigger (the Mac's menu, each source's events in a submenu), o adds a condition, and s saves. ↵ on a trigger opens its menu: what it watches, and how it's been doing. Connect Slack with `hmk slack connect` first, and make Places in the Mac app.
+
 ## Making one with hmk
 
 ```sh
