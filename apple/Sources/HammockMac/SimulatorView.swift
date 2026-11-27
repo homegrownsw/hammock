@@ -193,7 +193,14 @@ final class SimulatorPaneNSView: NSView {
     private var outline: CGPath? // the screen's shape, in its points (y down)
     private var buttons: [(name: String, layer: CALayer)] = []
     private var remote: CALayer?
-    private var size = CGSize(width: 402, height: 874) // the screen, in points, from the host
+    /// The screen, in points, from the host (or a shared pane's video). The
+    /// host can name the device's artwork before it knows the screen's size,
+    /// so the outline is traced again whenever the size changes, not only on
+    /// turning: else a screen bigger than this default is masked at this size
+    /// while its frame is drawn at the real one, out of line.
+    private var size = CGSize(width: 402, height: 874) {
+        didSet { if size != oldValue { loadOutline() } }
+    }
     private var chrome: DeviceChrome?
     private var chromeDir = "", maskPath = ""
     private var host: SimulatorHost { .shared }
@@ -263,9 +270,7 @@ final class SimulatorPaneNSView: NSView {
             if let ctx = (m["ctx"] as? NSNumber)?.uint32Value { show(context: ctx) }
         case "state":
             if let w = (m["w"] as? NSNumber)?.doubleValue, let h = (m["h"] as? NSNumber)?.doubleValue, w > 0, h > 0 {
-                let turned = (w > h) != landscape
-                size = CGSize(width: w, height: h)
-                if turned { loadArtwork() } // rotated: the screen's outline turns with it
+                size = CGSize(width: w, height: h) // a new size (or turned) traces the outline again
             }
             applyArtwork(dir: m["chrome"] as? String ?? "", mask: m["mask"] as? String ?? "")
             needsLayout = true
@@ -388,7 +393,6 @@ final class SimulatorPaneNSView: NSView {
         CATransaction.setDisableActions(true)
         for b in buttons { b.layer.removeFromSuperlayer() }
         buttons = []
-        outline = nil
         if let chrome {
             for input in chrome.buttons {
                 guard let img = DeviceChrome.image(input.image, scale: px) else { continue }
@@ -400,6 +404,13 @@ final class SimulatorPaneNSView: NSView {
                 buttons.append((input.name, l))
             }
         }
+        CATransaction.commit()
+        loadOutline()
+    }
+
+    /// Traces the screen's outline from its mask, at the screen's size.
+    private func loadOutline() {
+        outline = nil
         if !maskPath.isEmpty, let img = DeviceChrome.image(maskPath, scale: 2) {
             // The mask is the portrait screen; turned a quarter for landscape.
             let portrait = CGSize(width: min(size.width, size.height), height: max(size.width, size.height))
@@ -409,7 +420,6 @@ final class SimulatorPaneNSView: NSView {
                 outline = o.copy(using: &turn)
             }
         }
-        CATransaction.commit()
         needsLayout = true
     }
 
