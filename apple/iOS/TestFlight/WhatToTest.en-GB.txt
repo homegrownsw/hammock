@@ -1,21 +1,11 @@
 This build
 
 New
-• Continue after a usage limit: an agent that stops at its usage limit is sent "continue" once the limit resets.
-• Design Notes: touch and hold on a browser page or simulator screen to pin numbered notes, then send them to an agent with an annotated screenshot.
-• Scheduled Tasks are now Automations: they show their triggers, and each run shows what started it.
-• Shared Drafts: what you type in an agent's message box shows on your Mac too, so you can start a message on your phone and finish it at your desk.
-• Worktrees: start an agent in a new git worktree, see each tab's pull request in the Groups tab, and touch and hold a tab to remove its worktree once its branch is merged.
+• Hammock's own permission requests (an agent adding an automation or searching past sessions) show in full in the agent's pane, in either view: tap one in Needs You to go there.
 
 Fixed
-• Agent view: compacting a Claude Code conversation shows "Compacting conversation…" while it runs.
-• Agent view: the scroll bar stays above the message box in the first conversation you open after launching Hammock.
-• Claude's question review: before you submit, each question is listed with its answer under it, not run together in one block of text.
-• Codex: a turn that ends on an error, such as its usage limit, shows as errored instead of still working.
-• Groups: an empty Group's buttons for a terminal or an agent fit on one line again, as tidy tiles.
-• Live Activities show in the Dynamic Island again: they were invisible there on iOS 27.2.
-• Screen sharing: leaving the app for a moment no longer stops the Mac's screen, and a minimised screen no longer shows two bars.
-• Selecting text in a conversation no longer vanishes as you drag, and you can select again straight away.
-• Terminals: images, resizing and scrollback behave more reliably, and busy output draws faster, with the latest Ghostty.
-• The agent view no longer draws a finished background command's note over the rows around it.
-• When the iPhone can't reach a computer from its network, it says so, instead of saying the iPhone isn't on a network.
+• Browser and simulator panes no longer get stuck loading, and stay live through a quick look at another app.
+• Deleting an empty Group no longer asks you to confirm.
+• Screen sharing and browser panes no longer reconnect each time you come back to the app.
+• Text in tables in the agent view can be selected and copied.
+• The agent view bounces when you scroll it, even when the conversation is shorter than the screen.
