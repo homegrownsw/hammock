@@ -168,7 +168,7 @@ struct ScheduleDetail: View {
                 }
             }
             ForEach(Array(schedule.triggerRows.enumerated()), id: \.offset) { _, row in
-                TriggerReadRow(model: model, triggers: row)
+                TriggerReadRow(model: model, triggers: row, computerID: schedule.computerID)
             }
             if schedule.timesText == nil, schedule.events.isEmpty {
                 Text("Only when run: from here, Shortcuts or hmk")
@@ -351,6 +351,8 @@ struct ScheduleDetail: View {
 struct TriggerReadRow: View {
     let model: AppModel
     let triggers: [EventTrigger]
+    /// The automation's computer ("": this one).
+    var computerID = ""
     @State private var allTargets = false
 
     private static let fewTargets = 6
@@ -387,6 +389,10 @@ struct TriggerReadRow: View {
             }
             TriggerStatusLine(trigger: merged)
                 .padding(.leading, 28)
+            if case .slack = first.kind {
+                SlackLinkLine(model: model, computerID: computerID)
+                    .padding(.leading, 28)
+            }
         }
     }
 }

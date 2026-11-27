@@ -1017,6 +1017,9 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		defer d.mu.Unlock()
 		return d.scheduleWebhook(c, m.ScheduleWebhook)
 
+	case *pb.ClientMessage_SlackCommand:
+		return d.slackCommand(c, m.SlackCommand) // (slack.go; who may: the gates)
+
 	case *pb.ClientMessage_CalendarEvents:
 		// The Mac app's calendars (person-only, strictly: person.go).
 		d.mu.Lock()
@@ -2097,10 +2100,10 @@ func (c *conn) handleRemoteAuth(msg *pb.ClientMessage) (*pb.ServerMessage, error
 		return nil, errors.New("only available on this Mac"), true
 	}
 	switch msg.Msg.(type) {
-	case *pb.ClientMessage_SaveSchedule, *pb.ClientMessage_DeleteSchedule, *pb.ClientMessage_ScheduleWebhook:
-		// Making and changing schedules (and their webhooks' secrets): on
-		// a computer (here, or another of yours), not a phone; a phone
-		// runs, pauses and skips them.
+	case *pb.ClientMessage_SaveSchedule, *pb.ClientMessage_DeleteSchedule, *pb.ClientMessage_ScheduleWebhook, *pb.ClientMessage_SlackCommand:
+		// Making and changing schedules (and their webhooks' secrets, and
+		// Slack's tokens): on a computer (here, or another of yours), not
+		// a phone; a phone runs, pauses and skips them.
 		d.mu.Lock()
 		linked := d.isLinked(peer)
 		d.mu.Unlock()

@@ -134,6 +134,11 @@ A trigger starts a run when something happens, as well as at the automation's ti
 | Places | `place:arrive=NAME`, `place:leave=NAME` | The Mac arrives at or leaves one of your [places](#places). Needs the app open. |
 | Command check | `--check-cmd CMD` | A command run every few minutes starts failing, changes its output, or passes again ([Command checks](#command-checks)). |
 | URL check | `--url URL` | A page fetched every few minutes starts failing, changes, or starts containing a text ([URL checks](#url-checks)). |
+| Slack | `slack:message=#CHANNEL` | A message in that channel ([Slack](#slack)). |
+| | `slack:mention` | A message mentions you. |
+| | `slack:dm` | Someone sends you a direct message, or writes in a group DM you're in. |
+| | `slack:reply` | Someone replies in a thread you started. |
+| | `slack:reaction`, `slack:reaction=EMOJI` | You react to a message (with that emoji, such as `eyes`). |
 | Webhook | `webhook` | Its [webhook](#webhooks) is called. |
 | Shortcuts | `shortcut` | Shortcuts runs it ([From Shortcuts](#from-shortcuts)). Mac only. |
 
@@ -173,7 +178,7 @@ A **command** gets the same details in environment variables: `$HMK_EVENT_URL`, 
 The run's record says what started it, such as **CI failed on #42**.
 
 :::caution
-What a trigger passes on is written by other people: a pull request's title, a comment, a log line, a webhook's body, the text a shortcut sends, such as a message you were sent. Hammock gives it to the agent marked as data, not instructions, but write the prompt so the automation does nothing harmful whatever that text says, and keep the tools it may use to what it needs. A run that continues a session of yours can do whatever that session's agent may, and the text stays in that conversation.
+What a trigger passes on is written by other people: a pull request's title, a comment, a log line, a Slack message, a webhook's body, the text a shortcut sends, such as a message you were sent. Hammock gives it to the agent marked as data, not instructions, but write the prompt so the automation does nothing harmful whatever that text says, and keep the tools it may use to what it needs. A run that continues a session of yours can do whatever that session's agent may, and the text stays in that conversation.
 :::
 
 ### Bursts
@@ -200,7 +205,7 @@ hmk automation add "Big build" --trigger mac:away=20 --only-if power --only-if h
   --command -- 'make release'
 ```
 
-An automation with This Mac triggers, places, URL checks or Only If can't be added on a linked computer with an older Hammock: update it first.
+An automation with This Mac triggers, places, URL checks, Slack triggers or Only If can't be added on a linked computer with an older Hammock: update it first.
 
 ### Places
 
@@ -229,6 +234,29 @@ hmk automation add "Release is out" --url https://example.com/status --url-on co
 ```
 
 `--url-on` is `fail` (the default), `change` or `contains`; `--url-timeout` is in seconds (30 by default). Only the first 256 KB of a page is read.
+
+### Slack
+
+Slack triggers read Slack as you, through a Slack app of your own that Hammock connects to. It only reads: Hammock never posts, reacts or changes anything in Slack. To set it up, choose **Add Trigger ▸ Messages ▸ Slack ▸ Connect Slack…**, or run `hmk slack connect`:
+
+1. **Create Slack App…** (or the link `hmk slack` prints) opens Slack's Create an App with Hammock's app filled in. Pick your workspace, create it, and choose **Install to Workspace**. Your workspace's admins may have to approve it.
+2. Copy its **User OAuth Token** (`xoxp-…`), under **OAuth & Permissions**.
+3. Under **Basic Information ▸ App-Level Tokens**, choose **Generate Token and Scopes**, add the `connections:write` scope, and copy the token (`xapp-…`).
+4. Paste both. Hammock checks them with Slack, and shows the workspace.
+
+`hmk slack connect` reads the two tokens from its input, one a line (and asks for them at a terminal); `hmk slack` says how the connection is, and `hmk slack disconnect` forgets the tokens. Under a Slack trigger, the workspace's **⋯** menu has **Change Tokens…** and **Disconnect…**. The tokens stay when you delete your last Slack automation. They're kept in Hammock's state folder, readable only by you.
+
+The app asks Slack to read, as you, messages in channels, private channels, DMs and group DMs (`channels:history`, `groups:history`, `im:history`, `mpim:history`), reactions (`reactions:read`), people's names (`users:read`), and channels' names (`channels:read`, `groups:read`), to find a channel a trigger names and name it in a run. It sees only what you can see. Hammock listens through Slack's Socket Mode, so nothing has to reach your Mac from the internet, and only while an automation that's on has a Slack trigger.
+
+One computer of yours holds the connection. Adding a Slack trigger on another says which one has it, and offers to move it there.
+
+- **Filters:** in the app, after the channel; with `hmk`, after commas: `in=#CHANNEL` (mentions, replies and reactions: only there), `from=NAME` (a name, display name or Slack id), and `text=TEXT`, a text the message contains in any case, or a regular expression written `/REGEX/`. Put `text=` last: it takes the rest, commas and all. Quote the trigger in a shell: `--trigger 'slack:message=#deploys,text=/fail(ed|ing)/'`.
+- **Your own messages** don't start runs, as an agent's run may post as you; add `mine` (**including mine**) to a channel trigger to change that.
+- **Reactions** count only when they're yours, as anyone can react to anything; add `anyone` (**or anyone does**) to change that. The run gets the message reacted to.
+- **Mentions** are of you by name: `@here`, `@channel` and user groups don't count.
+- **While the Mac sleeps** or is offline, Slack holds events for a few minutes. When Hammock connects again, it catches up on the channels your triggers name, from their history since the last message it saw (up to a day back); mentions, DMs, replies and reactions elsewhere in that time are missed.
+
+The run gets the message's text, its author, the channel, its link, and the thread it's in.
 
 ### Webhooks
 
@@ -272,6 +300,13 @@ Fix CI when it fails on your pull request:
 ```sh
 hmk automation add "Fix CI" --trigger github:ci-failed --dir ~/Developer/app \
   -- "CI failed on a pull request of mine. Find out why from the failing checks, fix it on that branch and push."
+```
+
+Look into a failed deploy when it's reported in Slack:
+
+```sh
+hmk automation add "Deploy failed" --trigger 'slack:message=#deploys,text=/fail(ed|ing)/' --dir ~/Developer/app \
+  -- "A deploy failure was reported in Slack. Find out what broke from the message and the logs it links to, and write up what you find."
 ```
 
 Prepare for one-to-ones ten minutes before they start:

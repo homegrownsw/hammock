@@ -111,6 +111,10 @@ func cleanComputer(r *pb.Computer) {
 	r.Name, r.Model = cleanLine(strings.TrimSpace(r.Name), nameMax), cleanLine(r.Model, nameMax)
 	r.Kind, r.Os = cleanLine(r.Kind, nameMax), cleanLine(r.Os, nameMax)
 	r.DefaultAgent = cleanLine(r.DefaultAgent, nameMax)
+	if s := r.Slack; s != nil {
+		s.TeamId, s.Team, s.Url = cleanLine(s.TeamId, nameMax), cleanLine(s.Team, nameMax), cleanLine(s.Url, 200)
+		s.UserId, s.User, s.Problem = cleanLine(s.UserId, nameMax), cleanLine(s.User, nameMax), cleanLine(s.Problem, 300)
+	}
 	r.PushPhones = slices.DeleteFunc(r.PushPhones[:min(len(r.PushPhones), maxPushPhones)], func(t string) bool { return !validPhoneTag(t) })
 }
 

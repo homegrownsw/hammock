@@ -2734,6 +2734,18 @@ public nonisolated struct Hammock_V1_ClientMessage: Sendable {
     set {msg = .macAppState(newValue)}
   }
 
+  /// Slack for automations (slack.go): its connection on a computer of
+  /// yours, made with your own Slack app's tokens. From your own clients
+  /// and computers only (never an agent, a guest or a phone). Replies
+  /// SlackReply.
+  public var slackCommand: Hammock_V1_SlackCommand {
+    get {
+      if case .slackCommand(let v)? = msg {return v}
+      return Hammock_V1_SlackCommand()
+    }
+    set {msg = .slackCommand(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Msg: Equatable, Sendable {
@@ -2992,6 +3004,11 @@ public nonisolated struct Hammock_V1_ClientMessage: Sendable {
     /// itself: the Wi-Fi network, the apps open, the displays connected
     /// (macwatch.go). Sent as they change. The Mac app only; no reply.
     case macAppState(Hammock_V1_MacAppState)
+    /// Slack for automations (slack.go): its connection on a computer of
+    /// yours, made with your own Slack app's tokens. From your own clients
+    /// and computers only (never an agent, a guest or a phone). Replies
+    /// SlackReply.
+    case slackCommand(Hammock_V1_SlackCommand)
 
   }
 
@@ -4483,6 +4500,15 @@ public nonisolated struct Hammock_V1_ServerMessage: Sendable {
     set {msg = .triggerReply(newValue)}
   }
 
+  /// reply to SlackCommand
+  public var slackReply: Hammock_V1_SlackReply {
+    get {
+      if case .slackReply(let v)? = msg {return v}
+      return Hammock_V1_SlackReply()
+    }
+    set {msg = .slackReply(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Msg: Equatable, Sendable {
@@ -4598,6 +4624,8 @@ public nonisolated struct Hammock_V1_ServerMessage: Sendable {
     case pinReply(Hammock_V1_PinReply)
     /// reply to RunSchedule with trigger and status_reply
     case triggerReply(Hammock_V1_TriggerReply)
+    /// reply to SlackCommand
+    case slackReply(Hammock_V1_SlackReply)
 
   }
 
@@ -8738,11 +8766,168 @@ public nonisolated struct Hammock_V1_Computer: @unchecked Sendable {
     set {_uniqueStorage()._features = newValue}
   }
 
+  /// The Slack workspace its Hammock is connected to, for automations
+  /// (SlackCommand): one computer of yours holds the connection, and the
+  /// others say so. None: not connected there.
+  public var slack: Hammock_V1_SlackLink {
+    get {_storage._slack ?? Hammock_V1_SlackLink()}
+    set {_uniqueStorage()._slack = newValue}
+  }
+  /// Returns true if `slack` has been explicitly set.
+  public var hasSlack: Bool {_storage._slack != nil}
+  /// Clears the value of `slack`. Subsequent reads from it will return its default value.
+  public mutating func clearSlack() {_uniqueStorage()._slack = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
   fileprivate var _storage = _StorageClass.defaultInstance
+}
+
+/// A computer's Slack connection (slack.go), as it is now.
+public nonisolated struct Hammock_V1_SlackLink: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var teamID: String = String()
+
+  /// the workspace's name
+  public var team: String = String()
+
+  /// its address: https://acme.slack.com/
+  public var url: String = String()
+
+  /// you, there
+  public var userID: String = String()
+
+  /// your name there
+  public var user: String = String()
+
+  /// its connection to Slack is open now
+  public var listening: Bool = false
+
+  /// Why it can't hear Slack now ("": it can, or nothing wants it to):
+  /// "Slack refused the tokens", "Can't reach Slack".
+  public var problem: String = String()
+
+  /// Connected, but no automation that's on has a Slack trigger, so
+  /// nothing listens (the tokens are kept).
+  public var idle: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// Slack, on computer_id ("": this one).
+/// STATUS: how it is, and the link that makes your Slack app.
+/// CONNECT: checks user_token (xoxp-) and app_token (xapp-) with Slack,
+/// then keeps them on that computer; again with new ones: Change Tokens.
+/// DISCONNECT: forgets them.
+/// MOVE_HERE: takes the connection from from_computer_id, another of your
+/// computers, which forgets it (HAND_OVER).
+/// HAND_OVER: from a linked computer of yours only: its reply has the
+/// tokens, and this one forgets them.
+public nonisolated struct Hammock_V1_SlackCommand: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var action: Hammock_V1_SlackCommand.Action = .unspecified
+
+  public var computerID: String = String()
+
+  public var userToken: String = String()
+
+  public var appToken: String = String()
+
+  public var fromComputerID: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public nonisolated enum Action: SwiftProtobuf.Enum, Swift.CaseIterable {
+    public typealias RawValue = Int
+    case unspecified // = 0
+    case status // = 1
+    case connect // = 2
+    case disconnect // = 3
+    case moveHere // = 4
+    case handOver // = 5
+    case UNRECOGNIZED(Int)
+
+    public init() {
+      self = .unspecified
+    }
+
+    public init?(rawValue: Int) {
+      switch rawValue {
+      case 0: self = .unspecified
+      case 1: self = .status
+      case 2: self = .connect
+      case 3: self = .disconnect
+      case 4: self = .moveHere
+      case 5: self = .handOver
+      default: self = .UNRECOGNIZED(rawValue)
+      }
+    }
+
+    public var rawValue: Int {
+      switch self {
+      case .unspecified: return 0
+      case .status: return 1
+      case .connect: return 2
+      case .disconnect: return 3
+      case .moveHere: return 4
+      case .handOver: return 5
+      case .UNRECOGNIZED(let i): return i
+      }
+    }
+
+    // The compiler won't synthesize support with the UNRECOGNIZED case.
+    public static let allCases: [Hammock_V1_SlackCommand.Action] = [
+      .unspecified,
+      .status,
+      .connect,
+      .disconnect,
+      .moveHere,
+      .handOver,
+    ]
+
+  }
+
+  public init() {}
+}
+
+public nonisolated struct Hammock_V1_SlackReply: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// as it is now (none: not connected)
+  public var link: Hammock_V1_SlackLink {
+    get {_link ?? Hammock_V1_SlackLink()}
+    set {_link = newValue}
+  }
+  /// Returns true if `link` has been explicitly set.
+  public var hasLink: Bool {self._link != nil}
+  /// Clears the value of `link`. Subsequent reads from it will return its default value.
+  public mutating func clearLink() {self._link = nil}
+
+  /// makes your Slack app from Hammock's manifest (api.slack.com)
+  public var manifestURL: String = String()
+
+  /// HAND_OVER only
+  public var userToken: String = String()
+
+  public var appToken: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _link: Hammock_V1_SlackLink? = nil
 }
 
 /// A computer this one is linked with, as kept here (not sent).
@@ -10663,6 +10848,14 @@ public nonisolated struct Hammock_V1_EventTrigger: Sendable {
     set {kind = .url(newValue)}
   }
 
+  public var slack: Hammock_V1_SlackTrigger {
+    get {
+      if case .slack(let v)? = kind {return v}
+      return Hammock_V1_SlackTrigger()
+    }
+    set {kind = .slack(newValue)}
+  }
+
   /// read only: why it can't fire now (gh isn't signed in…)
   public var error: String = String()
 
@@ -10689,6 +10882,7 @@ public nonisolated struct Hammock_V1_EventTrigger: Sendable {
     case shortcut(Hammock_V1_ShortcutTrigger)
     case mac(Hammock_V1_MacTrigger)
     case url(Hammock_V1_UrlCheckTrigger)
+    case slack(Hammock_V1_SlackTrigger)
 
   }
 
@@ -11345,6 +11539,105 @@ public nonisolated struct Hammock_V1_ShortcutTrigger: Sendable {
   // methods supported on all messages.
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// Something in Slack (slack.go), as you see it there: the computer that
+/// holds the Slack connection (Computer.slack) listens while an automation
+/// that's on has one of these. Your own messages never count (unless mine),
+/// nor others' reactions (unless anyone): an agent's run posting as you
+/// mustn't start another, and a reaction is you vouching for a message.
+/// Mentions are of you by name (not @here, @channel or user groups).
+public nonisolated struct Hammock_V1_SlackTrigger: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var event: Hammock_V1_SlackTrigger.Event = .unspecified
+
+  /// "#name", or its id (C…): EVENT_MESSAGE's channel; for the others,
+  /// only there ("": anywhere). Not for EVENT_DM.
+  public var channel: String = String()
+
+  /// Only messages from (a reaction: by) someone whose name, display name
+  /// or id (U…) this is ("": anyone).
+  public var from: String = String()
+
+  /// Only messages containing this (any case), or matching it as a
+  /// regular expression written /REGEX/ ("": any).
+  public var text: String = String()
+
+  /// EVENT_REACTION: its name, no colons ("": any)
+  public var emoji: String = String()
+
+  /// EVENT_MESSAGE: your own messages count too
+  public var mine: Bool = false
+
+  /// EVENT_REACTION: others' reactions count too
+  public var anyone: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public nonisolated enum Event: SwiftProtobuf.Enum, Swift.CaseIterable {
+    public typealias RawValue = Int
+    case unspecified // = 0
+
+    /// a message in channel (which it needs)
+    case message // = 1
+
+    /// a message that mentions you
+    case mention // = 2
+
+    /// a direct message to you, or a group DM you're in
+    case dm // = 3
+
+    /// a reply in a thread you started
+    case threadReply // = 4
+
+    /// you react to a message (with emoji)
+    case reaction // = 5
+    case UNRECOGNIZED(Int)
+
+    public init() {
+      self = .unspecified
+    }
+
+    public init?(rawValue: Int) {
+      switch rawValue {
+      case 0: self = .unspecified
+      case 1: self = .message
+      case 2: self = .mention
+      case 3: self = .dm
+      case 4: self = .threadReply
+      case 5: self = .reaction
+      default: self = .UNRECOGNIZED(rawValue)
+      }
+    }
+
+    public var rawValue: Int {
+      switch self {
+      case .unspecified: return 0
+      case .message: return 1
+      case .mention: return 2
+      case .dm: return 3
+      case .threadReply: return 4
+      case .reaction: return 5
+      case .UNRECOGNIZED(let i): return i
+      }
+    }
+
+    // The compiler won't synthesize support with the UNRECOGNIZED case.
+    public static let allCases: [Hammock_V1_SlackTrigger.Event] = [
+      .unspecified,
+      .message,
+      .mention,
+      .dm,
+      .threadReply,
+      .reaction,
+    ]
+
+  }
 
   public init() {}
 }
@@ -15386,7 +15679,7 @@ nonisolated extension Hammock_V1_UsageWindow: SwiftProtobuf.Message, SwiftProtob
 
 nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ClientMessage"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{2}\u{9}hello\0\u{1}subscribe\0\u{3}create_group\0\u{3}rename_group\0\u{3}close_group\0\u{3}create_tab\0\u{3}rename_tab\0\u{3}close_tab\0\u{3}create_pane\0\u{3}close_pane\0\u{3}attach_pane\0\u{3}detach_pane\0\u{1}input\0\u{1}resize\0\u{1}focus\0\u{3}read_pane\0\u{3}signal_pane\0\u{1}presence\0\u{3}clear_attention\0\u{3}set_layout\0\u{3}request_grant\0\u{3}respond_grant\0\u{3}move_tab\0\u{3}create_pairing\0\u{3}list_devices\0\u{3}revoke_device\0\u{1}pair\0\u{1}authenticate\0\u{3}set_remote_access\0\u{3}switch_agent\0\u{3}set_colors\0\u{3}set_group_icon\0\u{3}shutdown_daemon\0\u{3}list_audit\0\u{3}browser_navigate\0\u{3}watch_agent\0\u{3}agent_answer\0\u{3}agent_send\0\u{3}read_agent_file\0\u{3}create_invite\0\u{3}revoke_invite\0\u{3}respond_join\0\u{3}set_member\0\u{3}stop_sharing\0\u{4}\u{2}set_profile\0\u{3}join_shared\0\u{3}leave_shared\0\u{3}peer_hello\0\u{3}peer_join\0\u{3}upload_file\0\u{3}move_group\0\u{3}register_push\0\u{3}browser_call\0\u{3}browser_logs\0\u{3}simulator_call\0\u{3}merge_tab\0\u{3}break_out_pane\0\u{3}replace_pane\0\u{3}show_pairing\0\u{3}open_media\0\u{3}close_media\0\u{3}media_ack\0\u{3}browser_input\0\u{3}browser_menu_choice\0\u{3}list_sessions\0\u{3}resume_session\0\u{3}watch_log\0\u{3}read_log\0\u{3}clear_log\0\u{3}start_agent\0\u{3}list_folders\0\u{3}read_session\0\u{3}read_group_icon\0\u{3}set_group_icon_image\0\u{3}session_excerpts\0\u{3}reopen_closed\0\u{3}discover_computers\0\u{3}link_computer\0\u{3}respond_link\0\u{3}unlink_computer\0\u{3}set_computer_tint\0\u{3}create_link_invite\0\u{3}peer_link_hello\0\u{3}peer_link_reveal\0\u{3}peer_link_confirm\0\u{4}\u{2}introduce_computers\0\u{3}peer_intro_link\0\u{3}unlink_request\0\u{3}ssh_agent_call\0\u{3}set_group_folder\0\u{3}list_displays\0\u{3}screen_input\0\u{3}set_media_view\0\u{3}server_status\0\u{3}end_screen_session\0\u{3}screen_snapshot\0\u{3}save_schedule\0\u{3}delete_schedule\0\u{3}run_schedule\0\u{3}set_schedule_paused\0\u{3}skip_schedule_run\0\u{3}show_output\0\u{3}float_pane\0\u{3}hammock_key_command\0\u{3}respond_hammock_key\0\u{3}set_approval_key\0\u{3}ssh_setup\0\u{3}set_remote_networks\0\u{3}editor_push\0\u{3}editor_select\0\u{3}editor_command\0\u{3}read_editor\0\u{3}list_files\0\u{3}config_written\0\u{3}prove_app\0\u{3}read_diff\0\u{3}read_diff_file\0\u{3}diff_command\0\u{3}read_review\0\u{3}list_reviews\0\u{3}review_command\0\u{3}read_repo\0\u{3}hold_pane\0\u{3}sleep_pane\0\u{3}open_window\0\u{3}read_editor_image\0\u{3}restart_pane\0\u{3}list_dir\0\u{3}files_command\0\u{3}resolve_editor_links\0\u{3}restart_remote_access\0\u{3}set_composer_draft\0\u{3}cancel_limit_resume\0\u{4}\u{6}schedule_webhook\0\u{3}calendar_events\0\u{4}\u{13}remove_worktree\0\u{4}\u{5}pin_command\0\u{3}peer_record\0\u{3}mac_app_state\0\u{b}set_group_agents\0\u{c}6\u{1}\u{c}`\u{1}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{2}\u{9}hello\0\u{1}subscribe\0\u{3}create_group\0\u{3}rename_group\0\u{3}close_group\0\u{3}create_tab\0\u{3}rename_tab\0\u{3}close_tab\0\u{3}create_pane\0\u{3}close_pane\0\u{3}attach_pane\0\u{3}detach_pane\0\u{1}input\0\u{1}resize\0\u{1}focus\0\u{3}read_pane\0\u{3}signal_pane\0\u{1}presence\0\u{3}clear_attention\0\u{3}set_layout\0\u{3}request_grant\0\u{3}respond_grant\0\u{3}move_tab\0\u{3}create_pairing\0\u{3}list_devices\0\u{3}revoke_device\0\u{1}pair\0\u{1}authenticate\0\u{3}set_remote_access\0\u{3}switch_agent\0\u{3}set_colors\0\u{3}set_group_icon\0\u{3}shutdown_daemon\0\u{3}list_audit\0\u{3}browser_navigate\0\u{3}watch_agent\0\u{3}agent_answer\0\u{3}agent_send\0\u{3}read_agent_file\0\u{3}create_invite\0\u{3}revoke_invite\0\u{3}respond_join\0\u{3}set_member\0\u{3}stop_sharing\0\u{4}\u{2}set_profile\0\u{3}join_shared\0\u{3}leave_shared\0\u{3}peer_hello\0\u{3}peer_join\0\u{3}upload_file\0\u{3}move_group\0\u{3}register_push\0\u{3}browser_call\0\u{3}browser_logs\0\u{3}simulator_call\0\u{3}merge_tab\0\u{3}break_out_pane\0\u{3}replace_pane\0\u{3}show_pairing\0\u{3}open_media\0\u{3}close_media\0\u{3}media_ack\0\u{3}browser_input\0\u{3}browser_menu_choice\0\u{3}list_sessions\0\u{3}resume_session\0\u{3}watch_log\0\u{3}read_log\0\u{3}clear_log\0\u{3}start_agent\0\u{3}list_folders\0\u{3}read_session\0\u{3}read_group_icon\0\u{3}set_group_icon_image\0\u{3}session_excerpts\0\u{3}reopen_closed\0\u{3}discover_computers\0\u{3}link_computer\0\u{3}respond_link\0\u{3}unlink_computer\0\u{3}set_computer_tint\0\u{3}create_link_invite\0\u{3}peer_link_hello\0\u{3}peer_link_reveal\0\u{3}peer_link_confirm\0\u{4}\u{2}introduce_computers\0\u{3}peer_intro_link\0\u{3}unlink_request\0\u{3}ssh_agent_call\0\u{3}set_group_folder\0\u{3}list_displays\0\u{3}screen_input\0\u{3}set_media_view\0\u{3}server_status\0\u{3}end_screen_session\0\u{3}screen_snapshot\0\u{3}save_schedule\0\u{3}delete_schedule\0\u{3}run_schedule\0\u{3}set_schedule_paused\0\u{3}skip_schedule_run\0\u{3}show_output\0\u{3}float_pane\0\u{3}hammock_key_command\0\u{3}respond_hammock_key\0\u{3}set_approval_key\0\u{3}ssh_setup\0\u{3}set_remote_networks\0\u{3}editor_push\0\u{3}editor_select\0\u{3}editor_command\0\u{3}read_editor\0\u{3}list_files\0\u{3}config_written\0\u{3}prove_app\0\u{3}read_diff\0\u{3}read_diff_file\0\u{3}diff_command\0\u{3}read_review\0\u{3}list_reviews\0\u{3}review_command\0\u{3}read_repo\0\u{3}hold_pane\0\u{3}sleep_pane\0\u{3}open_window\0\u{3}read_editor_image\0\u{3}restart_pane\0\u{3}list_dir\0\u{3}files_command\0\u{3}resolve_editor_links\0\u{3}restart_remote_access\0\u{3}set_composer_draft\0\u{3}cancel_limit_resume\0\u{4}\u{6}schedule_webhook\0\u{3}calendar_events\0\u{4}\u{13}remove_worktree\0\u{4}\u{5}pin_command\0\u{3}peer_record\0\u{3}mac_app_state\0\u{3}slack_command\0\u{b}set_group_agents\0\u{c}6\u{1}\u{c}`\u{1}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -17202,6 +17495,19 @@ nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProt
           self.msg = .macAppState(v)
         }
       }()
+      case 178: try {
+        var v: Hammock_V1_SlackCommand?
+        var hadOneofValue = false
+        if let current = self.msg {
+          hadOneofValue = true
+          if case .slackCommand(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.msg = .slackCommand(v)
+        }
+      }()
       default: break
       }
     }
@@ -17771,6 +18077,10 @@ nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProt
     case .macAppState?: try {
       guard case .macAppState(let v)? = self.msg else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 177)
+    }()
+    case .slackCommand?: try {
+      guard case .slackCommand(let v)? = self.msg else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 178)
     }()
     case nil: break
     }
@@ -19311,7 +19621,7 @@ nonisolated extension Hammock_V1_MoveTab: SwiftProtobuf.Message, SwiftProtobuf._
 
 nonisolated extension Hammock_V1_ServerMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ServerMessage"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}reply_to\0\u{4}\u{9}hello_reply\0\u{1}error\0\u{1}ok\0\u{1}state\0\u{3}pane_snapshot\0\u{3}pane_output\0\u{3}pane_text\0\u{1}created\0\u{3}grant_decision\0\u{3}auth_challenge\0\u{1}pairing\0\u{1}devices\0\u{1}paired\0\u{3}audit_log\0\u{3}agent_view\0\u{3}agent_file\0\u{1}invite\0\u{3}peer_joined\0\u{3}browser_result\0\u{3}simulator_result\0\u{3}peer_welcome\0\u{3}show_pairing\0\u{3}device_paired\0\u{3}media_ticket\0\u{3}media_frame\0\u{3}media_ended\0\u{3}browser_menu\0\u{3}browser_clipboard\0\u{3}agent_switched\0\u{3}session_list\0\u{3}session_resumed\0\u{3}log_view\0\u{3}folder_list\0\u{3}group_icon\0\u{3}session_excerpt\0\u{3}discovered_computers\0\u{3}peer_link_nonce\0\u{3}peer_linked\0\u{3}peer_intro_linked\0\u{3}unlink_taken\0\u{3}ssh_agent_reply\0\u{1}displays\0\u{3}screen_cursor\0\u{3}screen_state\0\u{3}server_status_reply\0\u{3}screen_snapshot_reply\0\u{3}schedule_reply\0\u{3}hammock_key_status\0\u{3}ssh_setup_reply\0\u{3}editor_update\0\u{3}editor_push_reply\0\u{3}file_list\0\u{3}approval_pending\0\u{3}app_challenge\0\u{3}diff_content\0\u{3}diff_file_text\0\u{1}review\0\u{3}review_list\0\u{3}review_reply\0\u{3}repo_info\0\u{3}agent_action\0\u{3}open_window\0\u{3}editor_image\0\u{3}dir_listing\0\u{3}files_changed\0\u{3}editor_links\0\u{4}\u{a}schedule_webhook_reply\0\u{4}\u{5}pin_reply\0\u{3}trigger_reply\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}reply_to\0\u{4}\u{9}hello_reply\0\u{1}error\0\u{1}ok\0\u{1}state\0\u{3}pane_snapshot\0\u{3}pane_output\0\u{3}pane_text\0\u{1}created\0\u{3}grant_decision\0\u{3}auth_challenge\0\u{1}pairing\0\u{1}devices\0\u{1}paired\0\u{3}audit_log\0\u{3}agent_view\0\u{3}agent_file\0\u{1}invite\0\u{3}peer_joined\0\u{3}browser_result\0\u{3}simulator_result\0\u{3}peer_welcome\0\u{3}show_pairing\0\u{3}device_paired\0\u{3}media_ticket\0\u{3}media_frame\0\u{3}media_ended\0\u{3}browser_menu\0\u{3}browser_clipboard\0\u{3}agent_switched\0\u{3}session_list\0\u{3}session_resumed\0\u{3}log_view\0\u{3}folder_list\0\u{3}group_icon\0\u{3}session_excerpt\0\u{3}discovered_computers\0\u{3}peer_link_nonce\0\u{3}peer_linked\0\u{3}peer_intro_linked\0\u{3}unlink_taken\0\u{3}ssh_agent_reply\0\u{1}displays\0\u{3}screen_cursor\0\u{3}screen_state\0\u{3}server_status_reply\0\u{3}screen_snapshot_reply\0\u{3}schedule_reply\0\u{3}hammock_key_status\0\u{3}ssh_setup_reply\0\u{3}editor_update\0\u{3}editor_push_reply\0\u{3}file_list\0\u{3}approval_pending\0\u{3}app_challenge\0\u{3}diff_content\0\u{3}diff_file_text\0\u{1}review\0\u{3}review_list\0\u{3}review_reply\0\u{3}repo_info\0\u{3}agent_action\0\u{3}open_window\0\u{3}editor_image\0\u{3}dir_listing\0\u{3}files_changed\0\u{3}editor_links\0\u{4}\u{a}schedule_webhook_reply\0\u{4}\u{5}pin_reply\0\u{3}trigger_reply\0\u{3}slack_reply\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -20217,6 +20527,19 @@ nonisolated extension Hammock_V1_ServerMessage: SwiftProtobuf.Message, SwiftProt
           self.msg = .triggerReply(v)
         }
       }()
+      case 92: try {
+        var v: Hammock_V1_SlackReply?
+        var hadOneofValue = false
+        if let current = self.msg {
+          hadOneofValue = true
+          if case .slackReply(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.msg = .slackReply(v)
+        }
+      }()
       default: break
       }
     }
@@ -20506,6 +20829,10 @@ nonisolated extension Hammock_V1_ServerMessage: SwiftProtobuf.Message, SwiftProt
     case .triggerReply?: try {
       guard case .triggerReply(let v)? = self.msg else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 91)
+    }()
+    case .slackReply?: try {
+      guard case .slackReply(let v)? = self.msg else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 92)
     }()
     case nil: break
     }
@@ -27455,7 +27782,7 @@ nonisolated extension Hammock_V1_Computers: SwiftProtobuf.Message, SwiftProtobuf
 
 nonisolated extension Hammock_V1_Computer: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Computer"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}user_id\0\u{1}name\0\u{1}model\0\u{1}kind\0\u{1}os\0\u{1}tint\0\u{3}this_computer\0\u{1}online\0\u{3}last_seen_unix_ms\0\u{1}fingerprint\0\u{3}linked_unix_ms\0\u{3}last_input_unix_ms\0\u{1}addresses\0\u{3}cert_sha256\0\u{2}\u{4}notifies\0\u{2}\u{4}key\0\u{2}\u{2}refused\0\u{3}idle_ms\0\u{3}cert_changed\0\u{1}suspect\0\u{2}\u{3}chain\0\u{3}lan_subnets\0\u{1}icon\0\u{3}default_agent\0\u{3}push_phones\0\u{3}out_only\0\u{1}features\0\u{c}\u{f}\u{1}\u{c}\u{10}\u{1}\u{c}\u{11}\u{1}\u{c}\u{13}\u{1}\u{c}\u{14}\u{1}\u{c}\u{15}\u{1}\u{c}\u{17}\u{1}\u{c}\u{1c}\u{1}\u{c}\u{1d}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}user_id\0\u{1}name\0\u{1}model\0\u{1}kind\0\u{1}os\0\u{1}tint\0\u{3}this_computer\0\u{1}online\0\u{3}last_seen_unix_ms\0\u{1}fingerprint\0\u{3}linked_unix_ms\0\u{3}last_input_unix_ms\0\u{1}addresses\0\u{3}cert_sha256\0\u{2}\u{4}notifies\0\u{2}\u{4}key\0\u{2}\u{2}refused\0\u{3}idle_ms\0\u{3}cert_changed\0\u{1}suspect\0\u{2}\u{3}chain\0\u{3}lan_subnets\0\u{1}icon\0\u{3}default_agent\0\u{3}push_phones\0\u{3}out_only\0\u{1}features\0\u{1}slack\0\u{c}\u{f}\u{1}\u{c}\u{10}\u{1}\u{c}\u{11}\u{1}\u{c}\u{13}\u{1}\u{c}\u{14}\u{1}\u{c}\u{15}\u{1}\u{c}\u{17}\u{1}\u{c}\u{1c}\u{1}\u{c}\u{1d}\u{1}")
 
   fileprivate class _StorageClass {
     var _userID: String = String()
@@ -27485,6 +27812,7 @@ nonisolated extension Hammock_V1_Computer: SwiftProtobuf.Message, SwiftProtobuf.
     var _pushPhones: [String] = []
     var _outOnly: Bool = false
     var _features: [String] = []
+    var _slack: Hammock_V1_SlackLink? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -27522,6 +27850,7 @@ nonisolated extension Hammock_V1_Computer: SwiftProtobuf.Message, SwiftProtobuf.
       _pushPhones = source._pushPhones
       _outOnly = source._outOnly
       _features = source._features
+      _slack = source._slack
     }
   }
 
@@ -27567,6 +27896,7 @@ nonisolated extension Hammock_V1_Computer: SwiftProtobuf.Message, SwiftProtobuf.
         case 34: try { try decoder.decodeRepeatedStringField(value: &_storage._pushPhones) }()
         case 35: try { try decoder.decodeSingularBoolField(value: &_storage._outOnly) }()
         case 36: try { try decoder.decodeRepeatedStringField(value: &_storage._features) }()
+        case 37: try { try decoder.decodeSingularMessageField(value: &_storage._slack) }()
         default: break
         }
       }
@@ -27575,6 +27905,10 @@ nonisolated extension Hammock_V1_Computer: SwiftProtobuf.Message, SwiftProtobuf.
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
     try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
       if !_storage._userID.isEmpty {
         try visitor.visitSingularStringField(value: _storage._userID, fieldNumber: 1)
       }
@@ -27656,6 +27990,9 @@ nonisolated extension Hammock_V1_Computer: SwiftProtobuf.Message, SwiftProtobuf.
       if !_storage._features.isEmpty {
         try visitor.visitRepeatedStringField(value: _storage._features, fieldNumber: 36)
       }
+      try { if let v = _storage._slack {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 37)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -27692,10 +28029,179 @@ nonisolated extension Hammock_V1_Computer: SwiftProtobuf.Message, SwiftProtobuf.
         if _storage._pushPhones != rhs_storage._pushPhones {return false}
         if _storage._outOnly != rhs_storage._outOnly {return false}
         if _storage._features != rhs_storage._features {return false}
+        if _storage._slack != rhs_storage._slack {return false}
         return true
       }
       if !storagesAreEqual {return false}
     }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_SlackLink: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".SlackLink"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}team_id\0\u{1}team\0\u{1}url\0\u{3}user_id\0\u{1}user\0\u{1}listening\0\u{1}problem\0\u{1}idle\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.teamID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.team) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.url) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.userID) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self.user) }()
+      case 6: try { try decoder.decodeSingularBoolField(value: &self.listening) }()
+      case 7: try { try decoder.decodeSingularStringField(value: &self.problem) }()
+      case 8: try { try decoder.decodeSingularBoolField(value: &self.idle) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.teamID.isEmpty {
+      try visitor.visitSingularStringField(value: self.teamID, fieldNumber: 1)
+    }
+    if !self.team.isEmpty {
+      try visitor.visitSingularStringField(value: self.team, fieldNumber: 2)
+    }
+    if !self.url.isEmpty {
+      try visitor.visitSingularStringField(value: self.url, fieldNumber: 3)
+    }
+    if !self.userID.isEmpty {
+      try visitor.visitSingularStringField(value: self.userID, fieldNumber: 4)
+    }
+    if !self.user.isEmpty {
+      try visitor.visitSingularStringField(value: self.user, fieldNumber: 5)
+    }
+    if self.listening != false {
+      try visitor.visitSingularBoolField(value: self.listening, fieldNumber: 6)
+    }
+    if !self.problem.isEmpty {
+      try visitor.visitSingularStringField(value: self.problem, fieldNumber: 7)
+    }
+    if self.idle != false {
+      try visitor.visitSingularBoolField(value: self.idle, fieldNumber: 8)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_SlackLink, rhs: Hammock_V1_SlackLink) -> Bool {
+    if lhs.teamID != rhs.teamID {return false}
+    if lhs.team != rhs.team {return false}
+    if lhs.url != rhs.url {return false}
+    if lhs.userID != rhs.userID {return false}
+    if lhs.user != rhs.user {return false}
+    if lhs.listening != rhs.listening {return false}
+    if lhs.problem != rhs.problem {return false}
+    if lhs.idle != rhs.idle {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_SlackCommand: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".SlackCommand"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}action\0\u{3}computer_id\0\u{3}user_token\0\u{3}app_token\0\u{3}from_computer_id\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularEnumField(value: &self.action) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.computerID) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.userToken) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.appToken) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self.fromComputerID) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.action != .unspecified {
+      try visitor.visitSingularEnumField(value: self.action, fieldNumber: 1)
+    }
+    if !self.computerID.isEmpty {
+      try visitor.visitSingularStringField(value: self.computerID, fieldNumber: 2)
+    }
+    if !self.userToken.isEmpty {
+      try visitor.visitSingularStringField(value: self.userToken, fieldNumber: 3)
+    }
+    if !self.appToken.isEmpty {
+      try visitor.visitSingularStringField(value: self.appToken, fieldNumber: 4)
+    }
+    if !self.fromComputerID.isEmpty {
+      try visitor.visitSingularStringField(value: self.fromComputerID, fieldNumber: 5)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_SlackCommand, rhs: Hammock_V1_SlackCommand) -> Bool {
+    if lhs.action != rhs.action {return false}
+    if lhs.computerID != rhs.computerID {return false}
+    if lhs.userToken != rhs.userToken {return false}
+    if lhs.appToken != rhs.appToken {return false}
+    if lhs.fromComputerID != rhs.fromComputerID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_SlackCommand.Action: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0ACTION_UNSPECIFIED\0\u{1}ACTION_STATUS\0\u{1}ACTION_CONNECT\0\u{1}ACTION_DISCONNECT\0\u{1}ACTION_MOVE_HERE\0\u{1}ACTION_HAND_OVER\0")
+}
+
+nonisolated extension Hammock_V1_SlackReply: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".SlackReply"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}link\0\u{3}manifest_url\0\u{3}user_token\0\u{3}app_token\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._link) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.manifestURL) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.userToken) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.appToken) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._link {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    if !self.manifestURL.isEmpty {
+      try visitor.visitSingularStringField(value: self.manifestURL, fieldNumber: 2)
+    }
+    if !self.userToken.isEmpty {
+      try visitor.visitSingularStringField(value: self.userToken, fieldNumber: 3)
+    }
+    if !self.appToken.isEmpty {
+      try visitor.visitSingularStringField(value: self.appToken, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_SlackReply, rhs: Hammock_V1_SlackReply) -> Bool {
+    if lhs._link != rhs._link {return false}
+    if lhs.manifestURL != rhs.manifestURL {return false}
+    if lhs.userToken != rhs.userToken {return false}
+    if lhs.appToken != rhs.appToken {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -30205,7 +30711,7 @@ nonisolated extension Hammock_V1_ScheduleRun.Status: SwiftProtobuf._ProtoNamePro
 
 nonisolated extension Hammock_V1_EventTrigger: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".EventTrigger"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{1}github\0\u{1}agent\0\u{1}exit\0\u{1}log\0\u{1}files\0\u{1}calendar\0\u{1}webhook\0\u{1}error\0\u{1}check\0\u{1}shortcut\0\u{3}checked_unix_ms\0\u{3}fired_unix_ms\0\u{1}held\0\u{1}mac\0\u{1}url\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{1}github\0\u{1}agent\0\u{1}exit\0\u{1}log\0\u{1}files\0\u{1}calendar\0\u{1}webhook\0\u{1}error\0\u{1}check\0\u{1}shortcut\0\u{3}checked_unix_ms\0\u{3}fired_unix_ms\0\u{1}held\0\u{1}mac\0\u{1}url\0\u{1}slack\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -30361,6 +30867,19 @@ nonisolated extension Hammock_V1_EventTrigger: SwiftProtobuf.Message, SwiftProto
           self.kind = .url(v)
         }
       }()
+      case 17: try {
+        var v: Hammock_V1_SlackTrigger?
+        var hadOneofValue = false
+        if let current = self.kind {
+          hadOneofValue = true
+          if case .slack(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.kind = .slack(v)
+        }
+      }()
       default: break
       }
     }
@@ -30436,6 +30955,10 @@ nonisolated extension Hammock_V1_EventTrigger: SwiftProtobuf.Message, SwiftProto
     case .url?: try {
       guard case .url(let v)? = self.kind else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 16)
+    }()
+    case .slack?: try {
+      guard case .slack(let v)? = self.kind else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 17)
     }()
     default: break
     }
@@ -31051,6 +31574,70 @@ nonisolated extension Hammock_V1_ShortcutTrigger: SwiftProtobuf.Message, SwiftPr
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
+}
+
+nonisolated extension Hammock_V1_SlackTrigger: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".SlackTrigger"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}event\0\u{1}channel\0\u{1}from\0\u{1}text\0\u{1}emoji\0\u{1}mine\0\u{1}anyone\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularEnumField(value: &self.event) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.channel) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.from) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.text) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self.emoji) }()
+      case 6: try { try decoder.decodeSingularBoolField(value: &self.mine) }()
+      case 7: try { try decoder.decodeSingularBoolField(value: &self.anyone) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.event != .unspecified {
+      try visitor.visitSingularEnumField(value: self.event, fieldNumber: 1)
+    }
+    if !self.channel.isEmpty {
+      try visitor.visitSingularStringField(value: self.channel, fieldNumber: 2)
+    }
+    if !self.from.isEmpty {
+      try visitor.visitSingularStringField(value: self.from, fieldNumber: 3)
+    }
+    if !self.text.isEmpty {
+      try visitor.visitSingularStringField(value: self.text, fieldNumber: 4)
+    }
+    if !self.emoji.isEmpty {
+      try visitor.visitSingularStringField(value: self.emoji, fieldNumber: 5)
+    }
+    if self.mine != false {
+      try visitor.visitSingularBoolField(value: self.mine, fieldNumber: 6)
+    }
+    if self.anyone != false {
+      try visitor.visitSingularBoolField(value: self.anyone, fieldNumber: 7)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_SlackTrigger, rhs: Hammock_V1_SlackTrigger) -> Bool {
+    if lhs.event != rhs.event {return false}
+    if lhs.channel != rhs.channel {return false}
+    if lhs.from != rhs.from {return false}
+    if lhs.text != rhs.text {return false}
+    if lhs.emoji != rhs.emoji {return false}
+    if lhs.mine != rhs.mine {return false}
+    if lhs.anyone != rhs.anyone {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_SlackTrigger.Event: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0EVENT_UNSPECIFIED\0\u{1}EVENT_MESSAGE\0\u{1}EVENT_MENTION\0\u{1}EVENT_DM\0\u{1}EVENT_THREAD_REPLY\0\u{1}EVENT_REACTION\0")
 }
 
 nonisolated extension Hammock_V1_WebhookTrigger: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {

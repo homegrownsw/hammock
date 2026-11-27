@@ -27,9 +27,17 @@ const featureSessions = "automation-sessions"
 // featureAutomations3: places (triggers and Only If) and URL checks.
 const featureAutomations3 = "automations-3"
 
+// featureSlack: Slack triggers (and SlackCommand).
+const featureSlack = "automations-slack"
+
 // features are what this computer's Hammock can do that an older one
 // can't (Computer.features).
-var features = []string{featureAutomations2, featureSessions, featureAutomations3}
+var features = []string{featureAutomations2, featureSessions, featureAutomations3, featureSlack}
+
+// hasSlack: s has a Slack trigger.
+func hasSlack(s *pb.Schedule) bool {
+	return slices.ContainsFunc(s.GetEvents(), isSlackTrigger)
+}
 
 // needsAutomations3 says what of s a Hammock before places and URL checks
 // wouldn't know ("" if nothing).
@@ -89,6 +97,8 @@ func (d *Daemon) peerCanSave(uid string, s *pb.Schedule) error {
 		what = "automations that carry on a session"
 	case !slices.Contains(has, featureAutomations3) && needsAutomations3(s) != "":
 		what = needsAutomations3(s)
+	case !slices.Contains(has, featureSlack) && hasSlack(s):
+		what = "Slack triggers"
 	default:
 		return nil
 	}

@@ -75,6 +75,17 @@ struct ScheduleWhenBox: View {
                 Button("Command Check…") { add(.check(.with { $0.everyMinutes = 5 })) }
                 Button("URL Check…") { add(.url(.with { $0.everyMinutes = 5 })) }
             }
+            Section("Messages") {
+                Menu("Slack") {
+                    if model.slackHolder == nil {
+                        Button("Connect Slack…") { SlackUI.shared.connect(on: computerID) }
+                    } else {
+                        ForEach(Self.slackEvents, id: \.0) { e, title, _ in
+                            Button(title) { addSlack(e) }
+                        }
+                    }
+                }
+            }
             if onThisMac {
                 Section("This Mac") {
                     Menu("Disk and Battery") {
@@ -158,6 +169,21 @@ struct ScheduleWhenBox: View {
         (.notification, "I Get a GitHub Notification", "I get a GitHub notification"),
     ]
 
+    /// Slack's events: the menu's title, and the row's words.
+    static let slackEvents: [(SlackTrigger.Event, String, String)] = [
+        (.message, "A Message in a Channel…", "A message in"),
+        (.mention, "I’m Mentioned", "I’m mentioned in"),
+        (.dm, "A Direct Message", "A direct message to me"),
+        (.threadReply, "A Reply in My Thread", "A reply in my thread in"),
+        (.reaction, "A Reaction…", "I react with"),
+    ]
+
+    /// A Slack trigger; Slack held by another computer offers to move here.
+    private func addSlack(_ e: SlackTrigger.Event) {
+        add(.slack(.with { $0.event = e }))
+        SlackUI.shared.offerMove(model, to: computerID)
+    }
+
     private var cooldown: Binding<Int> {
         Binding(get: { draft.s.cooldown }, set: { draft.s.cooldownSeconds = Int32($0) })
     }
@@ -183,7 +209,7 @@ struct ScheduleWhenBox: View {
         }
         draft.s.events.append(t)
         // Something to name: its list opens.
-        if let target = t.target, target != .repository, t.targetValue.isEmpty { targetsShown = draft.s.events.count - 1 }
+        if let target = t.target, target != .repository, t.targetValue.isEmpty, t.targetNeeded { targetsShown = draft.s.events.count - 1 }
     }
 
     /// A place trigger: its token's list opens, to pick a place or make one.
@@ -371,6 +397,7 @@ struct TriggerEditorRow: View {
                 Text(missing).font(.caption).foregroundStyle(.orange)
             }
             if case .webhook = first.kind { webhookLine }
+            if case .slack = first.kind { SlackLinkLine(model: model, computerID: computerID) }
             TriggerStatusLine(trigger: EventTrigger.merged(row.compactMap { $0 < events.count ? events[$0] : nil }))
         }
     }
@@ -508,6 +535,28 @@ struct TriggerEditorRow: View {
             word("checked")
             pop(url(\.everyMinutes), choices([1, 5, 10, 15, 30, 60, 180, 360, 720, 1440], max(url(\.everyMinutes).wrappedValue, 1))
                 .map { ($0, EventTrigger.everyWords(Int($0))) })
+        case .slack(let sl):
+            pop(slack(\.event), ScheduleWhenBox.slackEvents.map { ($0.0, $0.2) })
+            if sl.event == .reaction {
+                field("Emoji", slack(\.emoji), "any emoji", width: 90)
+                word("in")
+            }
+            if sl.event != .dm { targetToken }
+            if sl.event != .reaction || sl.anyone {
+                word(sl.event == .reaction ? "by" : "from")
+                field("From", slack(\.from), "anyone", width: 100)
+                    .help("Their name, display name or Slack id")
+            }
+            word(sl.event == .reaction ? "on a message containing" : "containing")
+            field("Containing", slack(\.text), "anything, or /regex/", width: 150)
+            if sl.event == .message {
+                Toggle("including mine", isOn: slack(\.mine)).toggleStyle(.checkbox)
+                    .help("Your own messages don’t start it unless this is on: an agent’s run may post as you")
+            }
+            if sl.event == .reaction {
+                Toggle("or anyone does", isOn: slack(\.anyone)).toggleStyle(.checkbox)
+                    .help("Only your own reactions start it unless this is on: anyone can react to anything")
+            }
         case .shortcut:
             word("Shortcuts runs it")
             Button("Open Shortcuts") {
@@ -796,6 +845,11 @@ struct TriggerEditorRow: View {
                 set: { v in if case .check(var c) = first.kind { c[keyPath: kp] = v; trigger.wrappedValue.kind = .check(c) } })
     }
 
+    private func slack<T>(_ kp: WritableKeyPath<Hammock_V1_SlackTrigger, T>) -> Binding<T> {
+        Binding(get: { if case .slack(let s) = first.kind { return s[keyPath: kp] }; return Hammock_V1_SlackTrigger()[keyPath: kp] },
+                set: { v in if case .slack(var s) = first.kind { s[keyPath: kp] = v; trigger.wrappedValue.kind = .slack(s) } })
+    }
+
     private func calendar<T>(_ kp: WritableKeyPath<Hammock_V1_CalendarTrigger, T>) -> Binding<T> {
         Binding(get: { if case .calendar(let c) = first.kind { return c[keyPath: kp] }; return Hammock_V1_CalendarTrigger()[keyPath: kp] },
                 set: { v in if case .calendar(var c) = first.kind { c[keyPath: kp] = v; trigger.wrappedValue.kind = .calendar(c) } })
@@ -898,6 +952,7 @@ extension EventTrigger {
         case .agent(let a): !a.finished && !a.needsYou ? "An agent trigger fires when it finishes, needs you, or both" : ""
         case .log(let l): l.paneID.isEmpty ? "Which log pane?" : l.pattern.trimmingCharacters(in: .whitespaces).isEmpty ? "What should the log line match?" : ""
         case .check(let c): c.command.trimmingCharacters(in: .whitespaces).isEmpty ? "Which command should the check run?" : ""
+        case .slack(let s): s.event == .message && s.channel.trimmingCharacters(in: .whitespaces).isEmpty ? "Which channel?" : ""
         default: ""
         }
     }
@@ -909,6 +964,15 @@ enum ScheduleSamples {
     static let webhook: Hammock_V1_ScheduleWebhookReply = .with {
         $0.urls = ["https://100.64.0.2:7433/hook/sample-secret-not-real"]
         $0.path = "/hook/sample-secret-not-real"
+    }
+
+    static let slack: Hammock_V1_SlackLink = .with {
+        $0.teamID = "T0SAMPLE"
+        $0.team = "Acme"
+        $0.url = "https://acme.slack.com/"
+        $0.userID = "U0SAMPLE"
+        $0.user = "sam"
+        $0.listening = true
     }
 
     static func all(now: Date = Date()) -> [Schedule] {
@@ -1044,6 +1108,26 @@ enum ScheduleSamples {
             $0.minuteOfDay = 16 * 60
             $0.paused = true
         }
-        return [review, ci, prep, morning, tests, weekly]
+        let triage = Schedule.with {
+            $0.id = "sc_sample_slack"
+            $0.name = "Triage Slack alerts"
+            $0.kind = "claude"
+            $0.prompt = "Someone flagged this in Slack. Find out what broke from the message and the linked logs, and write up what you find. Don’t post anything."
+            $0.cwd = "/Users/me/Developer/app"
+            $0.groupName = "app"
+            $0.timing = .events
+            $0.cooldownSeconds = 300
+            $0.events = [
+                .with { $0.id = "tr_k1"; $0.kind = .slack(.with { $0.event = .message; $0.channel = "deploys"; $0.text = "/fail(ed|ing)/" }); $0.firedUnixMs = ms(2 * 3600) },
+                .with { $0.id = "tr_k2"; $0.kind = .slack(.with { $0.event = .message; $0.channel = "alerts"; $0.text = "/fail(ed|ing)/" }) },
+                .with { $0.id = "tr_k3"; $0.kind = .slack(.with { $0.event = .mention }); $0.firedUnixMs = ms(26 * 3600) },
+                .with { $0.id = "tr_k4"; $0.kind = .slack(.with { $0.event = .dm; $0.from = "Sam Example" }) },
+                .with { $0.id = "tr_k5"; $0.kind = .slack(.with { $0.event = .reaction; $0.emoji = "eyes" }); $0.held = "waiting for its cooldown, until 14:05" },
+            ]
+            $0.runs = [
+                .with { $0.id = "sr_k1"; $0.status = .ready; $0.trigger = "A Slack message in #deploys"; $0.kind = "claude"; $0.startedUnixMs = ms(2 * 3600); $0.endedUnixMs = ms(2 * 3600 - 420); $0.note = "The deploy failed on a missing migration; notes are in triage.md." },
+            ]
+        }
+        return [review, ci, prep, morning, tests, weekly, triage]
     }
 }

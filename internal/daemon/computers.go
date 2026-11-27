@@ -365,6 +365,7 @@ func (d *Daemon) selfRecord(forPeer bool) *pb.Computer {
 	self.Notifies = d.canNotify()
 	self.DefaultAgent = d.defaultAgent()
 	self.Features = features
+	self.Slack = d.slackLink()
 	self.PushPhones = nil
 	if forPeer {
 		self.PushPhones = d.pushPhones() // its agents' phones are told from here
@@ -470,6 +471,9 @@ func (d *Daemon) publishComputers() {
 	}
 	d.comp.sentLocal, d.comp.sentPeers, d.comp.sentInput = local, peers, d.comp.self.LastInputUnixMs
 	d.publish(&pb.StateUpdate{Computers: local})
+	if d.slack.tok == nil {
+		d.slackErrors() // (which computer holds Slack may have changed)
+	}
 }
 
 // inUseElsewhere: another linked computer, reachable, able to notify (its
@@ -1832,6 +1836,10 @@ func (d *Daemon) ownerCheck(c *conn, msg *pb.ClientMessage) (ignore bool, err er
 	case *pb.ClientMessage_DeleteSchedule, *pb.ClientMessage_RunSchedule, *pb.ClientMessage_SetSchedulePaused, *pb.ClientMessage_SkipScheduleRun,
 		*pb.ClientMessage_ScheduleWebhook:
 		return false, nil // one here (checked above)
+	case *pb.ClientMessage_SlackCommand:
+		// You, setting Slack up here from another of yours, or that one
+		// taking it from here (HAND_OVER: only over a link; slack.go).
+		return false, here(&m.SlackCommand.ComputerId)
 	case *pb.ClientMessage_RespondGrant:
 		// You, answering an agent here from another of your computers
 		// (that one doesn't let its agents answer: agentCheck).
@@ -1912,6 +1920,8 @@ func msgComputer(msg *pb.ClientMessage) string {
 		}
 	case *pb.ClientMessage_ListSessions:
 		return m.ListSessions.ComputerId
+	case *pb.ClientMessage_SlackCommand:
+		return m.SlackCommand.ComputerId
 	case *pb.ClientMessage_ReadSession:
 		return m.ReadSession.ComputerId
 	case *pb.ClientMessage_ResumeSession:

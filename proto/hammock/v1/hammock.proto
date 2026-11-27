@@ -683,6 +683,11 @@ message ClientMessage {
     // itself: the Wi-Fi network, the apps open, the displays connected
     // (macwatch.go). Sent as they change. The Mac app only; no reply.
     MacAppState mac_app_state = 177;
+    // Slack for automations (slack.go): its connection on a computer of
+    // yours, made with your own Slack app's tokens. From your own clients
+    // and computers only (never an agent, a guest or a phone). Replies
+    // SlackReply.
+    SlackCommand slack_command = 178;
   }
   reserved 96;  // ShareMembership (an earlier design)
 }
@@ -971,6 +976,7 @@ message ServerMessage {
     ScheduleWebhookReply schedule_webhook_reply = 85; // reply to ScheduleWebhook
     PinReply pin_reply = 90;                        // reply to PinCommand
     TriggerReply trigger_reply = 91;                // reply to RunSchedule with trigger and status_reply
+    SlackReply slack_reply = 92;                    // reply to SlackCommand
   }
 }
 
@@ -2381,6 +2387,57 @@ message Computer {
   // "automations-2" (This Mac triggers, Only If, calendar end and free
   // time, newer GitHub events). An older one sends none.
   repeated string features = 36;
+  // The Slack workspace its Hammock is connected to, for automations
+  // (SlackCommand): one computer of yours holds the connection, and the
+  // others say so. None: not connected there.
+  SlackLink slack = 37;
+}
+
+// A computer's Slack connection (slack.go), as it is now.
+message SlackLink {
+  string team_id = 1;
+  string team = 2;                // the workspace's name
+  string url = 3;                 // its address: https://acme.slack.com/
+  string user_id = 4;             // you, there
+  string user = 5;                // your name there
+  bool listening = 6;             // its connection to Slack is open now
+  // Why it can't hear Slack now ("": it can, or nothing wants it to):
+  // "Slack refused the tokens", "Can't reach Slack".
+  string problem = 7;
+  // Connected, but no automation that's on has a Slack trigger, so
+  // nothing listens (the tokens are kept).
+  bool idle = 8;
+}
+
+// Slack, on computer_id ("": this one).
+// STATUS: how it is, and the link that makes your Slack app.
+// CONNECT: checks user_token (xoxp-) and app_token (xapp-) with Slack,
+// then keeps them on that computer; again with new ones: Change Tokens.
+// DISCONNECT: forgets them.
+// MOVE_HERE: takes the connection from from_computer_id, another of your
+// computers, which forgets it (HAND_OVER).
+// HAND_OVER: from a linked computer of yours only: its reply has the
+// tokens, and this one forgets them.
+message SlackCommand {
+  enum Action {
+    ACTION_UNSPECIFIED = 0;
+    ACTION_STATUS = 1;
+    ACTION_CONNECT = 2;
+    ACTION_DISCONNECT = 3;
+    ACTION_MOVE_HERE = 4;
+    ACTION_HAND_OVER = 5;
+  }
+  Action action = 1;
+  string computer_id = 2;
+  string user_token = 3;
+  string app_token = 4;
+  string from_computer_id = 5;
+}
+message SlackReply {
+  SlackLink link = 1;             // as it is now (none: not connected)
+  string manifest_url = 2;        // makes your Slack app from Hammock's manifest (api.slack.com)
+  string user_token = 3;          // HAND_OVER only
+  string app_token = 4;
 }
 
 // A computer this one is linked with, as kept here (not sent).
@@ -2878,6 +2935,7 @@ message EventTrigger {
     ShortcutTrigger shortcut = 11;
     MacTrigger mac = 15;
     UrlCheckTrigger url = 16;
+    SlackTrigger slack = 17;
   }
   string error = 9;               // read only: why it can't fire now (gh isn't signed in…)
   // Read only, the daemon's: when it last looked (a trigger that asks or
@@ -3066,6 +3124,36 @@ message UrlCheckTrigger {
 // Tasker) starts it. Any automation can be run that way; this says it's
 // meant to be, for one that runs on nothing else. Mac only.
 message ShortcutTrigger {}
+
+// Something in Slack (slack.go), as you see it there: the computer that
+// holds the Slack connection (Computer.slack) listens while an automation
+// that's on has one of these. Your own messages never count (unless mine),
+// nor others' reactions (unless anyone): an agent's run posting as you
+// mustn't start another, and a reaction is you vouching for a message.
+// Mentions are of you by name (not @here, @channel or user groups).
+message SlackTrigger {
+  enum Event {
+    EVENT_UNSPECIFIED = 0;
+    EVENT_MESSAGE = 1;            // a message in channel (which it needs)
+    EVENT_MENTION = 2;            // a message that mentions you
+    EVENT_DM = 3;                 // a direct message to you, or a group DM you're in
+    EVENT_THREAD_REPLY = 4;       // a reply in a thread you started
+    EVENT_REACTION = 5;           // you react to a message (with emoji)
+  }
+  Event event = 1;
+  // "#name", or its id (C…): EVENT_MESSAGE's channel; for the others,
+  // only there ("": anywhere). Not for EVENT_DM.
+  string channel = 2;
+  // Only messages from (a reaction: by) someone whose name, display name
+  // or id (U…) this is ("": anyone).
+  string from = 3;
+  // Only messages containing this (any case), or matching it as a
+  // regular expression written /REGEX/ ("": any).
+  string text = 4;
+  string emoji = 5;               // EVENT_REACTION: its name, no colons ("": any)
+  bool mine = 6;                  // EVENT_MESSAGE: your own messages count too
+  bool anyone = 7;                // EVENT_REACTION: others' reactions count too
+}
 
 // A POST to the schedule's secret URL on the remote access listener
 // (/hook/SECRET; ScheduleWebhook gives it). Its body is the event.

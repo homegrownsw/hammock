@@ -60,6 +60,16 @@ extension AppModel {
         for s in list { schedules[s.id] = s }
     }
 
+    /// A made-up Slack connection on this computer, for debug hooks only
+    /// (HMK_DEBUG_SCHEDULES_SAMPLE), never sent anywhere.
+    public func showSampleSlack(_ link: Hammock_V1_SlackLink) {
+        if let i = computers.firstIndex(where: \.thisComputer) {
+            computers[i].slack = link
+        } else {
+            computers.append(.with { $0.thisComputer = true; $0.userID = myUserID; $0.name = "This Mac"; $0.slack = link })
+        }
+    }
+
     /// The schedule a pane is a run of.
     public func schedule(for pane: Pane) -> Schedule? {
         pane.scheduleID.isEmpty ? nil : schedules[pane.scheduleID]
@@ -182,6 +192,30 @@ extension AppModel {
         try await scheduleCall {
             $0.scheduleWebhook = .with { $0.scheduleID = id; $0.triggerID = trigger; $0.regenerate = regenerate }
         }.scheduleWebhookReply
+    }
+
+    /// Slack, for Slack triggers, on a computer of yours ("": this one):
+    /// how it is (and the link that makes your Slack app), connecting with
+    /// your app's two tokens, disconnecting, or taking it from the
+    /// computer from that holds it.
+    public func slackCommand(_ action: Hammock_V1_SlackCommand.Action, on computerID: String = "", userToken: String = "",
+                             appToken: String = "", from: String = "") async throws -> Hammock_V1_SlackReply {
+        let on = computerID == myUserID ? "" : computerID
+        return try await scheduleCall {
+            $0.slackCommand = .with {
+                $0.action = action
+                $0.computerID = on
+                $0.userToken = userToken
+                $0.appToken = appToken
+                $0.fromComputerID = from
+            }
+        }.slackReply
+    }
+
+    /// The computer of yours that holds Slack, and its connection (nil: none).
+    public var slackHolder: (computer: Computer, link: Hammock_V1_SlackLink)? {
+        for c in computers where c.hasSlack && !c.slack.teamID.isEmpty { return (c, c.slack) }
+        return nil
     }
 
     /// The Mac's calendars, for calendar triggers (CalendarFeed).
@@ -559,6 +593,8 @@ extension EventTrigger {
             return "“\(c.command)”\(what), checked " + Self.everyWords(Int(c.everyMinutes))
         case .url(let u):
             return u.words
+        case .slack(let s):
+            return s.words
         case nil:
             return "An unknown event"
         }
@@ -631,6 +667,7 @@ extension EventTrigger {
         case .shortcut: "square.2.layers.3d"
         case .check: "checkmark.seal"
         case .url: "globe"
+        case .slack(let s): s.symbol
         case .mac(let m): m.symbol
         case nil: "bolt"
         }
@@ -653,6 +690,55 @@ extension Hammock_V1_UrlCheckTrigger {
         return url + what + ", checked " + EventTrigger.everyWords(Int(everyMinutes))
     }
 }
+/// Something in Slack (the daemon's slack.go).
+public typealias SlackTrigger = Hammock_V1_SlackTrigger
+
+extension Hammock_V1_SlackTrigger {
+    /// A channel for words: "#deploys", or its id (schedtrig.SlackChannelWords).
+    public static func channelWords(_ c: String) -> String {
+        if c.isEmpty || isChannelID(c) { return c }
+        return "#" + (c.hasPrefix("#") ? String(c.dropFirst()) : c)
+    }
+
+    /// It names a conversation by its id (C…, G…, D…), not its name.
+    public static func isChannelID(_ c: String) -> Bool {
+        c.range(of: "^[CGD][A-Z0-9]{6,}$", options: .regularExpression) != nil
+    }
+
+    /// What fires it, in words (schedtrig.DescribeSlack).
+    public var words: String {
+        var inChannel = channel.isEmpty ? "" : " (\(Self.channelWords(channel)))"
+        var out: String
+        switch event {
+        case .message: out = "A Slack message in \(Self.channelWords(channel))"; inChannel = ""
+        case .mention: out = "I’m mentioned in Slack"
+        case .dm: out = "A Slack direct message to me"; inChannel = ""
+        case .threadReply: out = "A reply in a Slack thread I started"
+        case .reaction:
+            let who = anyone ? "Someone reacts" : "I react"
+            out = emoji.isEmpty ? "\(who) to a Slack message" : "\(who) with :\(emoji): in Slack"
+        default: return "Something in Slack"
+        }
+        out += inChannel
+        if !from.isEmpty { out += event == .reaction ? " by “\(from)”" : " from “\(from)”" }
+        if !text.isEmpty {
+            out += text.count > 2 && text.hasPrefix("/") && text.hasSuffix("/") ? " matching \(text)" : " containing “\(text)”"
+        }
+        if mine, event == .message { out += ", mine too" }
+        return out
+    }
+
+    public var symbol: String {
+        switch event {
+        case .mention: "at"
+        case .dm: "bubble.left.and.bubble.right"
+        case .threadReply: "arrowshape.turn.up.left"
+        case .reaction: "face.smiling"
+        default: "number"
+        }
+    }
+}
+
 /// An Only If condition (the daemon's schedonlyif.go).
 public typealias ScheduleCondition = Hammock_V1_Condition
 

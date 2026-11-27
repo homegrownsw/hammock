@@ -21,6 +21,8 @@
 //	place:arrive=NAME | place:leave=NAME  one of the Mac app's Places
 //	webhook
 //	shortcut                            Shortcuts' Run Hammock Automation (Mac)
+//	slack:message=#CHANNEL|mention|dm|reply|reaction[=EMOJI][,in=#CHANNEL][,from=NAME][,mine][,anyone][,text=TEXT|/REGEX/]
+//	                                    something in Slack (slack.go)
 //
 // A command check has a command in it, and a URL check a URL, which can
 // have any of : @ , in them, so they aren't written this way: hmk gives
@@ -49,7 +51,8 @@ agent:finished|needs-you[,…][@GROUP|PANE]   exit[@GROUP|PANE]   log:REGEX@PANE
 calendar:MINUTES|end|free[=MINUTES][,title=TEXT][,calendar=NAME][,attendees]
 mac:disk<10%|disk<50GB[@VOLUME]|battery<20%|plugged-in|unplugged|wake[=MIN]|away=MIN|back[=MIN]|
   drive[=NAME]|wifi-joined[=NAME]|wifi-left[=NAME]|app-opened=NAME|app-quit=NAME|display[=NAME]
-place:arrive=NAME|leave=NAME   webhook   shortcut`
+place:arrive=NAME|leave=NAME   webhook   shortcut
+slack:message=#CHANNEL|mention|dm|reply|reaction[=EMOJI][,in=#CHANNEL][,from=NAME][,mine][,anyone][,text=TEXT|/REGEX/]`
 
 // Resolver finds the pane or Group ref names (an id, a name, an index), for
 // a trigger that may be in either (groups) or a pane only.
@@ -275,6 +278,12 @@ func Parse(spec string, resolve Resolver) (*pb.EventTrigger, error) {
 			return nil, err
 		}
 		return &pb.EventTrigger{Kind: &pb.EventTrigger_Mac{Mac: m}}, nil
+	case "slack":
+		sl, err := parseSlack(spec, rest)
+		if err != nil {
+			return nil, err
+		}
+		return &pb.EventTrigger{Kind: &pb.EventTrigger_Slack{Slack: sl}}, nil
 	case "url", "url-check", "http":
 		return nil, errors.New("a URL check is given with its own options: --url URL [--url-every MINUTES] [--url-on fail|change|contains] [--url-text TEXT] [--url-timeout SECONDS]")
 	case "check", "command-check":
@@ -416,6 +425,8 @@ func Describe(t *pb.EventTrigger, names Names) string {
 		return "“" + c.Command + "”" + what + ", checked " + EveryWords(CheckEvery(c))
 	case *pb.EventTrigger_Url:
 		return DescribeURL(k.Url)
+	case *pb.EventTrigger_Slack:
+		return DescribeSlack(k.Slack)
 	}
 	return "An unknown event"
 }
@@ -500,6 +511,8 @@ func Spec(t *pb.EventTrigger) string {
 		return CheckFlags(k.Check)
 	case *pb.EventTrigger_Url:
 		return URLFlags(k.Url)
+	case *pb.EventTrigger_Slack:
+		return specSlack(k.Slack)
 	}
 	return ""
 }
@@ -662,7 +675,7 @@ func When(at, now time.Time) string {
 }
 
 // Kind is t's kind's word: "github", "agent", "exit", "log", "files",
-// "calendar", "webhook", "shortcut", "check" or "mac".
+// "calendar", "webhook", "shortcut", "check", "mac", "url" or "slack".
 func Kind(t *pb.EventTrigger) string {
 	switch t.GetKind().(type) {
 	case *pb.EventTrigger_Github:
@@ -687,6 +700,8 @@ func Kind(t *pb.EventTrigger) string {
 		return "mac"
 	case *pb.EventTrigger_Url:
 		return "url"
+	case *pb.EventTrigger_Slack:
+		return "slack"
 	}
 	return ""
 }

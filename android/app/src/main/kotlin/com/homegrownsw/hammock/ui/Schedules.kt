@@ -88,6 +88,7 @@ import hammock.v1.Hammock.MacTrigger
 import hammock.v1.Hammock.Schedule
 import hammock.v1.Hammock.ScheduleRun
 import hammock.v1.Hammock.ScheduleRun.Status
+import hammock.v1.Hammock.SlackTrigger
 import hammock.v1.Hammock.UrlCheckTrigger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -295,8 +296,36 @@ object ScheduleWords {
                 }
                 u.url + what + ", checked " + every(if (u.everyMinutes <= 0) 5 else u.everyMinutes)
             }
+            EventTrigger.KindCase.SLACK -> slack(t.slack)
             else -> "An unknown event"
         }
+    }
+
+    /** A channel for words: "#deploys", or its id (schedtrig.SlackChannelWords). */
+    fun slackChannel(c: String): String =
+        if (c.isEmpty() || Regex("^[CGD][A-Z0-9]{6,}$").matches(c)) c else "#" + c.removePrefix("#")
+
+    /** A Slack trigger in words (schedtrig.DescribeSlack). */
+    fun slack(s: SlackTrigger): String {
+        var inChannel = if (s.channel.isEmpty()) "" else " (${slackChannel(s.channel)})"
+        var out = when (s.event) {
+            SlackTrigger.Event.EVENT_MESSAGE -> { inChannel = ""; "A Slack message in ${slackChannel(s.channel)}" }
+            SlackTrigger.Event.EVENT_MENTION -> "I’m mentioned in Slack"
+            SlackTrigger.Event.EVENT_DM -> { inChannel = ""; "A Slack direct message to me" }
+            SlackTrigger.Event.EVENT_THREAD_REPLY -> "A reply in a Slack thread I started"
+            SlackTrigger.Event.EVENT_REACTION -> {
+                val who = if (s.anyone) "Someone reacts" else "I react"
+                if (s.emoji.isEmpty()) "$who to a Slack message" else "$who with :${s.emoji}: in Slack"
+            }
+            else -> return "Something in Slack"
+        }
+        out += inChannel
+        if (s.from.isNotEmpty()) out += if (s.event == SlackTrigger.Event.EVENT_REACTION) " by “${s.from}”" else " from “${s.from}”"
+        if (s.text.isNotEmpty()) {
+            out += if (s.text.length > 2 && s.text.startsWith("/") && s.text.endsWith("/")) " matching ${s.text}" else " containing “${s.text}”"
+        }
+        if (s.mine && s.event == SlackTrigger.Event.EVENT_MESSAGE) out += ", mine too"
+        return out
     }
 
     /** A This Mac trigger in words (schedtrig's describeMac). */

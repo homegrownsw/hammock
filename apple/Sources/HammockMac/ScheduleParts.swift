@@ -152,11 +152,12 @@ extension EventTrigger {
     /// What a trigger watches that others like it may watch something else
     /// of: those differing only in this share one row.
     enum Target {
-        case repository, calendar, app, drive, display, network, place
+        case repository, calendar, app, drive, display, network, place, channel
 
         /// "16 repositories".
         func count(_ n: Int) -> String {
             let noun = switch self {
+            case .channel: n == 1 ? "channel" : "channels"
             case .place: n == 1 ? "place" : "places"
             case .repository: n == 1 ? "repository" : "repositories"
             case .calendar: n == 1 ? "calendar" : "calendars"
@@ -178,6 +179,7 @@ extension EventTrigger {
             case .display: "any display"
             case .network: "any network"
             case .place: "a place"
+            case .channel: "any channel"
             }
         }
 
@@ -191,6 +193,7 @@ extension EventTrigger {
             case .display: "Add a display’s name"
             case .network: "Add a network"
             case .place: "Add a place"
+            case .channel: "Add #channel"
             }
         }
     }
@@ -208,8 +211,16 @@ extension EventTrigger {
             case .placeArrive, .placeLeave: .place
             default: nil
             }
+        case .slack(let s): s.event == .dm ? nil : .channel
         default: nil
         }
+    }
+
+    /// Its target must be named (a Slack message trigger's channel); else
+    /// none means any.
+    var targetNeeded: Bool {
+        if case .slack(let s) = kind { return s.event == .message }
+        return true
     }
 
     /// Its target's value ("": the folder's repository, or any).
@@ -219,6 +230,7 @@ extension EventTrigger {
             case .github(let g): g.watch
             case .calendar(let c): c.calendar
             case .mac(let m): m.name
+            case .slack(let s): s.channel
             default: ""
             }
         }
@@ -227,15 +239,25 @@ extension EventTrigger {
             case .github(var g): g.watch = newValue; g.repo = ""; kind = .github(g)
             case .calendar(var c): c.calendar = newValue; kind = .calendar(c)
             case .mac(var m): m.name = newValue; kind = .mac(m)
+            case .slack(var s): s.channel = Self.slackChannel(newValue); kind = .slack(s)
             default: break
             }
         }
+    }
+
+    /// A channel as typed, as the daemon keeps it (schedtrig.SlackChannel):
+    /// an id as it is, a name without its # in lower case.
+    static func slackChannel(_ c: String) -> String {
+        let c = c.trimmingCharacters(in: .whitespaces)
+        if SlackTrigger.isChannelID(c) { return c }
+        return (c.hasPrefix("#") ? String(c.dropFirst()) : c).lowercased()
     }
 
     /// Its target as it reads: the repository the daemon found for the
     /// folder's, else the value.
     var targetText: String {
         if case .github(let g) = kind, g.watch.isEmpty { return g.repo.isEmpty ? target?.any ?? "" : g.repo }
+        if case .slack(let s) = kind, !s.channel.isEmpty { return SlackTrigger.channelWords(s.channel) }
         return targetValue.isEmpty ? target?.any ?? "" : targetValue
     }
 
@@ -296,6 +318,9 @@ extension EventTrigger {
             case .placeLeave: return "The Mac leaves a place"
             default: break
             }
+        }
+        if case .slack(let s) = t.kind, s.event == .message {
+            return t.text(names: names).replacingOccurrences(of: "A Slack message in ", with: "A Slack message")
         }
         return t.text(names: names)
     }

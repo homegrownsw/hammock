@@ -229,6 +229,7 @@ final class ScheduleUI {
 struct AutomationsView: View {
     let model: AppModel
     @Bindable private var ui = ScheduleUI.shared
+    @Bindable private var slack = SlackUI.shared
     /// How the list is divided: "when" (on a schedule, on triggers) or "group".
     @AppStorage("automationsSections") private var sections = "when"
     @State private var hovered: String?
@@ -268,6 +269,7 @@ struct AutomationsView: View {
         .background(SettingsWindowStyle())
         .toggleStyle(ThemedSwitchStyle())
         .frame(minWidth: 820, minHeight: 520)
+        .sheet(item: $slack.request) { r in SlackConnectSheet(model: model, request: r).themeTint() }
         .onAppear(perform: keepSelection)
         .onChange(of: list.map(\.id)) { keepSelection() }
     }

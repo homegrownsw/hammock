@@ -8,6 +8,7 @@ import hammock.v1.Hammock.GitHubTrigger
 import hammock.v1.Hammock.MacTrigger
 import hammock.v1.Hammock.Schedule
 import hammock.v1.Hammock.ShortcutTrigger
+import hammock.v1.Hammock.SlackTrigger
 import hammock.v1.Hammock.UrlCheckTrigger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -112,6 +113,23 @@ class TriggerWordsTest {
         assertEquals("Mon 09:30", ScheduleWords.whenText(ms(2026, 11, 23, 9, 30), now, zone))
         assertEquals("3 Nov", ScheduleWords.whenText(ms(2026, 11, 3, 9, 30), now, zone))
         assertEquals("3 Nov 2025", ScheduleWords.whenText(ms(2025, 11, 3, 9, 30), now, zone))
+    }
+
+    @Test fun slack() {
+        fun t(b: SlackTrigger.Builder) = ScheduleWords.trigger(EventTrigger.newBuilder().setSlack(b).build(), null)
+        assertEquals("A Slack message in #deploys containing “failed”",
+            t(SlackTrigger.newBuilder().setEvent(SlackTrigger.Event.EVENT_MESSAGE).setChannel("deploys").setText("failed")))
+        assertEquals("A Slack message in C0123ABCD from “sam”, mine too",
+            t(SlackTrigger.newBuilder().setEvent(SlackTrigger.Event.EVENT_MESSAGE).setChannel("C0123ABCD").setFrom("sam").setMine(true)))
+        assertEquals("I’m mentioned in Slack (#ops) matching /deploy (failed|broke), again/",
+            t(SlackTrigger.newBuilder().setEvent(SlackTrigger.Event.EVENT_MENTION).setChannel("ops").setText("/deploy (failed|broke), again/")))
+        assertEquals("A Slack direct message to me from “Sam Example”",
+            t(SlackTrigger.newBuilder().setEvent(SlackTrigger.Event.EVENT_DM).setFrom("Sam Example")))
+        assertEquals("A reply in a Slack thread I started containing “ship it”",
+            t(SlackTrigger.newBuilder().setEvent(SlackTrigger.Event.EVENT_THREAD_REPLY).setText("ship it")))
+        assertEquals("I react with :eyes: in Slack", t(SlackTrigger.newBuilder().setEvent(SlackTrigger.Event.EVENT_REACTION).setEmoji("eyes")))
+        assertEquals("Someone reacts to a Slack message (#ops)",
+            t(SlackTrigger.newBuilder().setEvent(SlackTrigger.Event.EVENT_REACTION).setChannel("ops").setAnyone(true)))
     }
 
     @Test fun checkResult() {

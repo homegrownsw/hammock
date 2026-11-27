@@ -542,6 +542,11 @@ func (d *Daemon) cleanTrigger(s *pb.Schedule, t *pb.EventTrigger) error {
 	case *pb.EventTrigger_Url:
 		clean("URL", &k.Url.Url, schedtrig.MaxURL)
 		clean("text", &k.Url.Text, schedtrig.MaxURLText)
+	case *pb.EventTrigger_Slack:
+		clean("channel", &k.Slack.Channel, 100)
+		clean("name", &k.Slack.From, 100)
+		clean("text", &k.Slack.Text, schedtrig.MaxSlackText)
+		clean("emoji", &k.Slack.Emoji, 100)
 	}
 	if bad != nil {
 		return bad
@@ -748,6 +753,23 @@ func (d *Daemon) cleanTrigger(s *pb.Schedule, t *pb.EventTrigger) error {
 			u.Text = ""
 		}
 		u.EveryMinutes = int32(schedtrig.URLEvery(u))
+	case *pb.EventTrigger_Slack:
+		sl := k.Slack
+		sl.Channel, sl.Emoji = schedtrig.SlackChannel(sl.Channel), schedtrig.SlackEmoji(sl.Emoji)
+		sl.From = strings.TrimPrefix(sl.From, "@")
+		switch sl.Event {
+		case pb.SlackTrigger_EVENT_DM:
+			sl.Channel = ""
+		}
+		if sl.Event != pb.SlackTrigger_EVENT_MESSAGE {
+			sl.Mine = false
+		}
+		if sl.Event != pb.SlackTrigger_EVENT_REACTION {
+			sl.Anyone, sl.Emoji = false, ""
+		}
+		if err := schedtrig.CheckSlack(sl); err != nil {
+			return err
+		}
 	default:
 		return errors.New("a trigger with no kind (from a newer Hammock?)")
 	}
@@ -786,6 +808,8 @@ func (d *Daemon) triggersChanged() {
 					armed := d.trigStateFor(t.Id, "log:"+k.Log.PaneId+":"+k.Log.Pattern).Armed
 					idx.logs[k.Log.PaneId] = append(idx.logs[k.Log.PaneId], logWatch{s.Id, t.Id, re, armed})
 				}
+			case *pb.EventTrigger_Slack:
+				d.trigStateFor(t.Id, slackKey(t)) // armed now: nothing from before it was made fires
 			}
 		}
 	}
@@ -813,6 +837,8 @@ func (d *Daemon) triggersChanged() {
 	d.calendarErrors(schedTime()) // (a new calendar trigger says at once if it can't fire; it fires at the next check)
 	d.macAppErrors()
 	d.wakeMacWatcher()
+	d.slackErrors()
+	d.wakeSlack()
 }
 
 // wakeWatchers tells the GitHub and files watchers to look again now (a

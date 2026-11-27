@@ -154,6 +154,7 @@ type Daemon struct {
 	routes      map[string]*peerLink    // a remote Group/tab/pane/attention id → its link
 	comp        computerSet             // linked computers (computers.go)
 	sched       schedState              // scheduled tasks (schedules.go)
+	slack       slackState              // Slack, for Slack triggers (slack.go)
 }
 
 // SocketPath returns the client socket path for a state dir.
@@ -596,6 +597,7 @@ func (d *Daemon) Serve() error {
 	go d.watchFiles()
 	go d.watchChecks()
 	go d.watchMac()
+	go d.watchSlack()
 	d.log.Info("listening", "socket", sock)
 	err = srv.Serve(httpLn)
 	if errors.Is(err, http.ErrServerClosed) {

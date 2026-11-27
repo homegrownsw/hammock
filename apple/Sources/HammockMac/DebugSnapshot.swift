@@ -176,6 +176,21 @@ enum DebugSnapshot {
                     model.showSampleSchedules(samples)
                     ScheduleUI.shared.selected = samples[0].id
                     TriggerEditorRow.debugWebhook = ScheduleSamples.webhook
+                    model.showSampleSlack(ScheduleSamples.slack)
+                }
+                // HMK_DEBUG_SLACK=connect|connected: the Connect Slack sheet
+                // over the window (connected: as it shows a made-up workspace).
+                if let s = env["HMK_DEBUG_SLACK"] {
+                    if s == "connected" { SlackConnectSheet.debugConnected = ScheduleSamples.slack }
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(600))
+                        SlackUI.shared.connect(on: "")
+                    }
+                    // The sheet on its own too: a capture of the window leaves its sheet out.
+                    if let prefix = env["HMK_DEBUG_SNAPSHOT"] {
+                        render(SlackConnectSheet(model: model, request: .init(computerID: "")).themeTint(),
+                               size: NSSize(width: 500, height: s == "connected" ? 230 : 400), to: "\(prefix)-slack-connect")
+                    }
                 }
                 if let id = env["HMK_DEBUG_SCHEDULES_SELECT"] { ScheduleUI.shared.selected = id }
                 ScheduleUI.shared.openDebug(model)
