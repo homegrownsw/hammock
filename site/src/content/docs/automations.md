@@ -17,7 +17,7 @@ Choose File ▸ New Automation… (⌥⇧⌘N), or right-click a tab in the side
 
 - **When:** its times and triggers. **Add Trigger** adds one: **Schedule…** (days and a time, or a cron line) and **Once…** (a date and time) are under Time and Place. Triggers alike but for what they watch (repositories, calendars, apps, drives, displays, Wi-Fi networks) share a row: click the token (**16 repositories**) to add or remove one. **At most once every** sets the [cooldown](#triggers).
 - **Only If:** [conditions](#only-if) a run must meet.
-- **Run:** the prompt, or the command. **Insert Event** marks where what happened goes.
+- **Prompt** (or **Command**): what it runs. **Insert Event** marks where what happened goes.
 
 Under **Options**:
 
@@ -262,7 +262,7 @@ hmk automation add "1:1 prep" --trigger 'calendar:10,title=1:1,attendees' --dir 
 
 ## Managing them
 
-View ▸ Automations (⇧⌘S) opens the Automations window, and ⌃B @ lists them in [the TUI](/hammock/docs/tui/). The window lists them by when they run, or by Group (⋯ ▸ Sections), paused ones last; a red dot marks one whose last run failed, an orange one a run waiting for you. Select one to see what starts it, what it runs and its recent runs; turn it off with its **On** switch, or use **Edit**, **Run Now** and ⋯ (Skip Next Run, Duplicate, Copy Webhook URL, Delete). **Options** lists its settings that aren't the default. **Open Tab** goes to a run's tab, or **Resume Session** carries on its agent's session once the tab's closed. In the list, type to search, ⌘R runs the selected automation and ⌫ deletes it. Deleting an automation leaves its runs' tabs open.
+View ▸ Automations (⇧⌘S), or the clock in the window's toolbar, opens the Automations window (the clock has the same dots as the list), and ⌃B @ lists them in [the TUI](/hammock/docs/tui/). The window lists them by when they run, or by Group (⋯ ▸ Sections), paused ones last; a red dot marks one whose last run failed, an orange one a run waiting for you. Select one to see what starts it, what it runs and its recent runs; beside its name, turn it off with its **On** switch, or use **Run Now**, **Edit** and ⋯ (Skip Next Run, Duplicate, Copy Webhook URL, Delete). **Options** lists its settings that aren't the default. **Open Tab** goes to a run's tab, or **Resume Session** carries on its agent's session once the tab's closed. In the list, type to search, ⌘R runs the selected automation and ⌫ deletes it. Deleting an automation leaves its runs' tabs open.
 
 To run an automation now instead of at its next time, choose **Run Now Instead of 09:00** (in the TUI, R): its next run moves on to the one after. **Run Now** runs it as well, and the next run still happens. When the next run is within 12 hours, the Mac's run button brings it forward, and its menu has Run Now.
 

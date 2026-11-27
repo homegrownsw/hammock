@@ -139,12 +139,23 @@ struct ScheduleEditor: View {
     private var groups: [WorkspaceGroup] { model.scheduleGroups(on: computerID) }
     private var isCommand: Bool { draft.s.kind == "command" }
 
-    /// What it can run: the agents the daemon schedules, then a command (and
-    /// the kind it has, if the daemon no longer lists it).
-    private var kinds: [String] {
-        var k = AgentCatalog.schedulable.map(\.id)
+    /// The agents installed on another computer it runs on (its folder
+    /// list says; nil: not heard yet, or this Mac's, from the catalogue).
+    @State private var remoteAgents: [String]?
+
+    /// The agents it can run: those the daemon schedules that are installed
+    /// on its computer, and the one it has (marked when it isn't installed,
+    /// so editing doesn't change it).
+    private var agentKinds: [String] {
+        let installed = remoteAgents.map(Set.init) ?? Set(AgentCatalog.installed.map(\.id))
+        var k = AgentCatalog.schedulable.map(\.id).filter { installed.contains($0) || (computer != nil && remoteAgents == nil) }
         if draft.s.kind != "command", !k.contains(draft.s.kind) { k.append(draft.s.kind) }
-        return k + ["command"]
+        return k
+    }
+
+    private func agentInstalled(_ kind: String) -> Bool {
+        if let remoteAgents { return remoteAgents.contains(kind) }
+        return computer != nil || AgentCatalog.installed.contains { $0.id == kind }
     }
 
     var body: some View {
@@ -157,7 +168,7 @@ struct ScheduleEditor: View {
                 section("Only If") {
                     ScheduleOnlyIfBox(conditions: $draft.s.onlyIf, computerID: computerID, model: model)
                 }
-                section(isCommand ? "Command" : "Run") { prompt }
+                section(isCommand ? "Command" : "Prompt") { prompt }
                 optionsSection
                 if let error = draft.error {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
@@ -170,6 +181,7 @@ struct ScheduleEditor: View {
             .padding(.vertical, 22)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .neutralPopUps()
         .onAppear { if draft.isNew { nameFocused = true } }
     }
 
@@ -196,16 +208,31 @@ struct ScheduleEditor: View {
                         Label { Text(model.title(of: g)) } icon: { model.groupMenuIcon(g) }.tag(g.id)
                     }
                     Divider()
-                    Text(draft.s.groupName.isEmpty ? "The folder’s Group, or a new one" : "“\(draft.s.groupName)” (closed)").tag("")
+                    if draft.s.groupName.isEmpty {
+                        Text("The folder’s Group, or a new one").tag("")
+                    } else {
+                        // Its own Group, closed since: by name (the menu says it's closed).
+                        Section("Closed") { Text(draft.s.groupName).tag("") }
+                    }
                 }
                 .labelsHidden()
                 .fixedSize()
-                .help("Each run opens a tab in this Group. If it’s been closed, the run brings it back.")
+                .help(draft.s.groupID.isEmpty && !draft.s.groupName.isEmpty
+                      ? "This Group is closed: the next run brings it back"
+                      : "Each run opens a tab in this Group. If it’s been closed, the run brings it back.")
                 Picker("Runs", selection: $draft.s.kind) {
-                    ForEach(kinds, id: \.self) { Text(Schedule.kindName($0)).tag($0) }
+                    ForEach(agentKinds, id: \.self) { k in
+                        Text(agentInstalled(k) ? Schedule.kindName(k) : "\(Schedule.kindName(k)) (not installed)").tag(k)
+                    }
+                    Divider()
+                    Text(Schedule.kindName("command")).tag("command")
                 }
                 .labelsHidden()
                 .fixedSize()
+                .task(id: computerID) {
+                    guard !computerID.isEmpty else { remoteAgents = nil; return }
+                    remoteAgents = await model.listFolders(groupID: "", computerID: computerID)?.agents
+                }
                 if isCommand {
                     Picker("Each run", selection: $draft.s.closeOnSuccess) {
                         Text("New tab each run").tag(false)
@@ -217,10 +244,10 @@ struct ScheduleEditor: View {
                     ScheduleSessionPicker(model: model, draft: draft, computerID: computerID)
                 }
                 Text("in").foregroundStyle(.secondary)
-                Button(draft.s.cwd.isEmpty ? "Choose a folder" : draft.s.cwd) { folderShown = true }
+                Button(draft.s.cwd.isEmpty ? "Choose a folder" : ScheduleText.folder(draft.s.cwd)) { folderShown = true }
                     .buttonStyle(TokenStyle())
-                    .fontDesign(.monospaced)
-                    .help("The folder it runs in")
+                    .fontDesign(ScheduleText.folder(draft.s.cwd).hasPrefix("~") || draft.s.cwd.hasPrefix("/") ? .monospaced : .default)
+                    .help(draft.s.cwd.isEmpty ? "The folder it runs in" : "Runs in \(draft.s.cwd)")
                     .popover(isPresented: $folderShown, arrowEdge: .bottom) { folderPopover }
                 if let c = computer {
                     HStack(spacing: 4) {
@@ -281,12 +308,23 @@ struct ScheduleEditor: View {
                 .scrollContentBackground(.hidden)
                 .frame(minHeight: isCommand ? 70 : 170)
                 .padding(8)
+                .overlay(alignment: .topLeading) {
+                    if draft.s.prompt.isEmpty {
+                        Text(isCommand ? "make test" : "What the agent should do each run, such as “Summarise what changed overnight and what needs me today.”")
+                            .font(isCommand ? .system(.body, design: .monospaced) : .body)
+                            .foregroundStyle(.tertiary)
+                            .padding(.horizontal, 13)
+                            .padding(.vertical, 8)
+                            .allowsHitTesting(false)
+                    }
+                }
                 .accessibilityLabel(isCommand ? "Command" : "Prompt")
             if !draft.s.events.isEmpty {
                 Divider().opacity(0.6)
                 HStack(spacing: 10) {
                     Button("Insert Event") { insertEvent() }
                         .buttonStyle(.borderless)
+                        .themeLinkTint()
                         .help(isCommand
                               ? "What happened, in a line ($HMK_EVENT_SUMMARY). Each detail is in a variable too, such as $HMK_EVENT_URL and $HMK_EVENT_TITLE for a pull request."
                               : "Where what happened goes, such as a pull request’s link, number and title. Without it, it’s added after your prompt.")

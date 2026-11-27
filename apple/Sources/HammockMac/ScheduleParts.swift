@@ -341,6 +341,16 @@ extension String {
 
 /// A link-like button in the theme's colour (AppKit's link style is the
 /// system's blue).
+extension View {
+    /// Pop-ups read as controls: a neutral fill with the label's own colour,
+    /// not the theme's tint (which made them read as links). What's meant
+    /// as a link (Add Trigger, tokens, Insert Event) gets the theme's
+    /// accent back with .themeLinkTint().
+    func neutralPopUps() -> some View { tint(Color(nsColor: .labelColor)) }
+    /// The theme's accent again, inside neutralPopUps.
+    func themeLinkTint() -> some View { tint(Color.themeAccent) }
+}
+
 struct ThemeLinkStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label

@@ -182,6 +182,7 @@ final class ScheduleUI {
         // Its toolbar and title are the view's (.toolbar, .navigationTitle).
         host.sceneBridgingOptions = [.toolbars, .title]
         let w = NSWindow(contentViewController: host)
+        w.title = "Automations" // (the view's title doesn't reach it while the list is empty)
         w.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         w.isReleasedWhenClosed = false
         w.toolbarStyle = .unified
@@ -247,14 +248,20 @@ struct AutomationsView: View {
     var body: some View {
         NavigationSplitView {
             sidebar
-                .navigationSplitViewColumnWidth(min: 240, ideal: 290, max: 380)
+                // Wide enough for a name, though the list is empty or holds only a draft.
+                .frame(minWidth: 250, idealWidth: 270)
+                .navigationSplitViewColumnWidth(min: 250, ideal: 270, max: 380)
                 .toolbar(removing: .sidebarToggle)
                 .background { SidebarTint().ignoresSafeArea() }
         } detail: {
             detail
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .settingsPaneCard()
         }
         .navigationTitle("Automations")
+        // The tint under the toolbar, whatever the detail shows (an empty
+        // state has no scroll view to hide the toolbar's own background).
+        .toolbarBackground(.hidden, for: .windowToolbar)
         .searchable(text: $ui.search, placement: .sidebar, prompt: "Search")
         .toolbar { toolbar }
         // Its toolbar, sidebar and search field drawn as Settings' are.
@@ -271,35 +278,18 @@ struct AutomationsView: View {
     private var toolbar: some ToolbarContent {
         if let draft = ui.editing {
             ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { ui.cancelEdit() }
+                Button { ui.cancelEdit() } label: { Text("Cancel").frame(minWidth: 56) }
                     .keyboardShortcut(.cancelAction)
             }
             ToolbarItem(placement: .confirmationAction) {
-                Button(draft.isNew ? "Create" : "Save") { draft.save(model) }
+                Button { draft.save(model) } label: { Text(draft.isNew ? "Create" : "Save").frame(minWidth: 56) }
                     .keyboardShortcut("s")
                     .buttonStyle(.borderedProminent)
                     .disabled(draft.saving || !draft.canSave)
                     .help(draft.missing ?? (draft.isNew ? "Create it (⌘S)" : "Save your changes (⌘S)"))
             }
         } else {
-            if let s = ui.selected.flatMap({ model.schedules[$0] }) {
-                ToolbarItemGroup(placement: .primaryAction) {
-                    Button("Edit") { ui.edit(s) }
-                        .help("Change what it runs and when")
-                    ScheduleRunButton(model: model, schedule: s)
-                    Menu {
-                        ScheduleMenuItems(model: model, schedule: s, inWindow: true)
-                        Divider()
-                        Picker("Sections", selection: $sections) {
-                            Text("By When They Run").tag("when")
-                            Text("By Group").tag("group")
-                        }
-                    } label: {
-                        Label("More", systemImage: "ellipsis")
-                    }
-                    .help("More")
-                }
-            }
+            // The selected one's actions (Edit, Run Now, ⋯) are on its page.
             ToolbarItem(placement: .primaryAction) {
                 Button { ui.new(model) } label: { Label("New Automation", systemImage: "plus") }
                     .help(Keys.hint("New Automation", "new_scheduled_task"))
@@ -391,19 +381,33 @@ struct AutomationsView: View {
             ScheduleEditor(model: model, draft: draft)
                 .id(draft.id)
         } else if all.isEmpty {
-            ContentUnavailableView {
-                Label("No Automations", systemImage: "clock")
-            } description: {
-                Text("Run Claude Code, Codex or a command at set times, or when something happens. Each run opens a tab in its Group, so you can pick up where it left off.")
-            } actions: {
-                Button("New Automation") { ui.new(model) }
-                    .buttonStyle(.borderedProminent)
+            // In a scroll view, as a page is: the toolbar over it then shows
+            // the window's tint, not a band of its own.
+            ScrollView {
+                emptyState
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 150)
             }
         } else if let s = ui.selected.flatMap({ model.schedules[$0] }) {
             ScheduleDetail(model: model, schedule: s)
                 .id(s.id)
         } else {
-            ContentUnavailableView("Select an Automation", systemImage: "clock")
+            ScrollView {
+                ContentUnavailableView("Select an Automation", systemImage: "clock")
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 150)
+            }
+        }
+    }
+
+    private var emptyState: some View {
+        ContentUnavailableView {
+            Label("No Automations", systemImage: "clock")
+        } description: {
+            Text("Run Claude Code, Codex or a command at set times, or when something happens. Each run opens a tab in its Group, so you can pick up where it left off.")
+        } actions: {
+            Button("New Automation") { ui.new(model) }
+                .buttonStyle(.borderedProminent)
         }
     }
 
@@ -464,11 +468,46 @@ struct ScheduleListRow: View {
 
     /// Red: its last run failed, or it can't run; orange: a run waits on you.
     private var dot: (color: Color, help: String)? {
-        guard !draft else { return nil }
+        draft ? nil : Self.dot(schedule)
+    }
+
+    static func dot(_ schedule: Schedule) -> (color: Color, help: String)? {
         if !schedule.error.isEmpty { return (.red, schedule.error) }
         guard let r = schedule.runs.first else { return nil }
         if schedule.runs.contains(where: { $0.status == .waiting }) { return (.orange, "Waiting for you") }
         return r.status.isProblem ? (.red, "Last run: \(r.status.label)") : nil
+    }
+}
+
+/// The workspace window's Automations button: opens the Automations window,
+/// with the list's dot: orange while a run waits on you, else red when an
+/// automation's last run failed or it can't run.
+struct AutomationsToolbarButton: View {
+    let model: AppModel
+
+    private var badge: Color? {
+        let dots = model.sortedSchedules.compactMap { ScheduleListRow.dot($0)?.color }
+        if dots.contains(.orange) { return .orange }
+        return dots.isEmpty ? nil : .red
+    }
+
+    var body: some View {
+        Button { ScheduleUI.shared.showList() } label: {
+            Label {
+                Text("Automations")
+            } icon: {
+                Image(systemName: "clock")
+                    .overlay(alignment: .topTrailing) {
+                        if let badge {
+                            Circle().fill(badge)
+                                .frame(width: 6, height: 6)
+                                .offset(x: 3, y: -2)
+                        }
+                    }
+            }
+        }
+        .help(Keys.hint("Automations", "scheduled_tasks"))
+        .accessibilityValue(badge == .orange ? "A run is waiting for you" : badge == .red ? "A run failed" : "")
     }
 }
 

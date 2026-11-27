@@ -60,14 +60,39 @@ struct ScheduleDetail: View {
                 }
             }
             Spacer(minLength: 8)
-            Toggle("On", isOn: Binding(get: { !schedule.paused }, set: { ScheduleActions.setPaused(model, schedule, !$0) }))
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                .foregroundStyle(.secondary)
-                .help(schedule.paused ? "Paused: it won’t run on its own" : "Pause it")
-                .padding(.top, 4)
+            // Its own actions, on its title row: On, Run Now, Edit, ⋯.
+            HStack(spacing: 10) {
+                Toggle("On", isOn: Binding(get: { !schedule.paused }, set: { ScheduleActions.setPaused(model, schedule, !$0) }))
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .foregroundStyle(.secondary)
+                    .help(schedule.paused ? "Paused: it won’t run on its own" : "Pause it")
+                ScheduleRunButton(model: model, schedule: schedule)
+                    .fixedSize()
+                Button("Edit") { ScheduleUI.shared.edit(schedule) }
+                    .help("Change what it runs and when")
+                Menu {
+                    ScheduleMenuItems(model: model, schedule: schedule, inWindow: true)
+                    Divider()
+                    Picker("Sections", selection: $sections) {
+                        Text("By When They Run").tag("when")
+                        Text("By Group").tag("group")
+                    }
+                } label: {
+                    Label("More", systemImage: "ellipsis")
+                        .labelStyle(.iconOnly)
+                }
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("More")
+            }
+            .controlSize(.regular)
+            .padding(.top, 2)
         }
     }
+
+    /// How the window's list is divided (its ⋯ menu here sets it).
+    @AppStorage("automationsSections") private var sections = "when"
 
     /// "Last run yesterday at 14:02 · 6m · next when triggered".
     private func lastAndNext(now: Date) -> String {
@@ -103,7 +128,7 @@ struct ScheduleDetail: View {
                 }
             }
             Divider().opacity(0.6)
-            cardRow(schedule.kind == "command" ? "Command" : "Run") { run }
+            cardRow(schedule.kind == "command" ? "Command" : "Prompt") { run }
         }
         .padding(.horizontal, 18)
         .background(.background.opacity(0.5), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -157,7 +182,7 @@ struct ScheduleDetail: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 14) {
-                Label(GroupFolder.tilde(schedule.cwd), systemImage: "folder")
+                Label(ScheduleText.folder(schedule.cwd), systemImage: "folder")
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -456,6 +481,14 @@ struct RunRow: View {
 
 extension ScheduleText {
     /// What each run does with tabs.
+    /// A folder as shown: from ~ (this Mac's home, or any computer's
+    /// /Users/name or /home/name), and the home folder itself in words.
+    @MainActor static func folder(_ path: String) -> String {
+        var p = GroupFolder.tilde(path)
+        if let r = p.firstMatch(of: #/^/(Users|home)/[^/]+/#) { p = "~" + p[r.range.upperBound...] }
+        return p == "~" || p == "~/" ? "Home folder" : p
+    }
+
     static func eachRun(_ s: Schedule) -> String {
         if let text = s.sessionText { return text }
         return s.kind == "command" && s.closeOnSuccess ? "New tab each run, closed if it succeeds" : "New tab each run"

@@ -133,6 +133,7 @@ struct ScheduleWhenBox: View {
         }
         .menuStyle(.button)
         .buttonStyle(.borderless)
+        .themeLinkTint()
         .fixedSize()
     }
 

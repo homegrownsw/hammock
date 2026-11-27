@@ -39,6 +39,7 @@ struct ScheduleOnlyIfBox: View {
             }
             .menuStyle(.button)
             .buttonStyle(.borderless)
+            .themeLinkTint()
             .fixedSize()
             .help("A run it starts on its own is skipped unless all of these hold")
             .padding(.horizontal, 12)

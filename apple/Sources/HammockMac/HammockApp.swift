@@ -778,6 +778,12 @@ struct ContentView: View {
                         } label: { Label("New Group", systemImage: "plus") }
                             .help(newGroupHelp)
                     }
+                    // Automations, while they're on (Settings ▸ Tools).
+                    if HammockTool.schedules.on {
+                        ToolbarItem {
+                            AutomationsToolbarButton(model: model)
+                        }
+                    }
                 }
                 // The window theme's tint, over the column's own glass.
                 .background { SidebarTint().ignoresSafeArea() }
