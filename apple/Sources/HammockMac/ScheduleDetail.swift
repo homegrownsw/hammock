@@ -67,6 +67,9 @@ struct ScheduleDetail: View {
                     .controlSize(.small)
                     .foregroundStyle(.secondary)
                     .help(schedule.paused ? "Paused: it won’t run on its own" : "Pause it")
+                // Plain bordered controls of one height, their labels in the
+                // label colour (the app's tint made them read as links).
+                Group {
                 ScheduleRunButton(model: model, schedule: schedule)
                     .fixedSize()
                 Button("Edit") { ScheduleUI.shared.edit(schedule) }
@@ -79,12 +82,18 @@ struct ScheduleDetail: View {
                         Text("By Group").tag("group")
                     }
                 } label: {
-                    Label("More", systemImage: "ellipsis")
-                        .labelStyle(.iconOnly)
+                    // A character, so it's a line tall (as Edit is): a menu's
+                    // button is as tall as its label, and the symbol is short.
+                    Text("⋯")
+                        .accessibilityLabel("More")
                 }
+                .menuStyle(.button)
                 .menuIndicator(.hidden)
                 .fixedSize()
                 .help("More")
+                }
+                .buttonStyle(.bordered)
+                .neutralPopUps()
             }
             .controlSize(.regular)
             .padding(.top, 2)
