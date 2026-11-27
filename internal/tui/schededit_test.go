@@ -357,3 +357,24 @@ func TestEveryTriggerSheetOpens(t *testing.T) {
 	ed.reopen(a)
 	drawn(a) // all of them, scrolled
 }
+
+// A tab's agent that may do more than the automation says so, as the
+// daemon tells it (agents.WiderThan): its options, with their values too.
+func TestSessionWarning(t *testing.T) {
+	s := &pb.Schedule{Kind: "claude", AllowedTools: []string{"Read"}}
+	for _, tc := range []struct {
+		cmd  []string
+		want string
+	}{
+		{[]string{"claude"}, ""},
+		{[]string{"claude", "--dangerously-skip-permissions"}, "--dangerously-skip-permissions"},
+		{[]string{"claude", "--permission-mode", "acceptEdits"}, "--permission-mode acceptEdits"},
+		{[]string{"claude", "--allowedTools", "Read,Bash"}, "--allowedTools Bash"},
+		{[]string{"claude", "--allowedTools", "Read"}, ""},
+	} {
+		got := sessionWarning(&pb.Pane{Command: tc.cmd}, s, "claude")
+		if tc.want == "" && got != "" || tc.want != "" && !strings.Contains(got, " with "+tc.want+",") {
+			t.Errorf("%v: %q, want %q", tc.cmd, got, tc.want)
+		}
+	}
+}

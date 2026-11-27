@@ -285,10 +285,10 @@ struct AutomationsView: View {
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button { draft.save(model) } label: { Text(draft.isNew ? "Create" : "Save").frame(minWidth: 56) }
-                    .keyboardShortcut("s")
+                    .keyboardShortcut(Keys.saveAutomation)
                     .buttonStyle(.borderedProminent)
                     .disabled(draft.saving || !draft.canSave)
-                    .help(draft.missing ?? (draft.isNew ? "Create it (⌘S)" : "Save your changes (⌘S)"))
+                    .help(draft.missing ?? Keys.hint(draft.isNew ? "Create it" : "Save your changes", "save_automation"))
             }
         } else {
             // The selected one's actions (Edit, Run Now, ⋯) are on its page.

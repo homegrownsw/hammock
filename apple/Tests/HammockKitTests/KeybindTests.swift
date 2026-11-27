@@ -227,6 +227,10 @@ final class PaneScopedKeybindTests: XCTestCase {
         XCTAssertFalse(Keybinds.apart("run_scheduled_task", "new_tab"))
         XCTAssertEqual(set.conflicts(KeyChord("r"), excluding: "browser_reload"), [])
         XCTAssertEqual(set.conflicts(KeyChord("r"), excluding: "new_tab"), ["run_scheduled_task", "browser_reload"])
+        // ⌘S saves the automation being edited, or an editor's file.
+        XCTAssertEqual(set["save_automation"], KeyChord("s"))
+        XCTAssertTrue(Keybinds.apart("save_automation", "editor_save"))
+        XCTAssertEqual(set.conflicts(KeyChord("s"), excluding: "editor_save"), [])
         XCTAssertEqual(set.action(for: KeyChord("left"), in: "Browser"), "browser_back")
         XCTAssertEqual(set.action(for: KeyChord("left"), in: "Simulator"), "sim_rotate_left")
         XCTAssertNil(set.action(for: KeyChord("l"), in: "Browser"))

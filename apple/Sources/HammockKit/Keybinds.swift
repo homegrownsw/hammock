@@ -205,10 +205,11 @@ public enum Keybinds {
     /// simulator; ⌘← goes back in a browser, or rotates a simulator).
     public static let paneScoped: Set<String> = ["Browser", "Simulator", "Editor", "Diff"]
 
-    /// Actions only reached in a sheet over the window, where no pane has
-    /// the keys: they can share a shortcut with the panes' (⌘R runs the
-    /// Scheduled Tasks list's selected task, or reloads a browser).
-    public static let sheetScoped: Set<String> = ["run_scheduled_task"]
+    /// Actions only reached in a window or sheet of their own, where no pane
+    /// has the keys: they can share a shortcut with the panes' (⌘R runs the
+    /// Automations window's selected one, or reloads a browser; ⌘S saves the
+    /// one being edited there, or an editor's file).
+    public static let sheetScoped: Set<String> = ["run_scheduled_task", "save_automation"]
 
     /// Whether two actions can't both be reached at once, so may share a shortcut.
     public static func apart(_ a: String, _ b: String) -> Bool {
@@ -250,6 +251,9 @@ public enum Keybinds {
             // Only while the Scheduled Tasks list shows (a browser's ⌘R reloads it otherwise).
             // (Keybinds.sheetScoped: it shares ⌘R with a browser's Reload.)
             .init("run_scheduled_task", "Run Automation Now", "File", c("r"), "automation schedule scheduled task cron run start now selected list"),
+            // Only in the Automations window, editing one (Keybinds.sheetScoped: it
+            // shares ⌘S with an editor's Save).
+            .init("save_automation", "Save Automation", "File", c("s"), "automation schedule scheduled task write"),
             .init("new_group", "New Group", "File", c("n"), "create workspace project"),
             .init("new_group_in_directory", "New Group in Directory…", "File", c("n", cs), "create folder project open path cwd workspace"),
             .init("new_group_on_computer", "New Group on Computer 1…9", "File", c(KeyChord.digits, cco), "create linked computer mac remote"),

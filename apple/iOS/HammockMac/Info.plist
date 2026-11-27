@@ -88,7 +88,7 @@
 	<string>Start automations when this Mac joins or leaves a Wi-Fi network, or arrives at or leaves a place, you choose.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Start automations when this Mac joins or leaves a Wi-Fi network, or arrives at or leaves a place, you choose.</string>
-	<!-- Places (PlacesEditor.swift): Home and Work from your own contact card, when you ask. -->
+	<!-- Places (Places.swift): Home and Work from your own contact card, when you ask. -->
 	<key>NSContactsUsageDescription</key>
 	<string>Offer your home and work addresses, from your own contact card, as places for automations.</string>
 	<key>NSHighResolutionCapable</key>

@@ -771,11 +771,11 @@ final class AppConfig {
         set("browser-open-schemes", schemes.isEmpty ? nil : schemes.joined(separator: ","))
     }
 
-    /// Writes the `keybind` lines that make these shortcuts (none: the defaults).
-    /// Lines that couldn't be read are kept, after the rest, to be fixed by hand.
     /// Writes the `place` lines.
     func setPlaces(_ places: [Place]) { set("place", values: places.map(\.configValue)) }
 
+    /// Writes the `keybind` lines that make these shortcuts (none: the defaults).
+    /// Lines that couldn't be read are kept, after the rest, to be fixed by hand.
     func setKeybinds(_ binds: KeybindSet) { set("keybind", values: binds.configValues + keybindProblems.map(\.line)) }
 
     func setThemes(light: String, dark: String) {

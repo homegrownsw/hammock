@@ -688,7 +688,7 @@ func (ed *schedEditor) pickASession(a *App) {
 				open[p.Agent.SessionId] = true
 				name := a.tabTitle(t)
 				id := p.Agent.SessionId
-				warning := sessionWarning(p, kind)
+				warning := sessionWarning(p, ed.s, kind)
 				items = append(items, paletteItem{id: "tab:" + pid, title: name, sub: "Open tab · " + iconTitle(g, a.groupTitle(g)),
 					glyph: a.harnessGlyph(kind), run: func() { pick(id, name); ed.s.SessionWarning = warning }})
 			}
@@ -728,15 +728,11 @@ func (ed *schedEditor) pickASession(a *App) {
 
 // sessionWarning is why sending runs to p's agent needs care, as the Mac
 // says it ("" when it doesn't): its tab lets it do more than an automation
-// would. The daemon says so too, once it's saved.
-func sessionWarning(p *pb.Pane, kind string) string {
-	wide := []string{"--dangerously-skip-permissions", "--allow-dangerously-skip-permissions",
-		"--dangerously-bypass-approvals-and-sandbox", "--yolo", "--full-auto", "bypassPermissions", "danger-full-access"}
-	for _, w := range p.Command {
-		_, after, _ := strings.Cut(w, "=")
-		if slices.Contains(wide, w) || slices.Contains(wide, after) {
-			return "Its tab runs " + kindName(kind) + " with " + w + ", so runs sent there can do more than this automation allows"
-		}
+// would (agents.WiderThan, as the daemon tells, which says so too once
+// it's saved).
+func sessionWarning(p *pb.Pane, s *pb.Schedule, kind string) string {
+	if w := agents.WiderThan(p.Command, s); w != "" {
+		return "Its tab runs " + kindName(kind) + " with " + w + ", so runs sent there can do more than this automation allows"
 	}
 	return ""
 }
