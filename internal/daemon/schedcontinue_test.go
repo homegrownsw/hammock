@@ -12,8 +12,8 @@ import (
 )
 
 // continueSetup is a daemon with a fake claude (it says how it was started,
-// then shows whatever's written to its screen file) and a tab of yours running
-// it in session sess-mine.
+// then shows whatever's written to its screen file: show) and a tab of yours
+// running it in session sess-mine.
 type continueSetup struct {
 	d      *Daemon
 	c      *client.Client
@@ -27,7 +27,10 @@ type continueSetup struct {
 func newContinueSetup(t *testing.T) *continueSetup {
 	bin := t.TempDir()
 	screen := filepath.Join(t.TempDir(), "screen")
-	fake := "#!/bin/sh\necho STARTED \"$@\"\nwhile :; do if [ -f '" + screen + "' ]; then cat '" + screen + "'; rm -f '" + screen + "'; fi; sleep 0.1; done\n"
+	// It moves the file aside before showing it: shown then removed, a
+	// screen written as the last one shows (the test seeing it) would be
+	// removed unshown.
+	fake := "#!/bin/sh\necho STARTED \"$@\"\nwhile :; do if mv -f '" + screen + "' '" + screen + ".shown' 2>/dev/null; then cat '" + screen + ".shown'; fi; sleep 0.1; done\n"
 	os.WriteFile(filepath.Join(bin, "claude"), []byte(fake), 0o755)
 	t.Setenv("PATH", bin+":/usr/bin:/bin")
 	plainShell(t)
@@ -51,6 +54,28 @@ func newContinueSetup(t *testing.T) *continueSetup {
 	waitOutput(t, cs.c, cs.mine, "STARTED")
 	hook(cs.d, cs.mine, "SessionStart", map[string]any{"session_id": "sess-mine"})
 	return cs
+}
+
+// show has the fake claude in your tab print text, and waits until want is
+// on its screen. The file's written whole, then renamed into place, so the
+// fake never takes a half-written one.
+func (cs *continueSetup) show(t *testing.T, text, want string) {
+	t.Helper()
+	tmp := cs.screen + ".tmp"
+	if err := os.WriteFile(tmp, []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(tmp, cs.screen); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, want, func() bool { return strings.Contains(cs.text(), want) })
+}
+
+// text is your tab's screen.
+func (cs *continueSetup) text() string {
+	cs.d.mu.Lock()
+	defer cs.d.mu.Unlock()
+	return cs.d.panes[cs.mine].text(false)
 }
 
 func (cs *continueSetup) save(t *testing.T, s *pb.Schedule) *pb.Schedule {
@@ -190,8 +215,7 @@ func TestContinueWaitsForTyped(t *testing.T) {
 	d := cs.d
 	s := cs.save(t, &pb.Schedule{Name: "Inbox", Session: pb.Schedule_SESSION_PICKED, SessionId: "sess-mine"})
 
-	os.WriteFile(cs.screen, []byte(strings.Repeat("\n", 60)+"❯ half a thought\n"), 0o644)
-	waitFor(t, "half a thought", func() bool { return strings.Contains(d.panes[cs.mine].text(false), "half a thought") })
+	cs.show(t, strings.Repeat("\n", 60)+"❯ half a thought\n", "half a thought")
 	r := cs.runNow(t, s.Id)
 	if r.Status != pb.ScheduleRun_STATUS_QUEUED || !strings.Contains(r.Note, "typed in its message box") {
 		t.Fatalf("typed in the terminal: %v", r)
@@ -200,17 +224,17 @@ func TestContinueWaitsForTyped(t *testing.T) {
 	if r := schedOf(d, s.Id).Runs[0]; r.Status != pb.ScheduleRun_STATUS_QUEUED {
 		t.Fatalf("sent over what's typed: %v", r)
 	}
-	d.mu.Lock()
-	screen := d.panes[cs.mine].text(false)
-	d.mu.Unlock()
+	screen := cs.text()
 	if !strings.Contains(screen, "❯ half a thought") || strings.Contains(screen, "Hammock automation") {
 		t.Fatalf("what's typed was touched:\n%s", screen)
 	}
 
 	// Cleared there, but typed in an app's composer: still waits.
-	os.WriteFile(cs.screen, []byte(strings.Repeat("output\n", 30)+"ready\n"), 0o644) // (its box scrolled away)
-	waitFor(t, "its box scrolled away", func() bool { return strings.Contains(d.panes[cs.mine].text(false), "ready") })
-	if b := d.panes[cs.mine].bottomText(20); strings.Contains(b, "half a thought") {
+	cs.show(t, strings.Repeat("output\n", 30)+"ready\n", "ready") // (its box scrolled away)
+	d.mu.Lock()
+	b := d.panes[cs.mine].bottomText(20)
+	d.mu.Unlock()
+	if strings.Contains(b, "half a thought") {
 		t.Fatalf("not scrolled away:\n%s", b)
 	}
 	if err := d.setComposerDraft(&pb.SetComposerDraft{PaneId: cs.mine, Text: "from my phone"}); err != nil {
@@ -225,13 +249,12 @@ func TestContinueWaitsForTyped(t *testing.T) {
 	}
 	tick(d, cs.clock, cs.clock.now().Add(time.Minute))
 	cs.runIs(t, s.Id, pb.ScheduleRun_STATUS_RUNNING)
-	waitFor(t, "the run typed in", func() bool { return strings.Contains(d.panes[cs.mine].text(false), "Check the inbox") })
+	waitFor(t, "the run typed in", func() bool { return strings.Contains(cs.text(), "Check the inbox") })
 
 	// Waiting longer than its give-up time: given up, nothing sent.
 	hook(d, cs.mine, "UserPromptSubmit", map[string]any{"prompt": "x", "session_id": "sess-mine"})
 	hook(d, cs.mine, "Stop", map[string]any{"session_id": "sess-mine"})
-	os.WriteFile(cs.screen, []byte(strings.Repeat("\n", 60)+"❯ more\n"), 0o644)
-	waitFor(t, "more typed", func() bool { return strings.Contains(d.panes[cs.mine].text(false), "❯ more") })
+	cs.show(t, strings.Repeat("\n", 60)+"❯ more\n", "❯ more")
 	r = cs.runNow(t, s.Id)
 	tick(d, cs.clock, time.UnixMilli(r.WaitingSinceUnixMs).Add(4*time.Hour))
 	if r := schedOf(d, s.Id).Runs[0]; r.Status != pb.ScheduleRun_STATUS_GAVE_UP || !strings.Contains(r.Note, "to send it") {
