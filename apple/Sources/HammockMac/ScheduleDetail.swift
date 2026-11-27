@@ -66,6 +66,7 @@ struct ScheduleDetail: View {
                     .toggleStyle(.switch)
                     .controlSize(.small)
                     .foregroundStyle(.secondary)
+                    .fixedSize()
                     .help(schedule.paused ? "Paused: it won’t run on its own" : "Pause it")
                 // Plain bordered controls of one height, their labels in the
                 // label colour (the app's tint made them read as links).
@@ -73,6 +74,7 @@ struct ScheduleDetail: View {
                 ScheduleRunButton(model: model, schedule: schedule)
                     .fixedSize()
                 Button("Edit") { ScheduleUI.shared.edit(schedule) }
+                    .fixedSize()
                     .help("Change what it runs and when")
                 Menu {
                     ScheduleMenuItems(model: model, schedule: schedule, inWindow: true)
@@ -414,6 +416,7 @@ struct TriggerStatusLine: View {
     private func line(now: Date) -> String? {
         var parts: [String] = []
         if case .check(let c) = trigger.kind, !c.lastResult.isEmpty { parts.append(c.lastResult) }
+        if case .url(let u) = trigger.kind, !u.lastResult.isEmpty { parts.append(u.lastResult) }
         if case .mac(let m) = trigger.kind, m.appWatched { parts.append("Works while Hammock is open") }
         if let s = trigger.statusText(now: now) { parts.append(parts.isEmpty ? s : s.prefix(1).lowercased() + s.dropFirst()) }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
