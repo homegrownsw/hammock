@@ -12,6 +12,7 @@ package schedtrig
 //	mac:wifi-joined[=NAME] | mac:wifi-left[=NAME]
 //	mac:app-opened=NAME | mac:app-quit=NAME   (its name or bundle id)
 //	mac:display[=NAME]
+//	place:arrive=NAME | place:leave=NAME   (one of the Mac app's Places)
 
 import (
 	"errors"
@@ -53,10 +54,37 @@ func MacEventName(e pb.MacTrigger_Event) string {
 func MacAppWatched(e pb.MacTrigger_Event) bool {
 	switch e {
 	case pb.MacTrigger_EVENT_WIFI_JOINED, pb.MacTrigger_EVENT_WIFI_LEFT, pb.MacTrigger_EVENT_APP_OPENED,
-		pb.MacTrigger_EVENT_APP_QUIT, pb.MacTrigger_EVENT_DISPLAY:
+		pb.MacTrigger_EVENT_APP_QUIT, pb.MacTrigger_EVENT_DISPLAY, pb.MacTrigger_EVENT_PLACE_ARRIVE, pb.MacTrigger_EVENT_PLACE_LEAVE:
 		return true
 	}
 	return false
+}
+
+// IsPlace: e is arriving at or leaving a place.
+func IsPlace(e pb.MacTrigger_Event) bool {
+	return e == pb.MacTrigger_EVENT_PLACE_ARRIVE || e == pb.MacTrigger_EVENT_PLACE_LEAVE
+}
+
+// MaxPlaceName is the longest a place's name may be.
+const MaxPlaceName = 64
+
+// parsePlace reads what follows place: (rest): arrive=NAME or leave=NAME.
+func parsePlace(spec, rest string) (*pb.MacTrigger, error) {
+	word, name, _ := strings.Cut(strings.TrimSpace(rest), "=")
+	name = strings.TrimSpace(name)
+	m := &pb.MacTrigger{Name: name}
+	switch strings.ToLower(strings.TrimSpace(word)) {
+	case "arrive", "arrives", "arrived", "enter", "at":
+		m.Event = pb.MacTrigger_EVENT_PLACE_ARRIVE
+	case "leave", "leaves", "left", "exit":
+		m.Event = pb.MacTrigger_EVENT_PLACE_LEAVE
+	default:
+		return nil, fmt.Errorf("%q: place:arrive=NAME or place:leave=NAME (one of the Mac app's Places)", spec)
+	}
+	if name == "" {
+		return nil, fmt.Errorf("%q: which place? place:%s=NAME", spec, strings.ToLower(strings.TrimSpace(word)))
+	}
+	return m, nil
 }
 
 const macUsage = "mac:disk<10%|disk<50GB[@VOLUME], battery<20%, plugged-in, unplugged, wake[=MIN], away=MIN, back[=MIN], drive[=NAME], wifi-joined[=NAME], wifi-left[=NAME], app-opened=NAME, app-quit=NAME or display[=NAME]"
@@ -226,6 +254,10 @@ func describeMac(m *pb.MacTrigger) string {
 			return "A display named “" + m.Name + "” is connected"
 		}
 		return "A display is connected"
+	case pb.MacTrigger_EVENT_PLACE_ARRIVE:
+		return "The Mac arrives at “" + m.Name + "”"
+	case pb.MacTrigger_EVENT_PLACE_LEAVE:
+		return "The Mac leaves “" + m.Name + "”"
 	}
 	return "Something on this Mac"
 }
@@ -239,6 +271,12 @@ func BackMinutes(m *pb.MacTrigger) int32 {
 }
 
 func specMac(m *pb.MacTrigger) string {
+	switch m.Event {
+	case pb.MacTrigger_EVENT_PLACE_ARRIVE:
+		return "place:arrive=" + m.Name
+	case pb.MacTrigger_EVENT_PLACE_LEAVE:
+		return "place:leave=" + m.Name
+	}
 	s := "mac:" + MacEventName(m.Event)
 	switch m.Event {
 	case pb.MacTrigger_EVENT_DISK_LOW:
@@ -274,7 +312,7 @@ func cmpInt(v, def int32) int32 {
 // ---------- Only If ----------
 
 // ConditionUsage lists the conditions ParseCondition reads.
-const ConditionUsage = "power, away[=MINUTES], wifi=NAME, hours=HH:MM-HH:MM, days=weekdays|weekends|mon,wed,…, free or disk>N%"
+const ConditionUsage = "power, away[=MINUTES], wifi=NAME, place=NAME, hours=HH:MM-HH:MM, days=weekdays|weekends|mon,wed,…, free or disk>N%"
 
 var dayNames = []string{"sun", "mon", "tue", "wed", "thu", "fri", "sat"}
 
@@ -439,6 +477,12 @@ func ParseCondition(spec string) (*pb.Condition, error) {
 			return nil, fmt.Errorf("%q: wifi=NAME, the network's name", spec)
 		}
 		c.Wifi = val
+	case "place", "at":
+		c.Kind = pb.Condition_KIND_PLACE
+		if val == "" {
+			return nil, fmt.Errorf("%q: place=NAME, one of the Mac app's Places", spec)
+		}
+		c.Place = val
 	case "hours", "between":
 		c.Kind = pb.Condition_KIND_HOURS
 		var err error
@@ -482,6 +526,8 @@ func SpecCondition(c *pb.Condition) string {
 		return "away"
 	case pb.Condition_KIND_WIFI:
 		return "wifi=" + c.Wifi
+	case pb.Condition_KIND_PLACE:
+		return "place=" + c.Place
 	case pb.Condition_KIND_HOURS:
 		return "hours=" + HHMM(c.FromMinute) + "-" + HHMM(c.ToMinute)
 	case pb.Condition_KIND_DAYS:
@@ -507,6 +553,8 @@ func DescribeCondition(c *pb.Condition) string {
 		return "I’m away from the Mac"
 	case pb.Condition_KIND_WIFI:
 		return "on the Wi-Fi “" + c.Wifi + "”"
+	case pb.Condition_KIND_PLACE:
+		return "the Mac is at “" + c.Place + "”"
 	case pb.Condition_KIND_HOURS:
 		return "between " + HHMM(c.FromMinute) + " and " + HHMM(c.ToMinute)
 	case pb.Condition_KIND_DAYS:
@@ -532,7 +580,7 @@ func OnlyIfWords(conds []*pb.Condition) string {
 // ConditionMacOnly: c needs a Mac (power, Wi-Fi, a calendar, you away).
 func ConditionMacOnly(c *pb.Condition) bool {
 	switch c.Kind {
-	case pb.Condition_KIND_POWER, pb.Condition_KIND_WIFI, pb.Condition_KIND_FREE, pb.Condition_KIND_AWAY:
+	case pb.Condition_KIND_POWER, pb.Condition_KIND_WIFI, pb.Condition_KIND_FREE, pb.Condition_KIND_AWAY, pb.Condition_KIND_PLACE:
 		return true
 	}
 	return false

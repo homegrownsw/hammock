@@ -25,6 +25,10 @@ struct ScheduleOnlyIfBox: View {
                         add(.with { $0.kind = .wifi; $0.wifi = ScheduleWhenBox.currentWiFi })
                         MacWatcher.shared.requestLocation()
                     }
+                    Button("At a Place…") {
+                        add(.with { $0.kind = .place; $0.place = AppConfig.shared.places.first?.name ?? "" })
+                        MacWatcher.shared.requestLocation()
+                    }
                     Button("Not in a Meeting") {
                         add(.with { $0.kind = .free })
                         CalendarFeed.shared.requestAccess()
@@ -69,6 +73,7 @@ private struct ConditionRow: View {
         case .power: "powerplug"
         case .away: "figure.walk"
         case .wifi: "wifi"
+        case .place: "mappin.and.ellipse"
         case .hours: "clock"
         case .days: "calendar"
         case .free: "calendar.badge.checkmark"
@@ -94,6 +99,21 @@ private struct ConditionRow: View {
             TextField("Network", text: $condition.wifi, prompt: Text("Network name"))
                 .labelsHidden()
                 .frame(width: 150)
+        case .place:
+            Text("The Mac is at")
+            Picker("Place", selection: placeChoice) {
+                if condition.place.isEmpty { Text("Choose a Place").tag("") }
+                ForEach(placeNames, id: \.self) { Text($0).tag($0) }
+                Divider()
+                Text("New Place…").tag(Self.newPlaceTag)
+                if !AppConfig.shared.places.isEmpty { Text("Edit Places…").tag(Self.editPlacesTag) }
+            }
+            .labelsHidden()
+            .fixedSize()
+            .sheet(item: $placesSheet) { mode in
+                PlacesSheet(startNew: mode == .new, selecting: condition.place.isEmpty ? nil : condition.place,
+                            picked: mode == .new ? { condition.place = $0 } : nil)
+            }
         case .hours:
             Text("Between")
             DatePicker("From", selection: time(\.fromMinute), displayedComponents: .hourAndMinute)
@@ -124,6 +144,26 @@ private struct ConditionRow: View {
         default:
             Text(condition.text)
         }
+    }
+
+    @State private var placesSheet: TriggerEditorRow.PlacesSheetMode?
+    private static let newPlaceTag = "\u{1}new", editPlacesTag = "\u{1}edit"
+
+    /// The Mac's places, and this one's (it may have gone from them).
+    private var placeNames: [String] {
+        let names = AppConfig.shared.places.map(\.name)
+        return condition.place.isEmpty || names.contains(condition.place) ? names : names + [condition.place]
+    }
+
+    /// The place, or New Place… and Edit Places…, which open the Places sheet.
+    private var placeChoice: Binding<String> {
+        Binding(get: { condition.place }, set: { v in
+            switch v {
+            case Self.newPlaceTag: placesSheet = .new
+            case Self.editPlacesTag: placesSheet = .edit
+            default: condition.place = v
+            }
+        })
     }
 
     private var awayChoices: [Int32] {
@@ -158,6 +198,7 @@ extension ScheduleCondition {
     var missing: String {
         switch kind {
         case .wifi: wifi.trimmingCharacters(in: .whitespaces).isEmpty ? "Which Wi-Fi network?" : ""
+        case .place: place.trimmingCharacters(in: .whitespaces).isEmpty ? "Which place?" : ""
         case .days: weekdays.isEmpty ? "Which days?" : ""
         case .hours: fromMinute == toMinute ? "The times are the same" : ""
         default: ""
@@ -249,6 +290,15 @@ struct MacTriggerFields<Target: View>: View {
             Picker("Joins or leaves", selection: $trigger.event) {
                 Text("joins").tag(MacTrigger.Event.wifiJoined)
                 Text("leaves").tag(MacTrigger.Event.wifiLeft)
+            }
+            .labelsHidden()
+            .fixedSize()
+            target()
+        case .placeArrive, .placeLeave:
+            Text("The Mac")
+            Picker("Arrives or leaves", selection: $trigger.event) {
+                Text("arrives at").tag(MacTrigger.Event.placeArrive)
+                Text("leaves").tag(MacTrigger.Event.placeLeave)
             }
             .labelsHidden()
             .fixedSize()

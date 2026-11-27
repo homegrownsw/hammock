@@ -128,6 +128,7 @@ extension AppConfig {
         #   log-enabled = true                     (false: Hammock doesn't offer log panes, in its menus or to agents)
         #   schedules-enabled = true               (false: Hammock doesn't offer automations (scheduled and triggered tasks), in its menus or to agents, and doesn't run them)
         #   working-hours = mon-fri 09:00-17:00    (when automations' Free Time trigger may fire: days (weekdays, daily, or like mon,wed,fri) and hours; Mac only)
+        #   place = NAME @ LATITUDE,LONGITUDE,METRES   (one line per place automations can watch for this Mac arriving at or leaving (Add Trigger ▸ Places makes them); only its name leaves the Mac; Mac only)
         #   sessions-enabled = true                (false: agents can't search or read past agents' sessions)
         #
         # Remote access and linked computers

@@ -8,8 +8,10 @@
   <key>com.apple.security.device.audio-input</key><true/>
   <!-- Scheduled tasks' calendar triggers (CalendarFeed.swift): reading your calendars. -->
   <key>com.apple.security.personal-information.calendars</key><true/>
-  <!-- Automations' Wi-Fi triggers and Only If (MacWatcher.swift): macOS gives the Wi-Fi
-       network's name only to apps with Location Services. -->
+  <!-- Automations' Wi-Fi and place triggers and Only If (MacWatcher.swift): macOS gives the
+       Wi-Fi network's name, and where the Mac is, only to apps with Location Services. -->
   <key>com.apple.security.personal-information.location</key><true/>
+  <!-- Places (PlacesEditor.swift): Home and Work from your own contact card, when you ask. -->
+  <key>com.apple.security.personal-information.addressbook</key><true/>
 </dict>
 </plist>

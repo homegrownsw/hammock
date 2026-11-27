@@ -5,8 +5,9 @@ package daemon
 // skipped, its record saying which didn't hold ("Only if: not plugged
 // in"). They're looked at as the run would start: power, disk and you
 // being away from the watcher's last look at the Mac (macwatch.go), or a
-// new one; the Wi-Fi network from the Mac app (so it never holds while
-// the app is closed); a meeting from the calendars it sent.
+// new one; the Wi-Fi network and the place the Mac is at from the Mac app
+// (so they never hold while the app is closed); a meeting from the
+// calendars it sent.
 
 import (
 	"errors"
@@ -45,6 +46,11 @@ func cleanConditions(s *pb.Schedule) error {
 			if c.Wifi == "" || len(c.Wifi) > 64 || strings.ContainsFunc(c.Wifi, func(r rune) bool { return r < 0x20 || r == 0x7f || bidiControl(r) || directionMark(r) }) {
 				return errors.New("Only If Wi-Fi: give the network's name, on one line")
 			}
+		case pb.Condition_KIND_PLACE:
+			c.Place = strings.TrimSpace(c.Place)
+			if c.Place == "" || len([]rune(c.Place)) > schedtrig.MaxPlaceName || strings.ContainsFunc(c.Place, func(r rune) bool { return r < 0x20 || r == 0x7f || bidiControl(r) || directionMark(r) }) {
+				return errors.New("Only If place: give the place's name, on one line")
+			}
 		case pb.Condition_KIND_HOURS:
 			if c.FromMinute < 0 || c.FromMinute > 24*60 || c.ToMinute < 0 || c.ToMinute > 24*60 || c.FromMinute == c.ToMinute {
 				return errors.New("Only If hours: from and until are times of day, and differ")
@@ -77,6 +83,9 @@ func cleanConditions(s *pb.Schedule) error {
 		}
 		if c.Kind != pb.Condition_KIND_WIFI {
 			c.Wifi = ""
+		}
+		if c.Kind != pb.Condition_KIND_PLACE {
+			c.Place = ""
 		}
 		if c.Kind != pb.Condition_KIND_HOURS {
 			c.FromMinute, c.ToMinute = 0, 0
@@ -152,6 +161,19 @@ func (d *Daemon) conditionFails(c *pb.Condition, now time.Time, sm macSample) st
 			return "Hammock has no Location access to see the Wi-Fi"
 		case !strings.EqualFold(strings.TrimSpace(app.Wifi), c.Wifi):
 			return "not on the Wi-Fi “" + c.Wifi + "”"
+		}
+	case pb.Condition_KIND_PLACE:
+		app := d.sched.mac.app
+		in, known := d.placeIn(c.Place)
+		switch {
+		case app == nil:
+			return "Hammock isn't open to see where the Mac is"
+		case app.LocationDenied:
+			return "Hammock has no Location access to see where the Mac is"
+		case !known:
+			return "Hammock can't tell yet whether the Mac is at “" + c.Place + "”"
+		case !in:
+			return "not at “" + c.Place + "”"
 		}
 	case pb.Condition_KIND_HOURS:
 		if !schedtrig.InHours(int32(now.Hour()*60+now.Minute()), c.FromMinute, c.ToMinute) {

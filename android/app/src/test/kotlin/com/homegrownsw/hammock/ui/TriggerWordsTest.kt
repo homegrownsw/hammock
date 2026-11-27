@@ -8,6 +8,7 @@ import hammock.v1.Hammock.GitHubTrigger
 import hammock.v1.Hammock.MacTrigger
 import hammock.v1.Hammock.Schedule
 import hammock.v1.Hammock.ShortcutTrigger
+import hammock.v1.Hammock.UrlCheckTrigger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -28,6 +29,16 @@ class TriggerWordsTest {
         assertEquals("“curl -sf localhost:8080”’s output changes, checked every hour",
             ScheduleWords.trigger(check("curl -sf localhost:8080", CommandCheckTrigger.On.ON_CHANGE, 60), null))
         assertEquals("“./ping.sh” passes again, checked every minute", ScheduleWords.trigger(check("./ping.sh", CommandCheckTrigger.On.ON_RECOVER, 1), null))
+    }
+
+    @Test fun urlChecksAndPlaces() {
+        val u = EventTrigger.newBuilder().setUrl(UrlCheckTrigger.newBuilder().setUrl("https://example.com/status")
+            .setOn(UrlCheckTrigger.On.ON_CONTAINS).setText("deployed").setEveryMinutes(15).setLastResult("200 OK")).build()
+        assertEquals("https://example.com/status starts containing “deployed”, checked every 15 minutes", ScheduleWords.trigger(u, null))
+        assertEquals("200 OK", ScheduleWords.checkResult(u))
+        assertEquals("The Mac arrives at “Office”", mac(MacTrigger.newBuilder().setEvent(MacTrigger.Event.EVENT_PLACE_ARRIVE).setName("Office")))
+        assertEquals("The Mac leaves “Studio”", mac(MacTrigger.newBuilder().setEvent(MacTrigger.Event.EVENT_PLACE_LEAVE).setName("Studio")))
+        assertEquals("the Mac is at “Office”", ScheduleWords.condition(Condition.newBuilder().setKind(Condition.Kind.KIND_PLACE).setPlace("Office").build()))
     }
 
     @Test fun shortcuts() {

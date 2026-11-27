@@ -2805,6 +2805,7 @@ message Condition {
     KIND_DAYS = 5;                // on weekdays
     KIND_FREE = 6;                // not in a calendar event marked busy
     KIND_DISK = 7;                // the startup disk has more than percent free
+    KIND_PLACE = 8;               // the Mac is at the place called place (the Mac app sees it)
   }
   Kind kind = 1;
   int32 minutes = 2;              // KIND_AWAY: away at least this long (0: away now)
@@ -2813,6 +2814,7 @@ message Condition {
   int32 to_minute = 5;            // KIND_HOURS: before from_minute: through midnight
   repeated int32 weekdays = 6;    // KIND_DAYS: 0 Sunday … 6 Saturday
   int32 percent = 7;              // KIND_DISK
+  string place = 8;               // KIND_PLACE: its name
 }
 
 message ScheduleRun {
@@ -2875,6 +2877,7 @@ message EventTrigger {
     CommandCheckTrigger check = 10;
     ShortcutTrigger shortcut = 11;
     MacTrigger mac = 15;
+    UrlCheckTrigger url = 16;
   }
   string error = 9;               // read only: why it can't fire now (gh isn't signed in…)
   // Read only, the daemon's: when it last looked (a trigger that asks or
@@ -2984,6 +2987,10 @@ message MacTrigger {
     EVENT_APP_OPENED = 11;        // an app opens (name: its name or bundle id)
     EVENT_APP_QUIT = 12;          // an app quits
     EVENT_DISPLAY = 13;           // a display is connected (name: whose name has it)
+    // The Mac arrives at, or leaves, the place called name (one of the Mac
+    // app's Places: where it is, only its name, goes to the daemon).
+    EVENT_PLACE_ARRIVE = 14;
+    EVENT_PLACE_LEAVE = 15;
   }
   Event event = 1;
   string volume = 2;              // EVENT_DISK_LOW: its mount point ("": the startup disk)
@@ -3000,6 +3007,12 @@ message MacAppState {
   string wifi = 3;                // the network's name ("": none)
   repeated MacApp apps = 4;       // the apps open (ones with a Dock icon)
   repeated MacDisplay displays = 5;
+  // Places (by name only; where they are stays in the app): those the Mac
+  // is in now, and those it's out of. One in neither isn't known now
+  // (Location is still finding where it is, or has no access).
+  repeated string places_in = 6;
+  repeated string places_out = 7;
+  repeated string places = 8;     // all the Mac's Places, by name
 }
 message MacApp {
   string name = 1;
@@ -3027,6 +3040,26 @@ message CommandCheckTrigger {
   int32 timeout_seconds = 4;      // 0: 60 (at most every_minutes)
   // Read only: how its last check went ("Passed", "Failed (exit 2)", "Timed out").
   string last_result = 5;
+}
+
+// A URL fetched (GET) every every_minutes by the daemon, firing as on
+// says. A fetch still going when the next is due is left to finish (that
+// one is skipped); one taking longer than timeout_seconds counts as
+// failing. Only the first max (256 KB) of the body is read. Its first
+// fetch only notes how things are.
+message UrlCheckTrigger {
+  string url = 1;                 // http or https
+  int32 every_minutes = 2;        // 1 to 10080 (0: 5)
+  enum On {
+    ON_FAIL = 0;                  // it starts failing (not 2xx, or unreachable)
+    ON_CHANGE = 1;                // its body (or status) changes
+    ON_CONTAINS = 2;              // its body starts containing text
+  }
+  On on = 3;
+  string text = 4;                // ON_CONTAINS: what to look for (any case)
+  int32 timeout_seconds = 5;      // 0: 30 (at most every_minutes)
+  // Read only: how its last fetch went ("200 OK", "Failed (503)", "Timed out").
+  string last_result = 6;
 }
 
 // Shortcuts' Run Hammock Automation action (or Android's intent for

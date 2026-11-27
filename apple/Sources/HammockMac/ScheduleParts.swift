@@ -152,11 +152,12 @@ extension EventTrigger {
     /// What a trigger watches that others like it may watch something else
     /// of: those differing only in this share one row.
     enum Target {
-        case repository, calendar, app, drive, display, network
+        case repository, calendar, app, drive, display, network, place
 
         /// "16 repositories".
         func count(_ n: Int) -> String {
             let noun = switch self {
+            case .place: n == 1 ? "place" : "places"
             case .repository: n == 1 ? "repository" : "repositories"
             case .calendar: n == 1 ? "calendar" : "calendars"
             case .app: n == 1 ? "app" : "apps"
@@ -176,6 +177,7 @@ extension EventTrigger {
             case .drive: "any drive"
             case .display: "any display"
             case .network: "any network"
+            case .place: "a place"
             }
         }
 
@@ -188,6 +190,7 @@ extension EventTrigger {
             case .drive: "Add a drive’s name"
             case .display: "Add a display’s name"
             case .network: "Add a network"
+            case .place: "Add a place"
             }
         }
     }
@@ -202,6 +205,7 @@ extension EventTrigger {
             case .drive: .drive
             case .display: .display
             case .wifiJoined, .wifiLeft: .network
+            case .placeArrive, .placeLeave: .place
             default: nil
             }
         default: nil
@@ -246,6 +250,7 @@ extension EventTrigger {
         t.held = ""
         if t.target != nil { t.targetValue = "" }
         if case .check(var c) = t.kind { c.lastResult = ""; t.kind = .check(c) }
+        if case .url(var u) = t.kind { u.lastResult = ""; t.kind = .url(u) }
         return t
     }
 
@@ -287,6 +292,8 @@ extension EventTrigger {
             switch m.event {
             case .appOpened: return "An app opens"
             case .appQuit: return "An app quits"
+            case .placeArrive: return "The Mac arrives at a place"
+            case .placeLeave: return "The Mac leaves a place"
             default: break
             }
         }

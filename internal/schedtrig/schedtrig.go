@@ -18,12 +18,14 @@
 //	mac:unplugged | mac:wake[=MIN] | mac:away=MIN | mac:back[=MIN] |
 //	mac:drive[=NAME] | mac:wifi-joined[=NAME] | mac:wifi-left[=NAME] |
 //	mac:app-opened=NAME | mac:app-quit=NAME | mac:display[=NAME]   (mac.go)
+//	place:arrive=NAME | place:leave=NAME  one of the Mac app's Places
 //	webhook
 //	shortcut                            Shortcuts' Run Hammock Automation (Mac)
 //
-// A command check has a command in it, which can have any of : @ , in it,
-// so it isn't written this way: hmk gives it flags of its own
-// (--check-cmd), and Spec writes it as them.
+// A command check has a command in it, and a URL check a URL, which can
+// have any of : @ , in them, so they aren't written this way: hmk gives
+// them flags of their own (--check-cmd, --url), and Spec writes them as
+// them.
 package schedtrig
 
 import (
@@ -47,7 +49,7 @@ agent:finished|needs-you[,…][@GROUP|PANE]   exit[@GROUP|PANE]   log:REGEX@PANE
 calendar:MINUTES|end|free[=MINUTES][,title=TEXT][,calendar=NAME][,attendees]
 mac:disk<10%|disk<50GB[@VOLUME]|battery<20%|plugged-in|unplugged|wake[=MIN]|away=MIN|back[=MIN]|
   drive[=NAME]|wifi-joined[=NAME]|wifi-left[=NAME]|app-opened=NAME|app-quit=NAME|display[=NAME]
-webhook   shortcut`
+place:arrive=NAME|leave=NAME   webhook   shortcut`
 
 // Resolver finds the pane or Group ref names (an id, a name, an index), for
 // a trigger that may be in either (groups) or a pane only.
@@ -267,6 +269,14 @@ func Parse(spec string, resolve Resolver) (*pb.EventTrigger, error) {
 			return nil, err
 		}
 		return &pb.EventTrigger{Kind: &pb.EventTrigger_Mac{Mac: m}}, nil
+	case "place":
+		m, err := parsePlace(spec, rest)
+		if err != nil {
+			return nil, err
+		}
+		return &pb.EventTrigger{Kind: &pb.EventTrigger_Mac{Mac: m}}, nil
+	case "url", "url-check", "http":
+		return nil, errors.New("a URL check is given with its own options: --url URL [--url-every MINUTES] [--url-on fail|change|contains] [--url-text TEXT] [--url-timeout SECONDS]")
 	case "check", "command-check":
 		return nil, errors.New("a command check is given with its own options: --check-cmd COMMAND [--check-every MINUTES] [--check-on fail|change|recover] [--check-timeout SECONDS]")
 	}
@@ -404,6 +414,8 @@ func Describe(t *pb.EventTrigger, names Names) string {
 			what = " passes again"
 		}
 		return "“" + c.Command + "”" + what + ", checked " + EveryWords(CheckEvery(c))
+	case *pb.EventTrigger_Url:
+		return DescribeURL(k.Url)
 	}
 	return "An unknown event"
 }
@@ -486,15 +498,20 @@ func Spec(t *pb.EventTrigger) string {
 		return specMac(k.Mac)
 	case *pb.EventTrigger_Check:
 		return CheckFlags(k.Check)
+	case *pb.EventTrigger_Url:
+		return URLFlags(k.Url)
 	}
 	return ""
 }
 
 // Brief is t in a few words, for a list: Spec, but a command check as
-// "check:COMMAND".
+// "check:COMMAND", a URL check as "url:URL".
 func Brief(t *pb.EventTrigger) string {
 	if c := t.GetCheck(); c != nil {
 		return "check:" + c.Command
+	}
+	if u := t.GetUrl(); u != nil {
+		return "url:" + u.Url
 	}
 	return Spec(t)
 }
@@ -668,6 +685,8 @@ func Kind(t *pb.EventTrigger) string {
 		return "check"
 	case *pb.EventTrigger_Mac:
 		return "mac"
+	case *pb.EventTrigger_Url:
+		return "url"
 	}
 	return ""
 }

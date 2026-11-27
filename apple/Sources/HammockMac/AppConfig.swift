@@ -167,6 +167,8 @@ final class AppConfig {
     private(set) var keybinds = KeybindSet.defaults
     /// `keybind` lines that couldn't be read, described (Settings ▸ Keyboard shows them).
     private(set) var keybindProblems: [KeybindProblem] = []
+    /// Automations' places (`place` lines): where they are stays on this Mac.
+    private(set) var places: [Place] = []
 
     let dir: URL
     var fileURL: URL { dir.appendingPathComponent("config") }
@@ -389,6 +391,8 @@ final class AppConfig {
         if binds.set != keybinds { keybinds = binds.set }
         if binds.problems != keybindProblems { keybindProblems = binds.problems }
         ProgramIcon.setOverrides(Self.readAll(fileURL, key: "pane-icon"))
+        let places = Self.readAll(fileURL, key: "place").compactMap(Place.init(config:))
+        if places != self.places { self.places = places }
         programIconStyle = ProgramIconStyle(config: ours["program-icons"])
         ProgramIcon.setStyle(programIconStyle)
         agentColors = resolveAgentColors()
@@ -769,6 +773,9 @@ final class AppConfig {
 
     /// Writes the `keybind` lines that make these shortcuts (none: the defaults).
     /// Lines that couldn't be read are kept, after the rest, to be fixed by hand.
+    /// Writes the `place` lines.
+    func setPlaces(_ places: [Place]) { set("place", values: places.map(\.configValue)) }
+
     func setKeybinds(_ binds: KeybindSet) { set("keybind", values: binds.configValues + keybindProblems.map(\.line)) }
 
     func setThemes(light: String, dark: String) {

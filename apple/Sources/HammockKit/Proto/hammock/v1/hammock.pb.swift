@@ -10259,6 +10259,9 @@ public nonisolated struct Hammock_V1_Condition: Sendable {
   /// KIND_DISK
   public var percent: Int32 = 0
 
+  /// KIND_PLACE: its name
+  public var place: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum Kind: SwiftProtobuf.Enum, Swift.CaseIterable {
@@ -10285,6 +10288,9 @@ public nonisolated struct Hammock_V1_Condition: Sendable {
 
     /// the startup disk has more than percent free
     case disk // = 7
+
+    /// the Mac is at the place called place (the Mac app sees it)
+    case place // = 8
     case UNRECOGNIZED(Int)
 
     public init() {
@@ -10301,6 +10307,7 @@ public nonisolated struct Hammock_V1_Condition: Sendable {
       case 5: self = .days
       case 6: self = .free
       case 7: self = .disk
+      case 8: self = .place
       default: self = .UNRECOGNIZED(rawValue)
       }
     }
@@ -10315,6 +10322,7 @@ public nonisolated struct Hammock_V1_Condition: Sendable {
       case .days: return 5
       case .free: return 6
       case .disk: return 7
+      case .place: return 8
       case .UNRECOGNIZED(let i): return i
       }
     }
@@ -10329,6 +10337,7 @@ public nonisolated struct Hammock_V1_Condition: Sendable {
       .days,
       .free,
       .disk,
+      .place,
     ]
 
   }
@@ -10646,6 +10655,14 @@ public nonisolated struct Hammock_V1_EventTrigger: Sendable {
     set {kind = .mac(newValue)}
   }
 
+  public var url: Hammock_V1_UrlCheckTrigger {
+    get {
+      if case .url(let v)? = kind {return v}
+      return Hammock_V1_UrlCheckTrigger()
+    }
+    set {kind = .url(newValue)}
+  }
+
   /// read only: why it can't fire now (gh isn't signed in…)
   public var error: String = String()
 
@@ -10671,6 +10688,7 @@ public nonisolated struct Hammock_V1_EventTrigger: Sendable {
     case check(Hammock_V1_CommandCheckTrigger)
     case shortcut(Hammock_V1_ShortcutTrigger)
     case mac(Hammock_V1_MacTrigger)
+    case url(Hammock_V1_UrlCheckTrigger)
 
   }
 
@@ -11026,6 +11044,11 @@ public nonisolated struct Hammock_V1_MacTrigger: Sendable {
 
     /// a display is connected (name: whose name has it)
     case display // = 13
+
+    /// The Mac arrives at, or leaves, the place called name (one of the Mac
+    /// app's Places: where it is, only its name, goes to the daemon).
+    case placeArrive // = 14
+    case placeLeave // = 15
     case UNRECOGNIZED(Int)
 
     public init() {
@@ -11048,6 +11071,8 @@ public nonisolated struct Hammock_V1_MacTrigger: Sendable {
       case 11: self = .appOpened
       case 12: self = .appQuit
       case 13: self = .display
+      case 14: self = .placeArrive
+      case 15: self = .placeLeave
       default: self = .UNRECOGNIZED(rawValue)
       }
     }
@@ -11068,6 +11093,8 @@ public nonisolated struct Hammock_V1_MacTrigger: Sendable {
       case .appOpened: return 11
       case .appQuit: return 12
       case .display: return 13
+      case .placeArrive: return 14
+      case .placeLeave: return 15
       case .UNRECOGNIZED(let i): return i
       }
     }
@@ -11088,6 +11115,8 @@ public nonisolated struct Hammock_V1_MacTrigger: Sendable {
       .appOpened,
       .appQuit,
       .display,
+      .placeArrive,
+      .placeLeave,
     ]
 
   }
@@ -11114,6 +11143,16 @@ public nonisolated struct Hammock_V1_MacAppState: Sendable {
   public var apps: [Hammock_V1_MacApp] = []
 
   public var displays: [Hammock_V1_MacDisplay] = []
+
+  /// Places (by name only; where they are stays in the app): those the Mac
+  /// is in now, and those it's out of. One in neither isn't known now
+  /// (Location is still finding where it is, or has no access).
+  public var placesIn: [String] = []
+
+  public var placesOut: [String] = []
+
+  /// all the Mac's Places, by name
+  public var places: [String] = []
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -11214,6 +11253,82 @@ public nonisolated struct Hammock_V1_CommandCheckTrigger: Sendable {
       .fail,
       .change,
       .recover,
+    ]
+
+  }
+
+  public init() {}
+}
+
+/// A URL fetched (GET) every every_minutes by the daemon, firing as on
+/// says. A fetch still going when the next is due is left to finish (that
+/// one is skipped); one taking longer than timeout_seconds counts as
+/// failing. Only the first max (256 KB) of the body is read. Its first
+/// fetch only notes how things are.
+public nonisolated struct Hammock_V1_UrlCheckTrigger: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// http or https
+  public var url: String = String()
+
+  /// 1 to 10080 (0: 5)
+  public var everyMinutes: Int32 = 0
+
+  public var on: Hammock_V1_UrlCheckTrigger.On = .fail
+
+  /// ON_CONTAINS: what to look for (any case)
+  public var text: String = String()
+
+  /// 0: 30 (at most every_minutes)
+  public var timeoutSeconds: Int32 = 0
+
+  /// Read only: how its last fetch went ("200 OK", "Failed (503)", "Timed out").
+  public var lastResult: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public nonisolated enum On: SwiftProtobuf.Enum, Swift.CaseIterable {
+    public typealias RawValue = Int
+
+    /// it starts failing (not 2xx, or unreachable)
+    case fail // = 0
+
+    /// its body (or status) changes
+    case change // = 1
+
+    /// its body starts containing text
+    case contains // = 2
+    case UNRECOGNIZED(Int)
+
+    public init() {
+      self = .fail
+    }
+
+    public init?(rawValue: Int) {
+      switch rawValue {
+      case 0: self = .fail
+      case 1: self = .change
+      case 2: self = .contains
+      default: self = .UNRECOGNIZED(rawValue)
+      }
+    }
+
+    public var rawValue: Int {
+      switch self {
+      case .fail: return 0
+      case .change: return 1
+      case .contains: return 2
+      case .UNRECOGNIZED(let i): return i
+      }
+    }
+
+    // The compiler won't synthesize support with the UNRECOGNIZED case.
+    public static let allCases: [Hammock_V1_UrlCheckTrigger.On] = [
+      .fail,
+      .change,
+      .contains,
     ]
 
   }
@@ -29811,7 +29926,7 @@ nonisolated extension Hammock_V1_Schedule.Session: SwiftProtobuf._ProtoNameProvi
 
 nonisolated extension Hammock_V1_Condition: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Condition"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}kind\0\u{1}minutes\0\u{1}wifi\0\u{3}from_minute\0\u{3}to_minute\0\u{1}weekdays\0\u{1}percent\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}kind\0\u{1}minutes\0\u{1}wifi\0\u{3}from_minute\0\u{3}to_minute\0\u{1}weekdays\0\u{1}percent\0\u{1}place\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -29826,6 +29941,7 @@ nonisolated extension Hammock_V1_Condition: SwiftProtobuf.Message, SwiftProtobuf
       case 5: try { try decoder.decodeSingularInt32Field(value: &self.toMinute) }()
       case 6: try { try decoder.decodeRepeatedInt32Field(value: &self.weekdays) }()
       case 7: try { try decoder.decodeSingularInt32Field(value: &self.percent) }()
+      case 8: try { try decoder.decodeSingularStringField(value: &self.place) }()
       default: break
       }
     }
@@ -29853,6 +29969,9 @@ nonisolated extension Hammock_V1_Condition: SwiftProtobuf.Message, SwiftProtobuf
     if self.percent != 0 {
       try visitor.visitSingularInt32Field(value: self.percent, fieldNumber: 7)
     }
+    if !self.place.isEmpty {
+      try visitor.visitSingularStringField(value: self.place, fieldNumber: 8)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -29864,13 +29983,14 @@ nonisolated extension Hammock_V1_Condition: SwiftProtobuf.Message, SwiftProtobuf
     if lhs.toMinute != rhs.toMinute {return false}
     if lhs.weekdays != rhs.weekdays {return false}
     if lhs.percent != rhs.percent {return false}
+    if lhs.place != rhs.place {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
 }
 
 nonisolated extension Hammock_V1_Condition.Kind: SwiftProtobuf._ProtoNameProviding {
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0KIND_UNSPECIFIED\0\u{1}KIND_POWER\0\u{1}KIND_AWAY\0\u{1}KIND_WIFI\0\u{1}KIND_HOURS\0\u{1}KIND_DAYS\0\u{1}KIND_FREE\0\u{1}KIND_DISK\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0KIND_UNSPECIFIED\0\u{1}KIND_POWER\0\u{1}KIND_AWAY\0\u{1}KIND_WIFI\0\u{1}KIND_HOURS\0\u{1}KIND_DAYS\0\u{1}KIND_FREE\0\u{1}KIND_DISK\0\u{1}KIND_PLACE\0")
 }
 
 nonisolated extension Hammock_V1_ScheduleRun: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
@@ -30085,7 +30205,7 @@ nonisolated extension Hammock_V1_ScheduleRun.Status: SwiftProtobuf._ProtoNamePro
 
 nonisolated extension Hammock_V1_EventTrigger: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".EventTrigger"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{1}github\0\u{1}agent\0\u{1}exit\0\u{1}log\0\u{1}files\0\u{1}calendar\0\u{1}webhook\0\u{1}error\0\u{1}check\0\u{1}shortcut\0\u{3}checked_unix_ms\0\u{3}fired_unix_ms\0\u{1}held\0\u{1}mac\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{1}github\0\u{1}agent\0\u{1}exit\0\u{1}log\0\u{1}files\0\u{1}calendar\0\u{1}webhook\0\u{1}error\0\u{1}check\0\u{1}shortcut\0\u{3}checked_unix_ms\0\u{3}fired_unix_ms\0\u{1}held\0\u{1}mac\0\u{1}url\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -30228,6 +30348,19 @@ nonisolated extension Hammock_V1_EventTrigger: SwiftProtobuf.Message, SwiftProto
           self.kind = .mac(v)
         }
       }()
+      case 16: try {
+        var v: Hammock_V1_UrlCheckTrigger?
+        var hadOneofValue = false
+        if let current = self.kind {
+          hadOneofValue = true
+          if case .url(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.kind = .url(v)
+        }
+      }()
       default: break
       }
     }
@@ -30295,9 +30428,17 @@ nonisolated extension Hammock_V1_EventTrigger: SwiftProtobuf.Message, SwiftProto
     if !self.held.isEmpty {
       try visitor.visitSingularStringField(value: self.held, fieldNumber: 14)
     }
-    try { if case .mac(let v)? = self.kind {
+    switch self.kind {
+    case .mac?: try {
+      guard case .mac(let v)? = self.kind else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 15)
-    } }()
+    }()
+    case .url?: try {
+      guard case .url(let v)? = self.kind else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 16)
+    }()
+    default: break
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -30642,12 +30783,12 @@ nonisolated extension Hammock_V1_MacTrigger: SwiftProtobuf.Message, SwiftProtobu
 }
 
 nonisolated extension Hammock_V1_MacTrigger.Event: SwiftProtobuf._ProtoNameProviding {
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0EVENT_UNSPECIFIED\0\u{1}EVENT_DISK_LOW\0\u{1}EVENT_BATTERY_LOW\0\u{1}EVENT_PLUGGED_IN\0\u{1}EVENT_UNPLUGGED\0\u{1}EVENT_WAKE\0\u{1}EVENT_AWAY\0\u{1}EVENT_BACK\0\u{1}EVENT_DRIVE\0\u{1}EVENT_WIFI_JOINED\0\u{1}EVENT_WIFI_LEFT\0\u{1}EVENT_APP_OPENED\0\u{1}EVENT_APP_QUIT\0\u{1}EVENT_DISPLAY\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0EVENT_UNSPECIFIED\0\u{1}EVENT_DISK_LOW\0\u{1}EVENT_BATTERY_LOW\0\u{1}EVENT_PLUGGED_IN\0\u{1}EVENT_UNPLUGGED\0\u{1}EVENT_WAKE\0\u{1}EVENT_AWAY\0\u{1}EVENT_BACK\0\u{1}EVENT_DRIVE\0\u{1}EVENT_WIFI_JOINED\0\u{1}EVENT_WIFI_LEFT\0\u{1}EVENT_APP_OPENED\0\u{1}EVENT_APP_QUIT\0\u{1}EVENT_DISPLAY\0\u{1}EVENT_PLACE_ARRIVE\0\u{1}EVENT_PLACE_LEAVE\0")
 }
 
 nonisolated extension Hammock_V1_MacAppState: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".MacAppState"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}wifi_known\0\u{3}location_denied\0\u{1}wifi\0\u{1}apps\0\u{1}displays\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}wifi_known\0\u{3}location_denied\0\u{1}wifi\0\u{1}apps\0\u{1}displays\0\u{3}places_in\0\u{3}places_out\0\u{1}places\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -30660,6 +30801,9 @@ nonisolated extension Hammock_V1_MacAppState: SwiftProtobuf.Message, SwiftProtob
       case 3: try { try decoder.decodeSingularStringField(value: &self.wifi) }()
       case 4: try { try decoder.decodeRepeatedMessageField(value: &self.apps) }()
       case 5: try { try decoder.decodeRepeatedMessageField(value: &self.displays) }()
+      case 6: try { try decoder.decodeRepeatedStringField(value: &self.placesIn) }()
+      case 7: try { try decoder.decodeRepeatedStringField(value: &self.placesOut) }()
+      case 8: try { try decoder.decodeRepeatedStringField(value: &self.places) }()
       default: break
       }
     }
@@ -30681,6 +30825,15 @@ nonisolated extension Hammock_V1_MacAppState: SwiftProtobuf.Message, SwiftProtob
     if !self.displays.isEmpty {
       try visitor.visitRepeatedMessageField(value: self.displays, fieldNumber: 5)
     }
+    if !self.placesIn.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.placesIn, fieldNumber: 6)
+    }
+    if !self.placesOut.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.placesOut, fieldNumber: 7)
+    }
+    if !self.places.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.places, fieldNumber: 8)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -30690,6 +30843,9 @@ nonisolated extension Hammock_V1_MacAppState: SwiftProtobuf.Message, SwiftProtob
     if lhs.wifi != rhs.wifi {return false}
     if lhs.apps != rhs.apps {return false}
     if lhs.displays != rhs.displays {return false}
+    if lhs.placesIn != rhs.placesIn {return false}
+    if lhs.placesOut != rhs.placesOut {return false}
+    if lhs.places != rhs.places {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -30817,6 +30973,65 @@ nonisolated extension Hammock_V1_CommandCheckTrigger: SwiftProtobuf.Message, Swi
 
 nonisolated extension Hammock_V1_CommandCheckTrigger.On: SwiftProtobuf._ProtoNameProviding {
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0ON_FAIL\0\u{1}ON_CHANGE\0\u{1}ON_RECOVER\0")
+}
+
+nonisolated extension Hammock_V1_UrlCheckTrigger: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".UrlCheckTrigger"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}url\0\u{3}every_minutes\0\u{1}on\0\u{1}text\0\u{3}timeout_seconds\0\u{3}last_result\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.url) }()
+      case 2: try { try decoder.decodeSingularInt32Field(value: &self.everyMinutes) }()
+      case 3: try { try decoder.decodeSingularEnumField(value: &self.on) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.text) }()
+      case 5: try { try decoder.decodeSingularInt32Field(value: &self.timeoutSeconds) }()
+      case 6: try { try decoder.decodeSingularStringField(value: &self.lastResult) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.url.isEmpty {
+      try visitor.visitSingularStringField(value: self.url, fieldNumber: 1)
+    }
+    if self.everyMinutes != 0 {
+      try visitor.visitSingularInt32Field(value: self.everyMinutes, fieldNumber: 2)
+    }
+    if self.on != .fail {
+      try visitor.visitSingularEnumField(value: self.on, fieldNumber: 3)
+    }
+    if !self.text.isEmpty {
+      try visitor.visitSingularStringField(value: self.text, fieldNumber: 4)
+    }
+    if self.timeoutSeconds != 0 {
+      try visitor.visitSingularInt32Field(value: self.timeoutSeconds, fieldNumber: 5)
+    }
+    if !self.lastResult.isEmpty {
+      try visitor.visitSingularStringField(value: self.lastResult, fieldNumber: 6)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_UrlCheckTrigger, rhs: Hammock_V1_UrlCheckTrigger) -> Bool {
+    if lhs.url != rhs.url {return false}
+    if lhs.everyMinutes != rhs.everyMinutes {return false}
+    if lhs.on != rhs.on {return false}
+    if lhs.text != rhs.text {return false}
+    if lhs.timeoutSeconds != rhs.timeoutSeconds {return false}
+    if lhs.lastResult != rhs.lastResult {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_UrlCheckTrigger.On: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0ON_FAIL\0\u{1}ON_CHANGE\0\u{1}ON_CONTAINS\0")
 }
 
 nonisolated extension Hammock_V1_ShortcutTrigger: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {

@@ -159,7 +159,7 @@ func (a *App) triggerStatus(s *pb.Schedule, now time.Time) string {
 		return ""
 	}
 	line := schedtrig.Status(best, now)
-	if r := best.GetCheck().GetLastResult(); r != "" && line != "" {
+	if r := cmp.Or(best.GetCheck().GetLastResult(), best.GetUrl().GetLastResult()); r != "" && line != "" {
 		line = r + " · " + strings.ToLower(line[:1]) + line[1:]
 	}
 	if line != "" && len(s.Events) > 1 {

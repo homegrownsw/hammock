@@ -73,6 +73,7 @@ struct ScheduleWhenBox: View {
                     }
                 }
                 Button("Command Check…") { add(.check(.with { $0.everyMinutes = 5 })) }
+                Button("URL Check…") { add(.url(.with { $0.everyMinutes = 5 })) }
             }
             if onThisMac {
                 Section("This Mac") {
@@ -119,6 +120,10 @@ struct ScheduleWhenBox: View {
                         Button("When an Event Starts…") { addCalendar(.init()) }
                         Button("When an Event Ends…") { addCalendar(.with { $0.when = .end }) }
                         Button("When Free Time Begins…") { addCalendar(.with { $0.when = .free; $0.freeMinutes = 30 }) }
+                    }
+                    Menu("Places") {
+                        Button("Mac Arrives at a Place…") { addPlace(.placeArrive) }
+                        Button("Mac Leaves a Place…") { addPlace(.placeLeave) }
                     }
                 }
             }
@@ -179,6 +184,12 @@ struct ScheduleWhenBox: View {
         draft.s.events.append(t)
         // Something to name: its list opens.
         if let target = t.target, target != .repository, t.targetValue.isEmpty { targetsShown = draft.s.events.count - 1 }
+    }
+
+    /// A place trigger: its token's list opens, to pick a place or make one.
+    private func addPlace(_ event: MacTrigger.Event) {
+        add(.mac(.with { $0.event = event }))
+        MacWatcher.shared.requestLocation()
     }
 
     private func addCalendar(_ c: Hammock_V1_CalendarTrigger) {
@@ -487,6 +498,16 @@ struct TriggerEditorRow: View {
             pop(check(\.timeoutSeconds), choices([0, 10, 30, 300, 900, 1800, 3600], check(\.timeoutSeconds).wrappedValue).map { s in
                 (s, s == 0 || s == 60 ? "1 minute" : s % 60 == 0 ? "\(s / 60) minutes" : "\(s) seconds")
             })
+        case .url:
+            field("URL", url(\.url), "https://example.com/health", width: 230, mono: true)
+            pop(url(\.on), [(.fail, "starts failing"), (.change, "changes"), (.contains, "starts containing")])
+                .help("Failing: an answer other than 2xx, or none")
+            if url(\.on).wrappedValue == .contains {
+                field("Text", url(\.text), "deployed", width: 110)
+            }
+            word("checked")
+            pop(url(\.everyMinutes), choices([1, 5, 10, 15, 30, 60, 180, 360, 720, 1440], max(url(\.everyMinutes).wrappedValue, 1))
+                .map { ($0, EventTrigger.everyWords(Int($0))) })
         case .shortcut:
             word("Shortcuts runs it")
             Button("Open Shortcuts") {
@@ -534,10 +555,23 @@ struct TriggerEditorRow: View {
                 .popover(isPresented: $targetsShown, arrowEdge: .bottom) {
                     TargetsPopover(target: target, values: members.map(\.targetValue), resolved: members.map(\.targetText),
                                    add: addTarget, remove: removeTarget, choose: target == .app ? chooseApp : nil,
-                                   status: EventTrigger.merged(members))
+                                   status: EventTrigger.merged(members),
+                                   places: target == .place ? AppConfig.shared.places.map(\.name) : nil,
+                                   editPlaces: { newPlace in
+                                       targetsShown = false
+                                       placesSheet = newPlace ? .new : .edit
+                                   })
+                }
+                .sheet(item: $placesSheet) { mode in
+                    PlacesSheet(startNew: mode == .new, selecting: first.targetValue.isEmpty ? nil : first.targetValue,
+                                picked: mode == .new ? { addTarget($0) } : nil)
                 }
         }
     }
+
+    /// The Places sheet, from a place's token: to make one, or edit them.
+    enum PlacesSheetMode: Identifiable { case new, edit; var id: Self { self } }
+    @State private var placesSheet: PlacesSheetMode?
 
     /// Another target: the row's one "any" becomes it, else a trigger like
     /// the others is added for it.
@@ -752,6 +786,11 @@ struct TriggerEditorRow: View {
                 set: { v in if case .files(var f) = first.kind { f[keyPath: kp] = v; trigger.wrappedValue.kind = .files(f) } })
     }
 
+    private func url<T>(_ kp: WritableKeyPath<Hammock_V1_UrlCheckTrigger, T>) -> Binding<T> {
+        Binding(get: { if case .url(let u) = first.kind { return u[keyPath: kp] }; return Hammock_V1_UrlCheckTrigger()[keyPath: kp] },
+                set: { v in if case .url(var u) = first.kind { u[keyPath: kp] = v; trigger.wrappedValue.kind = .url(u) } })
+    }
+
     private func check<T>(_ kp: WritableKeyPath<Hammock_V1_CommandCheckTrigger, T>) -> Binding<T> {
         Binding(get: { if case .check(let c) = first.kind { return c[keyPath: kp] }; return Hammock_V1_CommandCheckTrigger()[keyPath: kp] },
                 set: { v in if case .check(var c) = first.kind { c[keyPath: kp] = v; trigger.wrappedValue.kind = .check(c) } })
@@ -777,6 +816,10 @@ struct TargetsPopover: View {
     var choose: (() -> String?)?
     /// The row's triggers as one, for its status line.
     let status: EventTrigger
+    /// Places: the Mac's, to pick from (nil: typed), and the Places sheet
+    /// (true: to make a new one).
+    var places: [String]?
+    var editPlaces: ((Bool) -> Void)?
     @State private var text = ""
 
     var body: some View {
@@ -799,13 +842,15 @@ struct TargetsPopover: View {
                     .padding(.vertical, 2)
                     .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                 }
-                TextField(target.prompt, text: $text, prompt: Text(target.prompt))
-                    .textFieldStyle(.plain)
-                    .frame(minWidth: 130)
-                    .onSubmit {
-                        add(text)
-                        text = ""
-                    }
+                if places == nil {
+                    TextField(target.prompt, text: $text, prompt: Text(target.prompt))
+                        .textFieldStyle(.plain)
+                        .frame(minWidth: 130)
+                        .onSubmit {
+                            add(text)
+                            text = ""
+                        }
+                }
             }
             .padding(8)
             .background(.background, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -813,6 +858,22 @@ struct TargetsPopover: View {
             if let choose {
                 Button("Choose…") { if let v = choose() { add(v) } }
                     .controlSize(.small)
+            }
+            if let places {
+                HStack(spacing: 8) {
+                    Menu("Add Place") {
+                        ForEach(places.filter { p in !values.contains { $0.caseInsensitiveCompare(p) == .orderedSame } }, id: \.self) { p in
+                            Button(p) { add(p) }
+                        }
+                        if !places.isEmpty { Divider() }
+                        Button("New Place…") { editPlaces?(true) }
+                    }
+                    .fixedSize()
+                    if !places.isEmpty {
+                        Button("Edit Places…") { editPlaces?(false) }
+                    }
+                }
+                .controlSize(.small)
             }
             TriggerStatusLine(trigger: status)
         }
@@ -828,7 +889,12 @@ extension EventTrigger {
         case .github(let g):
             g.event == .labeled && g.label.trimmingCharacters(in: .whitespaces).isEmpty ? "Which label?"
                 : g.event == .workflow && g.workflow.trimmingCharacters(in: .whitespaces).isEmpty ? "Which workflow?" : ""
-        case .mac(let m): (m.event == .appOpened || m.event == .appQuit) && m.name.trimmingCharacters(in: .whitespaces).isEmpty ? "Which app?" : ""
+        case .mac(let m):
+            m.name.trimmingCharacters(in: .whitespaces).isEmpty
+                ? (m.event == .appOpened || m.event == .appQuit ? "Which app?" : m.isPlace ? "Which place?" : "") : ""
+        case .url(let u):
+            u.url.trimmingCharacters(in: .whitespaces).isEmpty ? "Which URL should the check fetch?"
+                : u.on == .contains && u.text.trimmingCharacters(in: .whitespaces).isEmpty ? "What text should the page contain?" : ""
         case .agent(let a): !a.finished && !a.needsYou ? "An agent trigger fires when it finishes, needs you, or both" : ""
         case .log(let l): l.paneID.isEmpty ? "Which log pane?" : l.pattern.trimmingCharacters(in: .whitespaces).isEmpty ? "What should the log line match?" : ""
         case .check(let c): c.command.trimmingCharacters(in: .whitespaces).isEmpty ? "Which command should the check run?" : ""
@@ -956,8 +1022,15 @@ enum ScheduleSamples {
                 .with { $0.id = "tr_s10"; $0.kind = .mac(.with { $0.event = .pluggedIn }); $0.firedUnixMs = ms(5 * 3600) },
                 .with { $0.id = "tr_s11"; $0.kind = .mac(.with { $0.event = .wifiJoined; $0.name = "Office" }) },
                 .with { $0.id = "tr_s12"; $0.kind = .mac(.with { $0.event = .wifiJoined; $0.name = "Studio" }) },
+                .with {
+                    $0.id = "tr_s13"
+                    $0.kind = .url(.with { $0.url = "https://example.com/status"; $0.on = .contains; $0.text = "deployed"; $0.everyMinutes = 15; $0.lastResult = "200 OK" })
+                    $0.checkedUnixMs = ms(300)
+                },
+                .with { $0.id = "tr_s14"; $0.kind = .mac(.with { $0.event = .placeArrive; $0.name = "Office" }); $0.firedUnixMs = ms(9 * 3600) },
             ]
-            $0.onlyIf = [.with { $0.kind = .power }, .with { $0.kind = .hours; $0.fromMinute = 9 * 60; $0.toMinute = 18 * 60 }]
+            $0.onlyIf = [.with { $0.kind = .power }, .with { $0.kind = .hours; $0.fromMinute = 9 * 60; $0.toMinute = 18 * 60 },
+                         .with { $0.kind = .place; $0.place = "Office" }]
             $0.runs = [.with { $0.id = "sr_t1"; $0.status = .failed; $0.kind = "command"; $0.dueUnixMs = ms(23 * 3600); $0.startedUnixMs = ms(23 * 3600); $0.endedUnixMs = ms(23 * 3600 - 95); $0.exitCode = 2 }]
         }
         let weekly = Schedule.with {

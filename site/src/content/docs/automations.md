@@ -15,7 +15,7 @@ Claude Code by default, or any agent with a tick in the Schedules column of [Sup
 
 Choose File ▸ New Automation… (⌥⇧⌘N), or right-click a tab in the sidebar and choose **Automate This…** to start from what it's doing. It opens in the Automations window, where you edit it in place, then **Save** (⌘S) or **Cancel**. Under its name are the **Group** where its tabs open, what it runs, where each run goes ([a new tab, or a session it continues](#continuing-a-session)), and the **folder** it runs in. Then:
 
-- **When:** its times and triggers. **Add Trigger** adds one: **Schedule…** (days and a time, or a cron line) and **Once…** (a date and time) are under Time and Place. Triggers alike but for what they watch (repositories, calendars, apps, drives, displays, Wi-Fi networks) share a row: click the token (**16 repositories**) to add or remove one. **At most once every** sets the [cooldown](#triggers).
+- **When:** its times and triggers. **Add Trigger** adds one: **Schedule…** (days and a time, or a cron line) and **Once…** (a date and time) are under Time and Place. Triggers alike but for what they watch (repositories, calendars, apps, drives, displays, Wi-Fi networks, places) share a row: click the token (**16 repositories**) to add or remove one. **At most once every** sets the [cooldown](#triggers).
 - **Only If:** [conditions](#only-if) a run must meet.
 - **Prompt** (or **Command**): what it runs. **Insert Event** marks where what happened goes.
 
@@ -56,6 +56,7 @@ It runs in the current folder and Group unless you give `--dir` or `--group`. Qu
 | `--once 'YYYY-MM-DD HH:MM'` | Run once, then, instead of on a schedule. |
 | `--trigger T` | Run when something happens ([Triggers](#triggers)). Repeat it for more. Without `--at`, `--cron` or `--once`, it runs only on its triggers. |
 | `--check-cmd CMD` | Run when a [command check](#command-checks) starts failing. Repeat it for more. |
+| `--url URL` | Run when a [URL check](#url-checks) starts failing. Repeat it for more. |
 | `--only-if C`, `--no-only-if` | Skip a run unless `C` holds ([Only If](#only-if)). Repeat it for more; drop them all. |
 | `--events-only`, `--no-triggers` | Run only on its triggers; drop its triggers. |
 | `--cooldown SECONDS` | The least time between runs its triggers start (60 by default; 0 for none; at most 30 days). |
@@ -130,13 +131,15 @@ A trigger starts a run when something happens, as well as at the automation's ti
 | | `mac:wifi-joined[=NAME]`, `mac:wifi-left[=NAME]` | The Mac joins or leaves a Wi-Fi network (or that one). Needs the app open. |
 | | `mac:app-opened=NAME`, `mac:app-quit=NAME` | An app opens or quits: its name or bundle id. Needs the app open. |
 | | `mac:display`, `mac:display=NAME` | A display is connected. Needs the app open. |
+| Places | `place:arrive=NAME`, `place:leave=NAME` | The Mac arrives at or leaves one of your [places](#places). Needs the app open. |
 | Command check | `--check-cmd CMD` | A command run every few minutes starts failing, changes its output, or passes again ([Command checks](#command-checks)). |
+| URL check | `--url URL` | A page fetched every few minutes starts failing, changes, or starts containing a text ([URL checks](#url-checks)). |
 | Webhook | `webhook` | Its [webhook](#webhooks) is called. |
 | Shortcuts | `shortcut` | Shortcuts runs it ([From Shortcuts](#from-shortcuts)). Mac only. |
 
 GitHub triggers watch the folder's GitHub repository (`gh repo set-default`'s, else the `upstream` remote's, else `origin`'s), or another one named after `@` (`github:release=v*@acme/widgets`, or **Repository** in the app), with the [GitHub CLI](https://cli.github.com), every couple of minutes, so install `gh` and run `gh auth login` first. Calendar triggers read your calendars in the Hammock app, which asks for access the first time; runs still start while the app is closed, for events it has already read. Events you declined, said maybe to or marked free don't count as meetings for free time, and **Working hours** are in Settings ▸ Tools (`working-hours`).
 
-This Mac triggers work with the app closed, except Wi-Fi, apps and displays: the app watches those, so their row says **Needs Hammock open** when it isn't. To watch those with the app closed, use a [Shortcuts automation](#from-shortcuts) instead. Wi-Fi triggers need Location access, which the app asks for (macOS gives the network's name only to apps with it). Free space is what the Finder shows as available. A drive is one you connect, not a disk image or a Time Machine backup. You're away once the Mac is locked or hasn't been touched for 2 minutes, or you've used Hammock on your phone or another computer since. A disk or battery trigger fires once as it falls below its mark, and again only after it's been back above it.
+This Mac triggers work with the app closed, except Wi-Fi, apps, displays and places: the app watches those, so their row says **Needs Hammock open** when it isn't. To watch those with the app closed, use a [Shortcuts automation](#from-shortcuts) instead. Wi-Fi triggers need Location access, which the app asks for (macOS gives the network's name only to apps with it). Free space is what the Finder shows as available. A drive is one you connect, not a disk image or a Time Machine backup. You're away once the Mac is locked or hasn't been touched for 2 minutes, or you've used Hammock on your phone or another computer since. A disk or battery trigger fires once as it falls below its mark, and again only after it's been back above it.
 
 Nothing that's already so when you add a trigger starts a run. Under each trigger in the Automations window (and in `hmk automation show`), a line says when it last checked and fired, or what's holding back a run it started, such as its cooldown. What happens in an automation's run, or in panes a run opened, never triggers an automation, so automations can't set each other off in a loop. A run sent into a [session of yours](#continuing-a-session) is the exception: the tab is yours, so it still can, but not an automation that continues a session.
 
@@ -186,6 +189,7 @@ Conditions a run must meet: one the automation starts itself (at its times, or o
 | `power` | The Mac is plugged in. |
 | `away`, `away=MINUTES` | You're away from the Mac (for that long). |
 | `wifi=NAME` | The Mac is on that Wi-Fi network. Only while the app is open. |
+| `place=NAME` | The Mac is at that [place](#places). Only while the app is open. |
 | `hours=HH:MM-HH:MM` | It's between those times (`22:00-06:00` runs through midnight). |
 | `days=weekdays`, `days=mon,wed` | It's one of those days. |
 | `free` | You're not in a meeting, as your calendars say. |
@@ -196,7 +200,13 @@ hmk automation add "Big build" --trigger mac:away=20 --only-if power --only-if h
   --command -- 'make release'
 ```
 
-An automation with This Mac triggers or Only If can't be added on a linked computer with an older Hammock: update it first.
+An automation with This Mac triggers, places, URL checks or Only If can't be added on a linked computer with an older Hammock: update it first.
+
+### Places
+
+A place is a name for a spot on the map and a circle around it, such as **Office**. Place triggers and the `place` condition use the Mac app's places: choose **Add Trigger ▸ Places**, then **New Place…** in its token to click the spot on a map and pick how wide the circle is, or start from where the Mac is now, or your home or work address on your own card in Contacts. **Edit Places…** changes or deletes them. They're kept in the [config file](/hammock/docs/reference/config/#tools) (`place`), and only their names leave the Mac.
+
+Places need Location access, which the app asks for. A Mac knows where it is only roughly (from Wi-Fi networks nearby), so give a place a circle of 150 metres or more. Arriving or leaving counts once it has held for a minute (two after the Mac wakes), so a Mac waking where it slept doesn't fire either.
 
 ### Command checks
 
@@ -208,6 +218,17 @@ hmk automation add "Site down" --check-cmd 'curl -fsS https://example.com/health
 ```
 
 `--check-on` is `fail` (the default), `change` or `recover`; `--check-timeout` is in seconds (60 by default).
+
+### URL checks
+
+A URL check fetches a page every few minutes (at least one) and starts a run when it starts failing (an answer other than 2xx, none, or none in its time limit), when the page changes, or when it starts containing a text (in any case). The run gets the answer's status and the start of the page. Any change counts, so `change` suits an API or a plain page: on a page with a clock or a token in it, use `contains`. In the app choose **Add Trigger ▸ URL Check…**; with `hmk`, give the options after `--url`:
+
+```sh
+hmk automation add "Release is out" --url https://example.com/status --url-on contains --url-text deployed \
+  --url-every 10 -- "The release is out: post the notes."
+```
+
+`--url-on` is `fail` (the default), `change` or `contains`; `--url-timeout` is in seconds (30 by default). Only the first 256 KB of a page is read.
 
 ### Webhooks
 

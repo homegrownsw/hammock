@@ -6,8 +6,9 @@ import HammockKit
 /// This Mac triggers the daemon can't watch itself (its macwatch.go): while
 /// an automation on this Mac has a Wi-Fi, app or display trigger, or a
 /// Wi-Fi Only If condition, the app tells the daemon the Wi-Fi network's
-/// name (macOS gives it only to apps with Location access), the apps open
-/// and the displays connected, again as they change. The daemon fires on
+/// name (macOS gives it only to apps with Location access), the apps open,
+/// the displays connected and which of your Places (Places.swift) the Mac
+/// is at (their names only), again as they change. The daemon fires on
 /// the changes, so these fire only while the app is open: its triggers say
 /// "Needs Hammock open" when it isn't.
 @MainActor
@@ -46,19 +47,96 @@ final class MacWatcher: NSObject, CLLocationManagerDelegate {
     }
 
     /// Whether any of this Mac's automations needs what the app watches, and
-    /// whether that's the Wi-Fi.
-    private var wanted: (any: Bool, wifi: Bool) {
-        guard let model, Prefs.shared.bool(HammockTool.schedules.pref) else { return (false, false) }
-        var any = false, wifi = false
+    /// whether that's the Wi-Fi, or places.
+    private var wanted: (any: Bool, wifi: Bool, places: Bool) {
+        guard let model, Prefs.shared.bool(HammockTool.schedules.pref) else { return (false, false, false) }
+        var any = false, wifi = false, places = false
         for s in model.schedules.values where !s.paused && (s.computerID.isEmpty || s.computerID == model.myUserID) {
             for t in s.events {
                 guard case .mac(let m) = t.kind, m.appWatched else { continue }
                 any = true
                 if m.event == .wifiJoined || m.event == .wifiLeft { wifi = true }
+                if m.isPlace { places = true }
             }
             if s.onlyIf.contains(where: { $0.kind == .wifi }) { any = true; wifi = true }
+            if s.onlyIf.contains(where: { $0.kind == .place }) { any = true; places = true }
         }
-        return (any, wifi)
+        return (any, wifi, places)
+    }
+
+    // MARK: Places
+
+    /// Places are watched by CoreLocation (CLMonitor, which keeps watching
+    /// across launches) while an automation wants one; what it says is
+    /// told to the daemon once it has held for placeSettle (longer after a
+    /// wake, when a Mac's coarse location comes and goes), so a Mac waking
+    /// where it slept, or a fix that wobbles across a circle's edge, says
+    /// nothing new.
+    private static let placeSettle: TimeInterval = 60
+    private static let placeWakeSettle: TimeInterval = 120
+    private var monitor: CLMonitor?
+    private var monitorTask: Task<Void, Never>?
+    /// What's watched: each place as it was added.
+    private var watched: [String: Place] = [:]
+    /// What CoreLocation last said of each (true: in; absent: not known).
+    private var placeNow: [String: Bool] = [:]
+    /// What's been told: placeNow, once settled.
+    private var placeTold: [String: Bool] = [:]
+    private var placePending: DispatchWorkItem?
+
+    /// Watches this Mac's places while wanted (and Location is allowed), or stops.
+    private func syncPlaces(_ want: Bool) {
+        let allowed = location.authorizationStatus == .authorizedAlways
+        let places = want && allowed ? AppConfig.shared.places : []
+        let target = Dictionary(places.map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a })
+        guard target != watched else { return }
+        let old = watched
+        watched = target
+        for name in old.keys where target[name] != old[name] { placeNow[name] = nil; placeTold[name] = nil }
+        Task { @MainActor in
+            if self.monitor == nil, !target.isEmpty {
+                let m = await CLMonitor("hammock-places")
+                self.monitor = m
+                self.monitorTask = Task { @MainActor in
+                    do {
+                        for try await e in await m.events {
+                            self.placeEvent(e.identifier, e.state)
+                        }
+                    } catch {}
+                }
+            }
+            guard let m = self.monitor else { return }
+            for id in await m.identifiers where target[id] == nil || target[id] != old[id] {
+                await m.remove(id)
+            }
+            for (name, p) in target where old[name] != p {
+                await m.add(CLMonitor.CircularGeographicCondition(center: p.coordinate, radius: p.radius), identifier: name)
+                if let r = await m.record(for: name) { self.placeEvent(name, r.lastEvent.state) }
+            }
+        }
+    }
+
+    private func placeEvent(_ name: String, _ state: CLMonitor.Event.State) {
+        guard watched[name] != nil else { return }
+        let now: Bool? = switch state {
+        case .satisfied: true
+        case .unsatisfied: false
+        default: nil
+        }
+        guard placeNow[name] != now else { return }
+        placeNow[name] = now
+        placePending?.cancel()
+        let wait = Date().timeIntervalSince(wokeAt) < Self.placeWakeSettle ? Self.placeWakeSettle : Self.placeSettle
+        let work = DispatchWorkItem { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                // Unknown keeps what was told (the daemon keeps the last too).
+                for (k, v) in self.placeNow { self.placeTold[k] = v }
+                self.refresh()
+            }
+        }
+        placePending = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: work)
     }
 
     /// Asks for Location access (a Wi-Fi trigger or condition was just added).
@@ -92,6 +170,10 @@ final class MacWatcher: NSObject, CLLocationManagerDelegate {
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { _ in
             Task { @MainActor in MacWatcher.shared.displaysChanged() }
         }
+        // Places edited (in the config file, or the Places sheet).
+        NotificationCenter.default.addObserver(forName: AppConfig.changed, object: nil, queue: .main) { _ in
+            Task { @MainActor in MacWatcher.shared.refresh() }
+        }
     }
 
     /// Displays come and go as a Mac wakes (and as one is plugged in): what's
@@ -115,9 +197,24 @@ final class MacWatcher: NSObject, CLLocationManagerDelegate {
     func refresh(force: Bool = false) {
         guard let model, model.connected else { return }
         let want = wanted
+        syncPlaces(want.places)
         guard want.any else { lastSent = nil; return }
         observe()
         var msg = Hammock_V1_MacAppState()
+        if want.places {
+            switch location.authorizationStatus {
+            case .authorizedAlways, .authorizedWhenInUse:
+                msg.places = AppConfig.shared.places.map(\.name)
+                msg.placesIn = placeTold.filter { $0.value && watched[$0.key] != nil }.map(\.key).sorted()
+                msg.placesOut = placeTold.filter { !$0.value && watched[$0.key] != nil }.map(\.key).sorted()
+            case .notDetermined:
+                msg.places = AppConfig.shared.places.map(\.name)
+                requestLocation()
+            default:
+                msg.places = AppConfig.shared.places.map(\.name)
+                msg.locationDenied = true
+            }
+        }
         if want.wifi {
             switch location.authorizationStatus {
             case .authorizedAlways, .authorizedWhenInUse:

@@ -262,6 +262,9 @@ var Keys = []Key{
 		Doc: "false: Hammock doesn't offer automations (scheduled and triggered tasks), in its menus or to agents, and doesn't run them"},
 	{Name: "working-hours", Group: "Tools", Value: "mon-fri 09:00-17:00", Default: "mon-fri 09:00-17:00",
 		Doc: "when automations' Free Time trigger may fire: days (weekdays, daily, or like mon,wed,fri) and hours", Only: "Mac"},
+	{Name: "place", Group: "Tools", Value: "NAME @ LATITUDE,LONGITUDE,METRES", Repeat: true,
+		Doc:     "one line per place automations can watch for this Mac arriving at or leaving (Add Trigger ▸ Places makes them); only its name leaves the Mac",
+		Example: "place = Office @ 12.3456,-65.4321,150", Only: "Mac"},
 	{Name: "sessions-enabled", Group: "Tools", Value: "true", Default: "true",
 		Doc: "false: agents can't search or read past agents' sessions"},
 

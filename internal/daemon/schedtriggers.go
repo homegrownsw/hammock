@@ -93,6 +93,7 @@ type trigState struct {
 	Primed bool             `json:"primed,omitempty"`  // GitHub: it's had a first look
 	Check  *checkState      `json:"check,omitempty"`   // a command check: what it last saw (schedcheck.go)
 	Mac    *macTrigState    `json:"mac,omitempty"`     // a This Mac trigger: what it last saw (macwatch.go)
+	URL    *urlState        `json:"url,omitempty"`     // a URL check: what it last saw (schedurl.go)
 }
 
 // trigIndex is what the log feed checks every line against, without
@@ -468,6 +469,9 @@ func (d *Daemon) cleanEvents(s, old *pb.Schedule) error {
 		if c := t.GetCheck(); c != nil {
 			c.LastResult = ""
 		}
+		if u := t.GetUrl(); u != nil {
+			u.LastResult = ""
+		}
 		if err := d.cleanTrigger(s, t); err != nil {
 			return err
 		}
@@ -477,6 +481,9 @@ func (d *Daemon) cleanEvents(s, old *pb.Schedule) error {
 				t.CheckedUnixMs = o.CheckedUnixMs
 				if c := t.GetCheck(); c != nil {
 					c.LastResult = o.GetCheck().GetLastResult()
+				}
+				if u := t.GetUrl(); u != nil {
+					u.LastResult = o.GetUrl().GetLastResult()
 				}
 			}
 		}
@@ -532,6 +539,9 @@ func (d *Daemon) cleanTrigger(s *pb.Schedule, t *pb.EventTrigger) error {
 	case *pb.EventTrigger_Mac:
 		clean("name", &k.Mac.Name, 200)
 		clean("disk", &k.Mac.Volume, 1024)
+	case *pb.EventTrigger_Url:
+		clean("URL", &k.Url.Url, schedtrig.MaxURL)
+		clean("text", &k.Url.Text, schedtrig.MaxURLText)
 	}
 	if bad != nil {
 		return bad
@@ -688,6 +698,11 @@ func (d *Daemon) cleanTrigger(s *pb.Schedule, t *pb.EventTrigger) error {
 				return errors.New("which app? Give its name or bundle id")
 			}
 			fallthrough
+		case pb.MacTrigger_EVENT_PLACE_ARRIVE, pb.MacTrigger_EVENT_PLACE_LEAVE:
+			if schedtrig.IsPlace(m.Event) && (m.Name == "" || len([]rune(m.Name)) > schedtrig.MaxPlaceName) {
+				return fmt.Errorf("which place? Give its name (up to %d characters)", schedtrig.MaxPlaceName)
+			}
+			fallthrough
 		default:
 			m.Volume, m.Gigabytes, m.Percent, m.Minutes = "", 0, 0, 0
 		}
@@ -711,6 +726,28 @@ func (d *Daemon) cleanTrigger(s *pb.Schedule, t *pb.EventTrigger) error {
 			return errors.New("an unknown check (from a newer Hammock?)")
 		}
 		c.EveryMinutes = int32(schedtrig.CheckEvery(c))
+	case *pb.EventTrigger_Url:
+		u := k.Url
+		if err := schedtrig.CheckURL(u.Url); err != nil {
+			return err
+		}
+		if u.EveryMinutes < 0 || u.EveryMinutes > schedtrig.URLEveryMax {
+			return fmt.Errorf("a URL check runs every 1 to %d minutes", schedtrig.URLEveryMax)
+		}
+		if u.TimeoutSeconds < 0 || u.TimeoutSeconds > schedtrig.URLTimeoutMax {
+			return fmt.Errorf("a URL check's time limit is up to %d seconds", schedtrig.URLTimeoutMax)
+		}
+		if _, ok := pb.UrlCheckTrigger_On_name[int32(u.On)]; !ok {
+			return errors.New("an unknown URL check (from a newer Hammock?)")
+		}
+		if u.On == pb.UrlCheckTrigger_ON_CONTAINS {
+			if u.Text == "" {
+				return errors.New("what text should the page contain?")
+			}
+		} else {
+			u.Text = ""
+		}
+		u.EveryMinutes = int32(schedtrig.URLEvery(u))
 	default:
 		return errors.New("a trigger with no kind (from a newer Hammock?)")
 	}

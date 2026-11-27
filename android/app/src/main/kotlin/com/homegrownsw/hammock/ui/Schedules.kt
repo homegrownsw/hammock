@@ -88,6 +88,7 @@ import hammock.v1.Hammock.MacTrigger
 import hammock.v1.Hammock.Schedule
 import hammock.v1.Hammock.ScheduleRun
 import hammock.v1.Hammock.ScheduleRun.Status
+import hammock.v1.Hammock.UrlCheckTrigger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -285,6 +286,15 @@ object ScheduleWords {
                 }
                 "“${c.command}”$what, checked " + every(if (c.everyMinutes <= 0) 5 else c.everyMinutes)
             }
+            EventTrigger.KindCase.URL -> {
+                val u = t.url
+                val what = when (u.on) {
+                    UrlCheckTrigger.On.ON_CHANGE -> " changes"
+                    UrlCheckTrigger.On.ON_CONTAINS -> " starts containing “${u.text}”"
+                    else -> " starts failing"
+                }
+                u.url + what + ", checked " + every(if (u.everyMinutes <= 0) 5 else u.everyMinutes)
+            }
             else -> "An unknown event"
         }
     }
@@ -308,6 +318,8 @@ object ScheduleWords {
             MacTrigger.Event.EVENT_APP_OPENED -> "“${m.name}” opens"
             MacTrigger.Event.EVENT_APP_QUIT -> "“${m.name}” quits"
             MacTrigger.Event.EVENT_DISPLAY -> if (m.name.isEmpty()) "A display is connected" else "A display named “${m.name}” is connected"
+            MacTrigger.Event.EVENT_PLACE_ARRIVE -> "The Mac arrives at “${m.name}”"
+            MacTrigger.Event.EVENT_PLACE_LEAVE -> "The Mac leaves “${m.name}”"
             else -> "Something on this Mac"
         }
     }
@@ -317,6 +329,7 @@ object ScheduleWords {
         Condition.Kind.KIND_POWER -> "the Mac is plugged in"
         Condition.Kind.KIND_AWAY -> if (c.minutes > 0) "I’ve been away for " + (if (c.minutes == 1) "1 minute" else "${c.minutes} minutes") else "I’m away from the Mac"
         Condition.Kind.KIND_WIFI -> "on the Wi-Fi “${c.wifi}”"
+        Condition.Kind.KIND_PLACE -> "the Mac is at “${c.place}”"
         Condition.Kind.KIND_HOURS -> "between ${hhmm(c.fromMinute)} and ${hhmm(c.toMinute)}"
         Condition.Kind.KIND_DAYS -> "on " + daysWords(c.weekdaysList)
         Condition.Kind.KIND_FREE -> "I’m not in a meeting"
@@ -367,9 +380,12 @@ object ScheduleWords {
         return out.substring(0, 1).uppercase() + out.substring(1)
     }
 
-    /** How its last check went, for a command check ("Passed", "Failed (exit 2)", "Timed out"); else null. */
-    fun checkResult(t: EventTrigger): String? =
-        t.check.lastResult.takeIf { t.kindCase == EventTrigger.KindCase.CHECK && it.isNotEmpty() }
+    /** How its last check went, for a command or URL check ("Passed", "200 OK", "Timed out"); else null. */
+    fun checkResult(t: EventTrigger): String? = when (t.kindCase) {
+        EventTrigger.KindCase.CHECK -> t.check.lastResult
+        EventTrigger.KindCase.URL -> t.url.lastResult
+        else -> ""
+    }.takeIf { it.isNotEmpty() }
 
     /** How long ago: "just now", "2 min ago", "3 h ago", "2 days ago" (schedtrig.Ago). */
     fun ago(at: Long, now: Long): String {

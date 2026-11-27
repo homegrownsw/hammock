@@ -7,7 +7,8 @@ package daemon
 // waking from sleep, you being away from it (push.go's awayRule) and
 // coming back, and external drives being connected. The Mac app tells it
 // what it can't see itself (MacAppState): the Wi-Fi network, the apps
-// open and the displays connected, which fire only while the app is open.
+// open, the displays connected and which of its Places the Mac is at (by
+// name only), which fire only while the app is open.
 // Each trigger fires on a change: what's already so when it's made (or
 // the daemon starts) doesn't, and a disk or battery trigger fires once as
 // it falls below its mark, then again only after it's been back above it.
@@ -72,6 +73,10 @@ type macState struct {
 	// connected), and its connection.
 	app     *pb.MacAppState
 	appConn *conn
+	// Each place's last known state (in: true) from the app's connection:
+	// one it can't tell for now keeps the last, so in, unknown, then out
+	// is still leaving.
+	places map[string]bool
 }
 
 // macTrigState is what a This Mac trigger has seen (in its trigState).
@@ -486,11 +491,21 @@ func (d *Daemon) macAppState(c *conn, m *pb.MacAppState) {
 	for _, x := range m.Displays {
 		x.Id, x.Name = oneLine(x.Id, 200), oneLine(x.Name, 200)
 	}
+	for _, l := range []*[]string{&m.PlacesIn, &m.PlacesOut, &m.Places} {
+		if len(*l) > 100 {
+			*l = (*l)[:100]
+		}
+		for i, n := range *l {
+			(*l)[i] = oneLine(n, schedtrig.MaxPlaceName)
+		}
+	}
 	prev := d.sched.mac.app
 	if d.sched.mac.appConn != c {
 		prev = nil // another connection: news only from what this one says next
+		d.sched.mac.places = nil
 	}
-	d.sched.mac.app, d.sched.mac.appConn = m, c
+	arrived, left, places := placeEdges(d.sched.mac.places, m)
+	d.sched.mac.app, d.sched.mac.appConn, d.sched.mac.places = m, c, places
 	d.macAppErrors()
 	if prev == nil {
 		return
@@ -498,7 +513,11 @@ func (d *Daemon) macAppState(c *conn, m *pb.MacAppState) {
 	for _, s := range d.sched.list {
 		for _, t := range d.eventsOf(s) {
 			if mt := t.GetMac(); mt != nil && schedtrig.MacAppWatched(mt.Event) {
-				for _, ev := range macAppEvents(mt, prev, m) {
+				evs := macAppEvents(mt, prev, m)
+				if schedtrig.IsPlace(mt.Event) {
+					evs = placeEvents(mt, arrived, left)
+				}
+				for _, ev := range evs {
 					ev.Trigger = t.Id
 					_, _, _ = d.fireEvent(s, ev)
 				}
@@ -567,6 +586,59 @@ func macAppEvents(m *pb.MacTrigger, prev, cur *pb.MacAppState) []*schedEvent {
 	return out
 }
 
+// placeEdges works out the places arrived at and left, from each place's
+// last known state (last; nil: none yet, as the app has just connected)
+// and what the app says now: a place goes from out to in (arrived) or in
+// to out (left). One the app can't tell now (in neither list) keeps its
+// last state; one first known now is no news. next is the states now.
+// (The app settles what it says after a wake, so a Mac waking where it
+// slept says nothing new.)
+func placeEdges(last map[string]bool, cur *pb.MacAppState) (arrived, left []string, next map[string]bool) {
+	next = map[string]bool{}
+	for k, v := range last {
+		next[k] = v
+	}
+	note := func(names []string, in bool) {
+		for _, n := range names {
+			key := strings.ToLower(strings.TrimSpace(n))
+			was, known := last[key]
+			next[key] = in
+			switch {
+			case !known || was == in:
+			case in:
+				arrived = append(arrived, n)
+			default:
+				left = append(left, n)
+			}
+		}
+	}
+	note(cur.PlacesIn, true)
+	note(cur.PlacesOut, false)
+	return arrived, left, next
+}
+
+// placeEvents are the events arriving at and leaving places set off for m.
+func placeEvents(m *pb.MacTrigger, arrived, left []string) []*schedEvent {
+	names := arrived
+	summary := "The Mac arrived at “" + m.Name + "”"
+	if m.Event == pb.MacTrigger_EVENT_PLACE_LEAVE {
+		names, summary = left, "The Mac left “"+m.Name+"”"
+	}
+	for _, n := range names {
+		if strings.EqualFold(strings.TrimSpace(n), strings.TrimSpace(m.Name)) {
+			return []*schedEvent{{Kind: "place", Summary: summary, Source: "this Mac", Fields: [][2]string{{"place", n}}}}
+		}
+	}
+	return nil
+}
+
+// placeIn says whether the Mac is at the place called name, as the Mac
+// app last said (known: it's said). Callers hold d.mu.
+func (d *Daemon) placeIn(name string) (in, known bool) {
+	in, known = d.sched.mac.places[strings.ToLower(strings.TrimSpace(name))]
+	return in, known
+}
+
 // quoted is prefix and “name” ("" when name is).
 func quoted(name, prefix string) string {
 	if name == "" {
@@ -581,7 +653,7 @@ func (d *Daemon) macAppClosed(c *conn) {
 	if d.sched.mac.appConn != c {
 		return
 	}
-	d.sched.mac.app, d.sched.mac.appConn = nil, nil
+	d.sched.mac.app, d.sched.mac.appConn, d.sched.mac.places = nil, nil, nil
 	d.macAppErrors()
 }
 
@@ -601,6 +673,10 @@ func (d *Daemon) macAppErrors() {
 				msg = "Needs Hammock open"
 			case (m.Event == pb.MacTrigger_EVENT_WIFI_JOINED || m.Event == pb.MacTrigger_EVENT_WIFI_LEFT) && (app.LocationDenied || !app.WifiKnown):
 				msg = "No Location access: Hammock needs it to see the Wi-Fi network's name (System Settings ▸ Privacy & Security ▸ Location Services)"
+			case schedtrig.IsPlace(m.Event) && app.LocationDenied:
+				msg = "No Location access: Hammock needs it to tell where the Mac is (System Settings ▸ Privacy & Security ▸ Location Services)"
+			case schedtrig.IsPlace(m.Event) && !slices.ContainsFunc(app.Places, func(n string) bool { return strings.EqualFold(n, m.Name) }):
+				msg = "There's no place called “" + m.Name + "” in this Mac's Places"
 			}
 			d.setTriggerError(s, t, msg)
 		}

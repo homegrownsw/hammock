@@ -557,6 +557,8 @@ extension EventTrigger {
             default: " starts failing"
             }
             return "“\(c.command)”\(what), checked " + Self.everyWords(Int(c.everyMinutes))
+        case .url(let u):
+            return u.words
         case nil:
             return "An unknown event"
         }
@@ -628,6 +630,7 @@ extension EventTrigger {
         case .webhook: "link"
         case .shortcut: "square.2.layers.3d"
         case .check: "checkmark.seal"
+        case .url: "globe"
         case .mac(let m): m.symbol
         case nil: "bolt"
         }
@@ -636,6 +639,20 @@ extension EventTrigger {
 
 /// A This Mac trigger (the daemon's macwatch.go).
 public typealias MacTrigger = Hammock_V1_MacTrigger
+/// A URL check (the daemon's schedurl.go).
+public typealias URLCheck = Hammock_V1_UrlCheckTrigger
+
+extension Hammock_V1_UrlCheckTrigger {
+    /// What fires it, in words (schedtrig.DescribeURL).
+    public var words: String {
+        let what = switch on {
+        case .change: " changes"
+        case .contains: " starts containing “\(text)”"
+        default: " starts failing"
+        }
+        return url + what + ", checked " + EventTrigger.everyWords(Int(everyMinutes))
+    }
+}
 /// An Only If condition (the daemon's schedonlyif.go).
 public typealias ScheduleCondition = Hammock_V1_Condition
 
@@ -659,6 +676,8 @@ extension Hammock_V1_MacTrigger {
         case .appOpened: return "“\(name)” opens"
         case .appQuit: return "“\(name)” quits"
         case .display: return name.isEmpty ? "A display is connected" : "A display named “\(name)” is connected"
+        case .placeArrive: return "The Mac arrives at “\(name)”"
+        case .placeLeave: return "The Mac leaves “\(name)”"
         default: return "Something on this Mac"
         }
     }
@@ -666,10 +685,13 @@ extension Hammock_V1_MacTrigger {
     /// The Mac app watches for it (the daemon can't): it fires only while the app is open.
     public var appWatched: Bool {
         switch event {
-        case .wifiJoined, .wifiLeft, .appOpened, .appQuit, .display: true
+        case .wifiJoined, .wifiLeft, .appOpened, .appQuit, .display, .placeArrive, .placeLeave: true
         default: false
         }
     }
+
+    /// Arriving at or leaving one of the Mac's places.
+    public var isPlace: Bool { event == .placeArrive || event == .placeLeave }
 
     public var symbol: String {
         switch event {
@@ -682,6 +704,7 @@ extension Hammock_V1_MacTrigger {
         case .wifiJoined, .wifiLeft: "wifi"
         case .appOpened, .appQuit: "app.badge"
         case .display: "display"
+        case .placeArrive, .placeLeave: "mappin.and.ellipse"
         default: "desktopcomputer"
         }
     }
@@ -694,6 +717,7 @@ extension Hammock_V1_Condition {
         case .power: return "the Mac is plugged in"
         case .away: return minutes > 0 ? "I’ve been away for \(minutes == 1 ? "1 minute" : "\(minutes) minutes")" : "I’m away from the Mac"
         case .wifi: return "on the Wi-Fi “\(wifi)”"
+        case .place: return "the Mac is at “\(place)”"
         case .hours: return "between \(Self.hhmm(fromMinute)) and \(Self.hhmm(toMinute))"
         case .days: return "on " + Self.daysWords(weekdays)
         case .free: return "I’m not in a meeting"

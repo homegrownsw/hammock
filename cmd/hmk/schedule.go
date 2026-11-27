@@ -67,6 +67,13 @@ options:
     --check-every MINUTES                   how often (default 5, at least 1)
     --check-on fail|change|recover          it starts failing (default), its output changes, it passes again
     --check-timeout SECONDS                 stop it after this long, as failing (default 60)
+  --url URL (repeatable)                    fetch URL every few minutes, and run the automation
+                                            when it starts failing; then, for that check:
+    --url-every MINUTES                     how often (default 5, at least 1)
+    --url-on fail|change|contains           it starts failing: not 2xx or unreachable (default),
+                                            its page changes, its page starts containing --url-text
+    --url-text TEXT                         what to look for (any case; on its own: --url-on contains)
+    --url-timeout SECONDS                   give up after this long, as failing (default 30)
   --only-if C (repeatable)                  a run it starts itself is skipped unless C holds, C one of:
                                               ` + schedtrig.ConditionUsage + `
   --no-only-if                              drop its Only If conditions
@@ -223,6 +230,7 @@ func scheduleFlags(w *world, s *pb.Schedule, args []string, adding bool) error {
 	when, at, days, hadCron := false, false, false, s.Cron != ""
 	timed := false                    // given a time (--at, --cron, --once)
 	var check *pb.CommandCheckTrigger // the last --check-cmd, for its options
+	var urlCheck *pb.UrlCheckTrigger  // the last --url, for its options
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		val := func() (string, error) {
@@ -284,6 +292,38 @@ func scheduleFlags(w *world, s *pb.Schedule, args []string, adding bool) error {
 			if v, err = val(); err == nil {
 				check = &pb.CommandCheckTrigger{Command: v}
 				s.Events, when = append(s.Events, &pb.EventTrigger{Kind: &pb.EventTrigger_Check{Check: check}}), true
+			}
+		case "--url":
+			if v, err = val(); err == nil {
+				if err = schedtrig.CheckURL(v); err == nil {
+					urlCheck = &pb.UrlCheckTrigger{Url: v}
+					s.Events, when = append(s.Events, &pb.EventTrigger{Kind: &pb.EventTrigger_Url{Url: urlCheck}}), true
+				}
+			}
+		case "--url-every", "--url-on", "--url-text", "--url-timeout":
+			if urlCheck == nil {
+				return fmt.Errorf("%s goes after the --url it's for", a)
+			}
+			if v, err = val(); err == nil {
+				switch a {
+				case "--url-on":
+					urlCheck.On, err = schedtrig.URLOn(v)
+				case "--url-text":
+					urlCheck.Text = v
+					if urlCheck.On == pb.UrlCheckTrigger_ON_FAIL {
+						urlCheck.On = pb.UrlCheckTrigger_ON_CONTAINS // (--url-text on its own: contains)
+					}
+				default:
+					var n int
+					if n, err = strconv.Atoi(strings.TrimSuffix(strings.TrimSuffix(v, "m"), "s")); err == nil && n < 1 {
+						err = fmt.Errorf("%s is at least 1", a)
+					}
+					if a == "--url-every" {
+						urlCheck.EveryMinutes = int32(n)
+					} else {
+						urlCheck.TimeoutSeconds = int32(n)
+					}
+				}
 			}
 		case "--check-every", "--check-on", "--check-timeout":
 			if check == nil {
@@ -408,7 +448,7 @@ func scheduleFlags(w *world, s *pb.Schedule, args []string, adding bool) error {
 		return errors.New("--days needs a time: --at HH:MM --days …")
 	}
 	if adding && !when {
-		return errors.New("say when: --at HH:MM [--days …], --cron EXPR, --once WHEN, --trigger T or --check-cmd CMD")
+		return errors.New("say when: --at HH:MM [--days …], --cron EXPR, --once WHEN, --trigger T, --check-cmd CMD or --url URL")
 	}
 	if adding && !timed && len(s.Events) > 0 && s.Timing == pb.Schedule_TIMING_REPEAT {
 		s.Timing = pb.Schedule_TIMING_EVENTS // only on its triggers
@@ -636,6 +676,9 @@ func printSchedule(w *world, s *pb.Schedule) {
 		printfSafe("  trigger  %s  (%s)\n", schedtrig.Describe(t, w.triggerName), schedtrig.Spec(t))
 		if c := t.GetCheck(); c != nil && c.LastResult != "" {
 			printfSafe("           last check: %s\n", c.LastResult)
+		}
+		if u := t.GetUrl(); u != nil && u.LastResult != "" {
+			printfSafe("           last check: %s\n", u.LastResult)
 		}
 		if st := schedtrig.Status(t, time.Now()); st != "" {
 			printfSafe("           %s\n", st)

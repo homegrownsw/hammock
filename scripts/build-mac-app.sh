@@ -124,9 +124,12 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>NSSpeechRecognitionUsageDescription</key><string>Turn what you say into text, on this Mac, when you dictate a message.</string>
   <!-- Scheduled tasks' calendar triggers: the events coming up, read on this Mac. -->
   <key>NSCalendarsFullAccessUsageDescription</key><string>Start automations before calendar events you choose.</string>
-  <!-- Automations' Wi-Fi triggers: macOS tells only apps with Location access the network's name. -->
-  <key>NSLocationUsageDescription</key><string>Start automations when this Mac joins or leaves a Wi-Fi network you choose.</string>
-  <key>NSLocationWhenInUseUsageDescription</key><string>Start automations when this Mac joins or leaves a Wi-Fi network you choose.</string>
+  <!-- Automations' Wi-Fi and place triggers: macOS tells only apps with Location access the
+       network's name, and where the Mac is. -->
+  <key>NSLocationUsageDescription</key><string>Start automations when this Mac joins or leaves a Wi-Fi network, or arrives at or leaves a place, you choose.</string>
+  <key>NSLocationWhenInUseUsageDescription</key><string>Start automations when this Mac joins or leaves a Wi-Fi network, or arrives at or leaves a place, you choose.</string>
+  <!-- Places: Home and Work from your own contact card, when you ask. -->
+  <key>NSContactsUsageDescription</key><string>Offer your home and work addresses, from your own contact card, as places for automations.</string>
   <!-- hammock:// links (invites: hammock://join/…) open the app. -->
 $url_types
   <!-- Folders dropped on the Dock icon, or opened with the app, become Groups. Rank None:

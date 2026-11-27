@@ -76,6 +76,9 @@ func (d *Daemon) watchChecks() {
 		for _, j := range d.dueChecks(schedNow()) {
 			go d.runCheck(j)
 		}
+		for _, j := range d.dueURLs(schedNow()) { // (schedurl.go)
+			go d.runURL(j)
+		}
 	}
 }
 

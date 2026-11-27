@@ -40,9 +40,10 @@ type scheduleSaveArgs struct {
 	CodexApproval string      `json:"codex_approval,omitempty" jsonschema:"codex: untrusted, on-failure, on-request or never"`
 	CloseOnOK     bool        `json:"close_on_success,omitempty" jsonschema:"command: close its tab after a clean exit"`
 	Once          string      `json:"once,omitempty" jsonschema:"instead of at/cron: run once, at this local date and time ('2026-12-23 17:00')"`
-	Triggers      []string    `json:"triggers,omitempty" jsonschema:"run when something happens (replaces its triggers, but not its checks; [] drops them), e.g. github:ci-failed, github:workflow=CI@OWNER/NAME, agent:finished, exit, files:*.go, calendar:10, calendar:free, mac:plugged-in, mac:away=15, mac:wifi-joined=Office, webhook, shortcut; every form is in hmk automation's usage and https://homegrownsw.com/hammock/docs/automations/. What happened goes into the prompt, fenced as untrusted data, or where it says {{event}}"`
+	Triggers      []string    `json:"triggers,omitempty" jsonschema:"run when something happens (replaces its triggers, but not its checks; [] drops them), e.g. github:ci-failed, github:workflow=CI@OWNER/NAME, agent:finished, exit, files:*.go, calendar:10, calendar:free, mac:plugged-in, mac:away=15, mac:wifi-joined=Office, place:arrive=Office, webhook, shortcut; every form is in hmk automation's usage and https://homegrownsw.com/hammock/docs/automations/. What happened goes into the prompt, fenced as untrusted data, or where it says {{event}}"`
 	Checks        []checkArgs `json:"checks,omitempty" jsonschema:"command checks: commands run every few minutes in its folder, with no pane, that start a run as they start failing, their output changes, or they pass again (replaces its checks; [] drops them)"`
-	OnlyIf        []string    `json:"only_if,omitempty" jsonschema:"conditions a run it starts itself must meet, or it's skipped (replaces them; [] drops them). Each one of: power, away[=MINUTES], wifi=NAME, hours=HH:MM-HH:MM, days=weekdays|mon,wed,…, free (not in a meeting), disk>N%"`
+	URLChecks     []urlArgs   `json:"url_checks,omitempty" jsonschema:"URL checks: URLs fetched every few minutes that start a run as they start failing, their page changes, or it starts containing a text (replaces its URL checks; [] drops them)"`
+	OnlyIf        []string    `json:"only_if,omitempty" jsonschema:"conditions a run it starts itself must meet, or it's skipped (replaces them; [] drops them). Each one of: power, away[=MINUTES], wifi=NAME, place=NAME, hours=HH:MM-HH:MM, days=weekdays|mon,wed,…, free (not in a meeting), disk>N%"`
 	EventsOnly    bool        `json:"events_only,omitempty" jsonschema:"run only on its triggers (and when run by hand), not at times (the default when creating one with triggers and no at, cron or once)"`
 	Cooldown      *int        `json:"cooldown_seconds,omitempty" jsonschema:"runs its triggers start are at least this far apart (default 60; 0: none; at most 2592000, 30 days): events in between wait, and start one run together"`
 	Description   string      `json:"description,omitempty" jsonschema:"why, in a sentence, shown to the user with the request"`
@@ -53,6 +54,14 @@ type checkArgs struct {
 	Every   int    `json:"every_minutes,omitempty" jsonschema:"how often (default 5, at least 1)"`
 	On      string `json:"on,omitempty" jsonschema:"'fail' (it starts failing: the default), 'change' (its output or exit status changes) or 'recover' (it passes again)"`
 	Timeout int    `json:"timeout_seconds,omitempty" jsonschema:"stop it after this long, as failing (default 60)"`
+}
+
+type urlArgs struct {
+	URL     string `json:"url" jsonschema:"the http or https URL to fetch"`
+	Every   int    `json:"every_minutes,omitempty" jsonschema:"how often (default 5, at least 1)"`
+	On      string `json:"on,omitempty" jsonschema:"'fail' (not 2xx or unreachable: the default), 'change' (its page or status changes) or 'contains' (its page starts containing text)"`
+	Text    string `json:"text,omitempty" jsonschema:"with on 'contains': what to look for (any case)"`
+	Timeout int    `json:"timeout_seconds,omitempty" jsonschema:"give up after this long, as failing (default 30)"`
 }
 
 type scheduleIDArgs struct {
@@ -138,7 +147,7 @@ func viewSchedule(w *world, s *pb.Schedule) scheduleView {
 	}
 	for _, t := range s.Events {
 		v.Triggers = append(v.Triggers, triggerView{Spec: schedtrig.Spec(t), Words: schedtrig.Describe(t, w.triggerName), Error: t.Error,
-			Status: schedtrig.Status(t, time.Now()), LastCheck: t.GetCheck().GetLastResult()})
+			Status: schedtrig.Status(t, time.Now()), LastCheck: cmpOr(t.GetCheck().GetLastResult(), t.GetUrl().GetLastResult())})
 	}
 	if len(s.Events) > 0 {
 		v.Extra["cooldown_seconds"] = schedtrig.Cooldown(s)
@@ -203,7 +212,7 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 				sc.Cwd = me.Cwd
 				sc.GroupId = w.groupOfPane(s.self)
 			}
-			if a.At == "" && a.Cron == "" && a.Once == "" && len(a.Triggers) == 0 && len(a.Checks) == 0 {
+			if a.At == "" && a.Cron == "" && a.Once == "" && len(a.Triggers) == 0 && len(a.Checks) == 0 && len(a.URLChecks) == 0 {
 				return nil, nil, errors.New("say when: at (HH:MM, with days), cron, once, or triggers")
 			}
 		}
@@ -246,10 +255,11 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 		if a.Once != "" {
 			args = append(args, "--once", a.Once)
 		}
-		// Triggers replace its triggers, checks its checks.
+		// Triggers replace its triggers, checks its checks, URL checks its URL checks.
 		isCheck := func(t *pb.EventTrigger) bool { return t.GetCheck() != nil }
+		isURL := func(t *pb.EventTrigger) bool { return t.GetUrl() != nil }
 		if a.Triggers != nil {
-			sc.Events = slices.DeleteFunc(sc.Events, func(t *pb.EventTrigger) bool { return !isCheck(t) })
+			sc.Events = slices.DeleteFunc(sc.Events, func(t *pb.EventTrigger) bool { return !isCheck(t) && !isURL(t) })
 			for _, t := range a.Triggers {
 				args = append(args, "--trigger", t)
 			}
@@ -269,7 +279,26 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 				}
 			}
 		}
-		if (a.Triggers != nil || a.Checks != nil) && len(sc.Events) == 0 && len(a.Triggers)+len(a.Checks) == 0 && sc.Timing == pb.Schedule_TIMING_EVENTS {
+		if a.URLChecks != nil {
+			sc.Events = slices.DeleteFunc(sc.Events, isURL)
+			for _, u := range a.URLChecks {
+				args = append(args, "--url", u.URL)
+				if u.Every != 0 {
+					args = append(args, "--url-every", strconv.Itoa(u.Every))
+				}
+				if u.On != "" {
+					args = append(args, "--url-on", u.On)
+				}
+				if u.Text != "" {
+					args = append(args, "--url-text", u.Text)
+				}
+				if u.Timeout != 0 {
+					args = append(args, "--url-timeout", strconv.Itoa(u.Timeout))
+				}
+			}
+		}
+		news := len(a.Triggers) + len(a.Checks) + len(a.URLChecks)
+		if (a.Triggers != nil || a.Checks != nil || a.URLChecks != nil) && len(sc.Events) == 0 && news == 0 && sc.Timing == pb.Schedule_TIMING_EVENTS {
 			sc.Timing = pb.Schedule_TIMING_REPEAT
 		}
 		if a.EventsOnly {
@@ -287,7 +316,7 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 		if a.At != "" || a.Cron != "" {
 			sc.Timing = pb.Schedule_TIMING_REPEAT
 		}
-		if a.ID == "" && a.At == "" && a.Cron == "" && a.Once == "" && len(a.Triggers)+len(a.Checks) > 0 {
+		if a.ID == "" && a.At == "" && a.Cron == "" && a.Once == "" && news > 0 {
 			args = append(args, "--events-only")
 		}
 		if a.Notify != "" {

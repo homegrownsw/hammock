@@ -36,6 +36,8 @@ func TestParseNewerTriggers(t *testing.T) {
 		"github:workflow=Deploy":          "The “Deploy” workflow finishes",
 		"github:workflow=ci.yml@acme/w":   "The “ci.yml” workflow finishes (acme/w)",
 		"github:notification":             "I get a GitHub notification",
+		"place:arrive=Office":             "The Mac arrives at “Office”",
+		"place:leave=Studio":              "The Mac leaves “Studio”",
 	} {
 		tr, err := Parse(spec, nil)
 		if err != nil {
@@ -49,7 +51,7 @@ func TestParseNewerTriggers(t *testing.T) {
 			t.Errorf("%s: written as %q, read back as %q (%v)", spec, Spec(tr), Spec(again), err)
 		}
 	}
-	for _, bad := range []string{"mac:disk<0%", "mac:battery<100%", "mac:app-opened", "mac:away=0", "mac:nope", "mac:plugged-in=x", "github:workflow", "calendar:free=0"} {
+	for _, bad := range []string{"mac:disk<0%", "mac:battery<100%", "mac:app-opened", "mac:away=0", "mac:nope", "mac:plugged-in=x", "github:workflow", "calendar:free=0", "place:arrive", "place:visit=Office", "url:https://example.com"} {
 		if _, err := Parse(bad, nil); err == nil {
 			t.Errorf("%s was taken", bad)
 		}
@@ -70,6 +72,7 @@ func TestConditions(t *testing.T) {
 		"days=fri-mon":      "on Mon, Fri, Sat, Sun",
 		"free":              "I’m not in a meeting",
 		"disk>20%":          "the startup disk has more than 20% free",
+		"place=Office":      "the Mac is at “Office”",
 	} {
 		c, err := ParseCondition(spec)
 		if err != nil {
@@ -83,7 +86,7 @@ func TestConditions(t *testing.T) {
 			t.Errorf("%s: written as %q, read back as %q (%v)", spec, SpecCondition(c), SpecCondition(again), err)
 		}
 	}
-	for _, bad := range []string{"wifi", "hours=9-5", "hours=09:00-09:00", "days=daily", "disk>0%", "sunny"} {
+	for _, bad := range []string{"wifi", "hours=9-5", "hours=09:00-09:00", "days=daily", "disk>0%", "sunny", "place"} {
 		if _, err := ParseCondition(bad); err == nil {
 			t.Errorf("%s was taken", bad)
 		}
@@ -96,5 +99,27 @@ func TestConditions(t *testing.T) {
 	}
 	if w := OnlyIfWords([]*pb.Condition{{Kind: pb.Condition_KIND_POWER}, {Kind: pb.Condition_KIND_FREE}}); w != "the Mac is plugged in and I’m not in a meeting" {
 		t.Errorf("OnlyIfWords: %q", w)
+	}
+}
+
+// URL checks' words, options and URLs.
+func TestURLCheckWords(t *testing.T) {
+	u := &pb.UrlCheckTrigger{Url: "https://example.com/status?x=1", On: pb.UrlCheckTrigger_ON_CONTAINS, Text: "all good", EveryMinutes: 60}
+	if got := DescribeURL(u); got != "https://example.com/status?x=1 starts containing “all good”, checked every hour" {
+		t.Errorf("words: %q", got)
+	}
+	if got := URLFlags(u); got != "--url 'https://example.com/status?x=1' --url-every 60 --url-on contains --url-text 'all good'" {
+		t.Errorf("flags: %q", got)
+	}
+	if got := URLTimeout(&pb.UrlCheckTrigger{EveryMinutes: 1, TimeoutSeconds: 300}); got.Seconds() != 60 {
+		t.Errorf("timeout over the interval: %v", got)
+	}
+	for _, bad := range []string{"", "example.com", "ftp://example.com", "https://a:b@example.com", "https://"} {
+		if CheckURL(bad) == nil {
+			t.Errorf("%q was taken", bad)
+		}
+	}
+	if err := CheckURL("http://localhost:8080/health"); err != nil {
+		t.Error(err)
 	}
 }
