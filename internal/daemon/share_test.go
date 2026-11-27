@@ -58,7 +58,7 @@ func TestSharedGroup(t *testing.T) {
 	call(t, g, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
 	joinedC := make(chan string, 1)
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), slow(20*time.Second))
 		defer cancel()
 		r, err := g.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_JoinShared{JoinShared: &pb.JoinShared{Link: link}}})
 		if err != nil {
@@ -80,7 +80,7 @@ func TestSharedGroup(t *testing.T) {
 		if got != gid {
 			t.Fatalf("join: %s", got)
 		}
-	case <-time.After(15 * time.Second):
+	case <-time.After(slow(15 * time.Second)):
 		t.Fatal("join never answered")
 	}
 

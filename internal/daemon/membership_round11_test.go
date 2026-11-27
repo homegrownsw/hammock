@@ -96,7 +96,7 @@ func TestMembershipIntroBackOutUndone(t *testing.T) {
 	link(t, q, v)
 	select {
 	case <-backedOut:
-	case <-time.After(15 * time.Second):
+	case <-time.After(slow(15 * time.Second)):
 		t.Fatal("the introduced link was never asked for")
 	}
 	waitComputers(t, other, "the other side drops the link", notShown(dialler.uid))

@@ -157,7 +157,7 @@ func link(t *testing.T, a, b *testComputer) {
 		if err != nil {
 			t.Fatalf("link: %v", err)
 		}
-	case <-time.After(20 * time.Second):
+	case <-time.After(slow(20 * time.Second)):
 		t.Fatal("link never finished")
 	}
 }
@@ -165,7 +165,7 @@ func link(t *testing.T, a, b *testComputer) {
 // waitComputers waits until tc's list of computers satisfies fn.
 func waitComputers(t *testing.T, tc *testComputer, what string, fn func(*pb.Computers) bool) {
 	t.Helper()
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(slow(15 * time.Second))
 	for {
 		tc.d.mu.Lock()
 		ok := fn(tc.d.computersState(false))
@@ -197,7 +197,7 @@ func hasComputer(uid string, online bool) func(*pb.Computers) bool {
 // waitGroup waits until tc shows a Group satisfying fn.
 func waitGroup(t *testing.T, tc *testComputer, what string, fn func(*pb.Group) bool) *pb.Group {
 	t.Helper()
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(slow(15 * time.Second))
 	for {
 		tc.d.mu.Lock()
 		for _, g := range tc.d.fullState().Groups {
@@ -393,7 +393,7 @@ func TestLinkOffTailscale(t *testing.T) {
 		if err != nil {
 			t.Fatalf("link: %v", err)
 		}
-	case <-time.After(20 * time.Second):
+	case <-time.After(slow(20 * time.Second)):
 		t.Fatal("link never answered")
 	}
 }
@@ -465,7 +465,7 @@ func TestLinkDeclined(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "match") {
 			t.Fatalf("declined link: %v", err)
 		}
-	case <-time.After(20 * time.Second):
+	case <-time.After(slow(20 * time.Second)):
 		t.Fatal("declined link never answered")
 	}
 	a.d.mu.Lock()
@@ -1152,7 +1152,7 @@ func TestLinkPublishesOnce(t *testing.T) {
 // no code, and a request ends with its resolution sent, whatever it showed.
 func TestEarlyConfirmNoEmptyCode(t *testing.T) {
 	a, b := startComputer(t), startComputer(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), slow(20*time.Second))
 	defer cancel()
 	cl, fp, err := client.DialRemoteLearning(ctx, b.addr, "peer", "asker")
 	if err != nil {
@@ -1479,7 +1479,7 @@ func TestReopenLinkedOfflineAndOrder(t *testing.T) {
 		return len(tc.d.groups[gid].GetTabIds())
 	}
 	reopen := func() error {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), slow(15*time.Second))
 		defer cancel()
 		_, err := a.c.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_ReopenClosed{ReopenClosed: &pb.ReopenClosed{}}})
 		return err

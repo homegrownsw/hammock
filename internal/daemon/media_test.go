@@ -416,7 +416,7 @@ func TestSharedMedia(t *testing.T) {
 	g := dial(t, guestDir)
 	call(t, g, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), slow(20*time.Second))
 		defer cancel()
 		g.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_JoinShared{JoinShared: &pb.JoinShared{Link: link}}})
 	}()
@@ -709,7 +709,7 @@ func TestSharedBrowserMenuDismissed(t *testing.T) {
 	g := dial(t, guestDir)
 	call(t, g, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), slow(20*time.Second))
 		defer cancel()
 		g.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_JoinShared{JoinShared: &pb.JoinShared{Link: link}}})
 	}()

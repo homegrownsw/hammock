@@ -154,7 +154,7 @@ func TestMembershipUnlinkKeptUntilDelivered(t *testing.T) {
 	c = restartComputer(t, c)
 	// Delivered first: until then c may show b offline (c has just restarted, and b redials it), which
 	// notWith takes for dropped, and b back a moment later.
-	for end := time.Now().Add(15 * time.Second); pendingCount(a) > 0; time.Sleep(50 * time.Millisecond) {
+	for end := time.Now().Add(slow(15 * time.Second)); pendingCount(a) > 0; time.Sleep(50 * time.Millisecond) {
 		if time.Now().After(end) {
 			t.Fatal("a's request never reached c")
 		}
@@ -198,7 +198,7 @@ func TestMembershipUnlinkedSaysSo(t *testing.T) {
 	a, x := unlinkedX(t)
 	waitComputers(t, x, "x shows a not linking", refused(a.uid))
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), slow(20*time.Second))
 		defer cancel()
 		_, _ = x.c.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_LinkComputer{LinkComputer: &pb.LinkComputer{Address: a.addr}}})
 	}()
@@ -366,7 +366,7 @@ func TestMembershipLimitsPerSender(t *testing.T) {
 	waitComputers(t, b, "b, x linked", linkedWith(x.uid))
 	unlink(t, b, x.uid)
 	a = restartComputer(t, a)
-	for end := time.Now().Add(15 * time.Second); !refuses(a, x.uid); time.Sleep(50 * time.Millisecond) {
+	for end := time.Now().Add(slow(15 * time.Second)); !refuses(a, x.uid); time.Sleep(50 * time.Millisecond) {
 		if time.Now().After(end) {
 			t.Fatal("a never took b's unlink of x")
 		}

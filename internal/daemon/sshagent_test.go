@@ -98,7 +98,7 @@ func TestSSHAgentForwarding(t *testing.T) {
 	paneID := layoutPanes(a.d.tabs[tab].Layout)[0]
 	a.d.mu.Unlock()
 	// Typed from B: the pane's keys are B's while you're there.
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(slow(15 * time.Second))
 	for {
 		b.d.mu.Lock()
 		_, routed := b.d.routes[paneID]
@@ -113,7 +113,7 @@ func TestSSHAgentForwarding(t *testing.T) {
 	}
 	call(t, b.c, &pb.ClientMessage{Msg: &pb.ClientMessage_Input{Input: &pb.Input{PaneId: paneID, Data: []byte("go\n")}}})
 	var text string
-	for deadline := time.Now().Add(15 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+	for deadline := time.Now().Add(slow(15 * time.Second)); ; time.Sleep(50 * time.Millisecond) {
 		a.d.mu.Lock()
 		text = a.d.panes[paneID].text(false)
 		a.d.mu.Unlock()
@@ -228,7 +228,7 @@ func TestSSHAgentForwarding(t *testing.T) {
 	a.d.markAgentMade(agentPane)
 	a.d.onceGrants = nil
 	a.d.mu.Unlock()
-	for deadline := time.Now().Add(15 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+	for deadline := time.Now().Add(slow(15 * time.Second)); ; time.Sleep(20 * time.Millisecond) {
 		b.d.mu.Lock()
 		_, routed := b.d.routes[agentPane]
 		b.d.mu.Unlock()
@@ -250,7 +250,7 @@ func TestSSHAgentForwarding(t *testing.T) {
 		return false
 	})
 	call(t, b.c, &pb.ClientMessage{Msg: &pb.ClientMessage_RespondGrant{RespondGrant: &pb.RespondGrant{Id: grant, Decision: pb.RespondGrant_DECISION_DENY}}})
-	for deadline := time.Now().Add(15 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+	for deadline := time.Now().Add(slow(15 * time.Second)); ; time.Sleep(50 * time.Millisecond) {
 		a.d.mu.Lock()
 		text = a.d.panes[agentPane].text(false)
 		a.d.mu.Unlock()

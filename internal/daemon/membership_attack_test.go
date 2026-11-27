@@ -22,7 +22,7 @@ import (
 // s's key), as any computer on the tailnet could.
 func strangerTo(t *testing.T, s, tc *testComputer) *client.Client {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), slow(20*time.Second))
 	defer cancel()
 	cl, fp, err := client.DialRemoteLearning(ctx, tc.addr, "peer", "stranger")
 	if err != nil {
