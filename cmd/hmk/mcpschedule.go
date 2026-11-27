@@ -39,8 +39,9 @@ type scheduleSaveArgs struct {
 	CodexApproval string      `json:"codex_approval,omitempty" jsonschema:"codex: untrusted, on-failure, on-request or never"`
 	CloseOnOK     bool        `json:"close_on_success,omitempty" jsonschema:"command: close its tab after a clean exit"`
 	Once          string      `json:"once,omitempty" jsonschema:"instead of at/cron: run once, at this local date and time ('2026-12-23 17:00')"`
-	Triggers      []string    `json:"triggers,omitempty" jsonschema:"run when something happens (replaces its triggers, but not its checks; [] drops them). Each one of: github:ci-failed|review-requested|reviewed|label=NAME|assigned|merged|commit[=BRANCH]|release[=TAGS], then @OWNER/NAME for another repository than the folder's; agent:finished|needs-you[@GROUP|PANE]; exit[@GROUP|PANE]; log:REGEX@PANE; files[:GLOB][@DIR]; calendar:MINUTES[,title=TEXT][,calendar=NAME][,attendees]; webhook; shortcut. What happened goes into the prompt, fenced as untrusted data, or where it says {{event}}. Details: https://homegrownsw.com/hammock/docs/automations/"`
+	Triggers      []string    `json:"triggers,omitempty" jsonschema:"run when something happens (replaces its triggers, but not its checks; [] drops them), e.g. github:ci-failed, github:workflow=CI@OWNER/NAME, agent:finished, exit, files:*.go, calendar:10, calendar:free, mac:plugged-in, mac:away=15, mac:wifi-joined=Office, webhook, shortcut; every form is in hmk automation's usage and https://homegrownsw.com/hammock/docs/automations/. What happened goes into the prompt, fenced as untrusted data, or where it says {{event}}"`
 	Checks        []checkArgs `json:"checks,omitempty" jsonschema:"command checks: commands run every few minutes in its folder, with no pane, that start a run as they start failing, their output changes, or they pass again (replaces its checks; [] drops them)"`
+	OnlyIf        []string    `json:"only_if,omitempty" jsonschema:"conditions a run it starts itself must meet, or it's skipped (replaces them; [] drops them). Each one of: power, away[=MINUTES], wifi=NAME, hours=HH:MM-HH:MM, days=weekdays|mon,wed,…, free (not in a meeting), disk>N%"`
 	EventsOnly    bool        `json:"events_only,omitempty" jsonschema:"run only on its triggers (and when run by hand), not at times (the default when creating one with triggers and no at, cron or once)"`
 	Cooldown      *int        `json:"cooldown_seconds,omitempty" jsonschema:"runs its triggers start are at least this far apart (default 60; 0: none; at most 2592000, 30 days): events in between wait, and start one run together"`
 	Description   string      `json:"description,omitempty" jsonschema:"why, in a sentence, shown to the user with the request"`
@@ -91,6 +92,7 @@ type scheduleView struct {
 	Computer  string         `json:"computer,omitempty"`
 	Allowed   []string       `json:"allowed_tools,omitempty"`
 	Triggers  []triggerView  `json:"triggers,omitempty"`
+	OnlyIf    []string       `json:"only_if,omitempty"`
 	Error     string         `json:"error,omitempty"`
 	LastRuns  []runView      `json:"recent_runs,omitempty"`
 	CreatedBy string         `json:"created_by,omitempty"`
@@ -130,6 +132,9 @@ func viewSchedule(w *world, s *pb.Schedule) scheduleView {
 	}
 	if len(s.Events) > 0 {
 		v.Extra["cooldown_seconds"] = schedtrig.Cooldown(s)
+	}
+	for _, c := range s.OnlyIf {
+		v.OnlyIf = append(v.OnlyIf, schedtrig.SpecCondition(c))
 	}
 	for i, r := range s.Runs {
 		if i == 5 {
@@ -259,6 +264,12 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 		}
 		if a.EventsOnly {
 			args = append(args, "--events-only")
+		}
+		if a.OnlyIf != nil {
+			args = append(args, "--no-only-if")
+			for _, c := range a.OnlyIf {
+				args = append(args, "--only-if", c)
+			}
 		}
 		if a.Cooldown != nil {
 			args = append(args, "--cooldown", strconv.Itoa(*a.Cooldown))

@@ -24,6 +24,10 @@ extension Pref {
     /// cursor.
     static let agentPresence = Pref("agent-presence", defaults: "agentPresence", true)
 
+    /// When automations' Free Time trigger may fire: "[DAYS ]HH:MM-HH:MM".
+    /// hmkd reads it from the file itself.
+    static let workingHours = Pref("working-hours", defaults: "workingHours", .string, "mon-fri 09:00-17:00")
+
     /// How long an agent rests before hmkd puts it to sleep (ends its
     /// process to free its memory; waking it resumes it): off, or
     /// one of AgentSleepChoice's. hmkd reads it from the file itself.

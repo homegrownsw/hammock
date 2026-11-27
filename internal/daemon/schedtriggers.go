@@ -92,6 +92,7 @@ type trigState struct {
 	Branch string           `json:"branch,omitempty"`  // GitHub: the folder's branch, last time it looked
 	Primed bool             `json:"primed,omitempty"`  // GitHub: it's had a first look
 	Check  *checkState      `json:"check,omitempty"`   // a command check: what it last saw (schedcheck.go)
+	Mac    *macTrigState    `json:"mac,omitempty"`     // a This Mac trigger: what it last saw (macwatch.go)
 }
 
 // trigIndex is what the log feed checks every line against, without
@@ -477,7 +478,7 @@ func (d *Daemon) cleanEvents(s, old *pb.Schedule) error {
 		out = append(out, t)
 	}
 	s.Events = out
-	return nil
+	return cleanConditions(s)
 }
 
 // cleanTrigger checks one trigger. Callers hold d.mu.
@@ -510,6 +511,7 @@ func (d *Daemon) cleanTrigger(s *pb.Schedule, t *pb.EventTrigger) error {
 		clean("repository", &k.Github.Watch, 200)
 		clean("branch", &k.Github.Branch, 250)
 		clean("tags", &k.Github.Tags, 100)
+		clean("workflow", &k.Github.Workflow, 200)
 		k.Github.Repo = oneLine(shownText(k.Github.Repo), 200)
 	case *pb.EventTrigger_Log:
 		clean("pattern", &k.Log.Pattern, 300)
@@ -522,6 +524,9 @@ func (d *Daemon) cleanTrigger(s *pb.Schedule, t *pb.EventTrigger) error {
 	case *pb.EventTrigger_Check:
 		// Shown whole when an agent asks to save it: one line.
 		clean("command", &k.Check.Command, maxCheckCommand)
+	case *pb.EventTrigger_Mac:
+		clean("name", &k.Mac.Name, 200)
+		clean("disk", &k.Mac.Volume, 1024)
 	}
 	if bad != nil {
 		return bad
@@ -555,6 +560,11 @@ func (d *Daemon) cleanTrigger(s *pb.Schedule, t *pb.EventTrigger) error {
 			g.Tags = ""
 		} else if err := schedtrig.CheckTags(g.Tags); err != nil {
 			return err
+		}
+		if g.Event != pb.GitHubTrigger_EVENT_WORKFLOW {
+			g.Workflow = ""
+		} else if g.Workflow == "" {
+			return errors.New("which workflow? Its name, or its file's (ci.yml)")
 		}
 		if g.Watch != "" {
 			r := schedtrig.GitHubRepo(g.Watch)
@@ -617,7 +627,65 @@ func (d *Daemon) cleanTrigger(s *pb.Schedule, t *pb.EventTrigger) error {
 		if c.MinutesBefore < 0 || c.MinutesBefore > 24*60 {
 			return errors.New("minutes before an event: 0 to 1440")
 		}
+		if _, ok := pb.CalendarTrigger_When_name[int32(c.When)]; !ok {
+			return errors.New("an unknown calendar trigger (from a newer Hammock?)")
+		}
+		if c.FreeMinutes < 0 || c.FreeMinutes > 24*60 {
+			return errors.New("free time: 1 to 1440 minutes")
+		}
+		if c.When != pb.CalendarTrigger_WHEN_START {
+			c.MinutesBefore = 0
+		}
+		if c.When != pb.CalendarTrigger_WHEN_FREE {
+			c.FreeMinutes = 0
+		} else {
+			c.Title, c.WithAttendees = "", false // (any meeting ends free time)
+		}
 		c.Title, c.Calendar = strings.TrimSpace(c.Title), strings.TrimSpace(c.Calendar)
+	case *pb.EventTrigger_Mac:
+		m := k.Mac
+		if runtime.GOOS != "darwin" {
+			return errors.New("This Mac triggers need a Mac")
+		}
+		if _, ok := pb.MacTrigger_Event_name[int32(m.Event)]; !ok || m.Event == pb.MacTrigger_EVENT_UNSPECIFIED {
+			return errors.New("an unknown This Mac trigger (from a newer Hammock?)")
+		}
+		if m.Percent < 0 || m.Percent > 99 || m.Gigabytes < 0 || m.Minutes < 0 || m.Minutes > 7*24*60 {
+			return errors.New("a This Mac trigger's mark is out of range")
+		}
+		switch m.Event {
+		case pb.MacTrigger_EVENT_DISK_LOW:
+			if m.Gigabytes > 0 {
+				m.Percent = 0
+			} else if m.Percent == 0 {
+				m.Percent = schedtrig.MacDiskPercentDefault
+			}
+			if m.Volume = strings.TrimSpace(m.Volume); m.Volume == "/" {
+				m.Volume = ""
+			} else if m.Volume != "" && !filepath.IsAbs(m.Volume) {
+				m.Volume = "/Volumes/" + m.Volume // a disk's name
+			}
+			m.Minutes, m.Name = 0, ""
+		case pb.MacTrigger_EVENT_BATTERY_LOW:
+			if m.Percent == 0 {
+				m.Percent = schedtrig.MacBatteryPercentDefault
+			}
+			m.Volume, m.Gigabytes, m.Minutes, m.Name = "", 0, 0, ""
+		case pb.MacTrigger_EVENT_AWAY:
+			if m.Minutes == 0 {
+				m.Minutes = schedtrig.MacAwayDefault
+			}
+			fallthrough
+		case pb.MacTrigger_EVENT_WAKE, pb.MacTrigger_EVENT_BACK:
+			m.Volume, m.Gigabytes, m.Percent, m.Name = "", 0, 0, ""
+		case pb.MacTrigger_EVENT_APP_OPENED, pb.MacTrigger_EVENT_APP_QUIT:
+			if m.Name == "" {
+				return errors.New("which app? Give its name or bundle id")
+			}
+			fallthrough
+		default:
+			m.Volume, m.Gigabytes, m.Percent, m.Minutes = "", 0, 0, 0
+		}
 	case *pb.EventTrigger_Webhook:
 	case *pb.EventTrigger_Shortcut:
 		if runtime.GOOS != "darwin" {
@@ -701,6 +769,8 @@ func (d *Daemon) triggersChanged() {
 	d.trigIdx.Store(idx)
 	d.wakeWatchers()
 	d.calendarErrors(schedTime()) // (a new calendar trigger says at once if it can't fire; it fires at the next check)
+	d.macAppErrors()
+	d.wakeMacWatcher()
 }
 
 // wakeWatchers tells the GitHub and files watchers to look again now (a

@@ -364,6 +364,7 @@ func (d *Daemon) selfRecord(forPeer bool) *pb.Computer {
 	}
 	self.Notifies = d.canNotify()
 	self.DefaultAgent = d.defaultAgent()
+	self.Features = features
 	self.PushPhones = nil
 	if forPeer {
 		self.PushPhones = d.pushPhones() // its agents' phones are told from here

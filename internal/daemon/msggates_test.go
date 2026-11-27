@@ -24,7 +24,7 @@ var gateExempt = map[string][]string{
 		"CreateLinkInvite", "CreatePairing", "DeleteSchedule", "DiscoverComputers", "EndScreenSession",
 		"HammockKeyCommand", "HoldPane", "JoinShared", "LeaveShared", "LinkComputer", "ListAudit", "ListDevices",
 		"ListDisplays", "ListReviews", "ListSessions", "MoveGroup", "OpenWindow", "Pair", "PeerHello", "ProveApp", "ReadSession",
-		"CalendarEvents", "ScheduleWebhook",
+		"CalendarEvents", "MacAppState", "ScheduleWebhook",
 		"RegisterPush", "RemoveWorktree", "RenameGroup", "ReopenClosed", "RequestGrant", "RespondGrant", "RespondHammockKey",
 		"RespondJoin", "RespondLink", "RestartRemoteAccess", "ResumeSession", "RevokeDevice", "RevokeInvite", "RunSchedule",
 		"SaveSchedule", "ScreenInput", "ScreenSnapshot", "ServerStatus", "SessionExcerpts", "SetApprovalKey",
@@ -36,7 +36,7 @@ var gateExempt = map[string][]string{
 	// peer.go: the group, tab or pane a message is about, so a guest's daemon sends it to the host. Not named:
 	// about nothing hosted elsewhere (handled here).
 	"msgTarget": {
-		"Authenticate", "BrowserCall", "BrowserLogs", "CalendarEvents", "CloseMedia", "ConfigWritten", "CreateGroup",
+		"Authenticate", "BrowserCall", "BrowserLogs", "CalendarEvents", "MacAppState", "CloseMedia", "ConfigWritten", "CreateGroup",
 		"CreateLinkInvite", "CreatePairing", "DiscoverComputers", "EndScreenSession", "HammockKeyCommand", "Hello",
 		"HoldPane", "IntroduceComputers", "JoinShared", "LeaveShared", "LinkComputer", "ListAudit", "ListDevices",
 		"ListDisplays", "ListReviews", "ListSessions", "MediaAck", "MoveGroup", "OpenWindow", "Pair", "PeerHello",
@@ -49,7 +49,7 @@ var gateExempt = map[string][]string{
 	},
 	// caller.go: what an agent in a pane may do. Not named: refused to agents.
 	"agentCheck": {
-		"Authenticate", "BrowserInput", "BrowserMenuChoice", "CalendarEvents", "CloseMedia", "ConfigWritten", "CreateInvite",
+		"Authenticate", "BrowserInput", "BrowserMenuChoice", "CalendarEvents", "MacAppState", "CloseMedia", "ConfigWritten", "CreateInvite",
 		"ScheduleWebhook",
 		"CreateLinkInvite", "CreatePairing", "DiscoverComputers", "HammockKeyCommand", "HoldPane",
 		"IntroduceComputers", "JoinShared", "LeaveShared", "LinkComputer", "ListDevices", "ListDisplays",
@@ -64,7 +64,7 @@ var gateExempt = map[string][]string{
 	},
 	// computers.go: what your other computers may ask of this one. Not named: refused to them.
 	"ownerCheck": {
-		"Authenticate", "BrowserCall", "BrowserLogs", "CalendarEvents", "ConfigWritten", "CreateInvite", "CreateLinkInvite",
+		"Authenticate", "BrowserCall", "BrowserLogs", "CalendarEvents", "MacAppState", "ConfigWritten", "CreateInvite", "CreateLinkInvite",
 		"CreatePairing", "DiscoverComputers", "EndScreenSession", "FloatPane", "HammockKeyCommand", "HoldPane",
 		"IntroduceComputers", "JoinShared", "LeaveShared", "LinkComputer", "ListAudit", "ListDevices", "MoveGroup",
 		"OpenWindow", "Pair", "PeerHello", "PeerIntroLink", "PeerJoin", "PeerLinkConfirm", "PeerLinkHello", "PeerLinkReveal",

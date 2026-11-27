@@ -437,6 +437,7 @@ func (c *conn) close() {
 		if c.kind == "mac" {
 			c.d.appChanged()
 		}
+		c.d.macAppClosed(c)
 		c.d.dropGrantsFor(c)
 		if c.peer != "" {
 			c.d.peerClosed(c)
@@ -1024,6 +1025,16 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 			return nil, errors.New("only available on this Mac")
 		}
 		d.calendarEvents(m.CalendarEvents)
+		return nil, nil
+
+	case *pb.ClientMessage_MacAppState:
+		// What the Mac app sees for This Mac triggers (person-only, strictly: person.go).
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		if c.remote || c.peer != "" {
+			return nil, errors.New("only available on this Mac")
+		}
+		d.macAppState(c, m.MacAppState)
 		return nil, nil
 
 	case *pb.ClientMessage_ReadAgentFile:
@@ -2061,7 +2072,7 @@ func (c *conn) handleRemoteAuth(msg *pb.ClientMessage) (*pb.ServerMessage, error
 		*pb.ClientMessage_ShutdownDaemon, *pb.ClientMessage_ListAudit, *pb.ClientMessage_BrowserCall, *pb.ClientMessage_BrowserLogs,
 		*pb.ClientMessage_ServerStatus, *pb.ClientMessage_EndScreenSession,
 		*pb.ClientMessage_HammockKeyCommand, *pb.ClientMessage_SshSetup, *pb.ClientMessage_ConfigWritten, *pb.ClientMessage_HoldPane,
-		*pb.ClientMessage_OpenWindow, *pb.ClientMessage_CalendarEvents:
+		*pb.ClientMessage_OpenWindow, *pb.ClientMessage_CalendarEvents, *pb.ClientMessage_MacAppState:
 		return nil, errors.New("only available on this Mac"), true
 	case *pb.ClientMessage_CreateInvite, *pb.ClientMessage_RevokeInvite, *pb.ClientMessage_StopSharing,
 		*pb.ClientMessage_SetProfile, *pb.ClientMessage_JoinShared, *pb.ClientMessage_LeaveShared:

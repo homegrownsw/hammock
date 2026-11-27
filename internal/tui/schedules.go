@@ -1027,6 +1027,9 @@ func (v *scheduleView) draw(a *App) {
 		if n := len(sc.AllowedTools); n > 0 {
 			more = append(more, plural(n, "tool")+" allowed")
 		}
+		if len(sc.OnlyIf) > 0 {
+			more = append([]string{"only if " + schedtrig.OnlyIfWords(sc.OnlyIf)}, more...)
+		}
 		if t := a.triggersText(sc); t != "" {
 			if st := a.triggerStatus(sc, time.Now()); st != "" {
 				t += " · " + st

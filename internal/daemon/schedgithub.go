@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path"
 	"slices"
 	"sort"
 	"strings"
@@ -311,7 +312,7 @@ func (d *Daemon) pollGitHub() {
 func cloneTrigger(t *pb.EventTrigger) *pb.EventTrigger {
 	g := t.GetGithub()
 	return &pb.EventTrigger{Id: t.Id, Kind: &pb.EventTrigger_Github{Github: &pb.GitHubTrigger{
-		Event: g.GetEvent(), Label: g.GetLabel(), Watch: g.GetWatch(), Branch: g.GetBranch(), Tags: g.GetTags()}}}
+		Event: g.GetEvent(), Label: g.GetLabel(), Watch: g.GetWatch(), Branch: g.GetBranch(), Tags: g.GetTags(), Workflow: g.GetWorkflow()}}}
 }
 
 // ghTriggerErrors notes (or clears) why j's triggers can't fire, and the
@@ -342,13 +343,33 @@ func (d *Daemon) ghTriggerErrors(j *ghJob, msg string, r *ghResult) {
 		if j.repo != "" && g.Repo != j.repo {
 			g.Repo, changed = j.repo, true
 		}
-		if r != nil {
-			t.CheckedUnixMs, changed = schedNow().UnixMilli(), true
+		if r != nil && d.noteChecked(t, schedNow()) {
+			changed = true
 		}
 	}
 	if changed {
 		d.saveSchedule(s)
 	}
+}
+
+// checkedSaveEvery is how often a trigger that looks often (GitHub, a
+// command check) is saved, and the apps told, for its last look alone.
+const checkedSaveEvery = 5 * time.Minute
+
+// noteChecked notes t looked now: kept on it at once (so anything that
+// saves or sends it has it, and hmk asks for it fresh), but worth saving
+// and telling the apps for that alone only now and then. due: save it.
+// Callers hold d.mu.
+func (d *Daemon) noteChecked(t *pb.EventTrigger, now time.Time) (due bool) {
+	t.CheckedUnixMs = now.UnixMilli()
+	if d.sched.checkSaved == nil {
+		d.sched.checkSaved = map[string]int64{}
+	}
+	if now.UnixMilli()-d.sched.checkSaved[t.Id] < checkedSaveEvery.Milliseconds() {
+		return false
+	}
+	d.sched.checkSaved[t.Id] = now.UnixMilli()
+	return true
 }
 
 var ghLoginCache struct {
@@ -458,7 +479,36 @@ type ghResult struct {
 	assigned      []ghItem
 	labeled       map[string][]ghItem // label →
 	merged        []ghItem
-	asked         map[string]bool // which of these were asked for
+	issues        []ghItem          // the newest issues
+	runs          []ghWorkflowRun   // the newest finished workflow runs
+	notes         []ghNotification  // your unread notifications about it
+	asked         map[string]bool   // which of these were asked for
+	failed        map[string]string // what of it couldn't be asked ("workflows", "notifications"), and why
+}
+
+// ghWorkflowRun is a finished run of an Actions workflow (REST).
+type ghWorkflowRun struct {
+	ID           int64  `json:"id"`
+	Name         string `json:"name"`
+	Path         string `json:"path"`
+	DisplayTitle string `json:"display_title"`
+	Conclusion   string `json:"conclusion"`
+	HeadBranch   string `json:"head_branch"`
+	HTMLURL      string `json:"html_url"`
+	Event        string `json:"event"`
+	RunNumber    int    `json:"run_number"`
+}
+
+// ghNotification is one of your GitHub notifications (REST).
+type ghNotification struct {
+	ID        string `json:"id"`
+	Reason    string `json:"reason"`
+	UpdatedAt string `json:"updated_at"`
+	Subject   struct {
+		Title string `json:"title"`
+		Type  string `json:"type"`
+		URL   string `json:"url"`
+	} `json:"subject"`
 }
 
 const (
@@ -500,9 +550,16 @@ func ghAsk(ctx context.Context, repo, login string, js []*ghJob) (*ghResult, err
 		addVar(alias+"Q", q)
 		parts = append(parts, fmt.Sprintf("%s: search(query: $%sQ, type: ISSUE, first: %d) { nodes { __typename ... on PullRequest { %s } ... on Issue { number title url author { login } } } }", alias, alias, first, fields))
 	}
-	r := &ghResult{repo: repo, login: login, labeled: map[string][]ghItem{}, branches: map[string]ghCommit{}, heads: map[string]ghHead{}, asked: map[string]bool{}}
+	r := &ghResult{repo: repo, login: login, labeled: map[string][]ghItem{}, branches: map[string]ghCommit{}, heads: map[string]ghHead{}, asked: map[string]bool{}, failed: map[string]string{}}
 	base := "repo:" + repo + " "
-	if need[pb.GitHubTrigger_EVENT_CI_FAILED] || need[pb.GitHubTrigger_EVENT_REVIEWED] {
+	if need[pb.GitHubTrigger_EVENT_WORKFLOW] || need[pb.GitHubTrigger_EVENT_NOTIFICATION] {
+		ghAskREST(ctx, r, need)
+	}
+	if need[pb.GitHubTrigger_EVENT_ISSUE_OPENED] {
+		r.asked["issues"] = true
+		search("issues", base+"is:issue sort:created-desc", 20, "number title url author { login }")
+	}
+	if need[pb.GitHubTrigger_EVENT_CI_FAILED] || need[pb.GitHubTrigger_EVENT_REVIEWED] || need[pb.GitHubTrigger_EVENT_APPROVED] {
 		r.asked["mine"] = true
 		search("mine", base+"is:pr is:open author:"+login, 30,
 			"number title url headRefName author { login } commits(last: 1) { nodes { commit { oid "+ghRollup+" } } } reviews(last: 10) { nodes { id state body url author { login } } } comments(last: 10) { nodes { id body url author { login } } }")
@@ -556,7 +613,13 @@ func ghAsk(ctx context.Context, repo, login string, js []*ghJob) (*ghResult, err
 		}
 		parts = append(parts, "repo: repository(owner: $owner, name: $name) { "+def+" "+strings.Join(refs, " ")+" }")
 	}
+	if len(parts) == 0 {
+		return r, nil // (only REST's: workflows, notifications)
+	}
 	query := "query(" + strings.Join(vars, ", ") + ") { " + strings.Join(parts, " ") + " }"
+	if len(vars) == 0 {
+		query = "query { " + strings.Join(parts, " ") + " }"
+	}
 	args = append(args, "-f", "query="+query)
 	out, err := ghRun(ctx, args...)
 	if err != nil {
@@ -590,6 +653,7 @@ func ghAsk(ctx context.Context, repo, login string, js []*ghJob) (*ghResult, err
 		return out
 	}
 	r.mine, r.reviewReq, r.assigned, r.merged = nodes("mine"), nodes("reviewReq"), nodes("assigned"), nodes("merged")
+	r.issues = nodes("issues")
 	for a, l := range labelAlias {
 		r.labeled[l] = nodes(a)
 		r.asked["label:"+l] = resp.Data[a] != nil
@@ -640,6 +704,65 @@ func ghAsk(ctx context.Context, repo, login string, js []*ghJob) (*ghResult, err
 	return r, nil
 }
 
+// ghAskREST asks what GraphQL can't tell: the newest finished runs of the
+// repository's workflows, and your unread notifications about it. What
+// fails is noted (r.failed) for the triggers that wanted it.
+func ghAskREST(ctx context.Context, r *ghResult, need map[pb.GitHubTrigger_Event]bool) {
+	if need[pb.GitHubTrigger_EVENT_WORKFLOW] {
+		out, err := ghRun(ctx, "api", "repos/"+r.repo+"/actions/runs?per_page=50&status=completed")
+		var v struct {
+			Runs []ghWorkflowRun `json:"workflow_runs"`
+		}
+		switch {
+		case err != nil:
+			r.failed["workflows"] = err.Error()
+		case json.Unmarshal(out, &v) != nil:
+			r.failed["workflows"] = "GitHub's answer about workflow runs didn't make sense"
+		default:
+			r.runs, r.asked["workflows"] = v.Runs, true
+		}
+	}
+	if need[pb.GitHubTrigger_EVENT_NOTIFICATION] {
+		out, err := ghRun(ctx, "api", "repos/"+r.repo+"/notifications?per_page=50")
+		var v []ghNotification
+		switch {
+		case err != nil:
+			r.failed["notifications"] = err.Error()
+		case json.Unmarshal(out, &v) != nil:
+			r.failed["notifications"] = "GitHub's answer about notifications didn't make sense"
+		default:
+			r.notes, r.asked["notifications"] = v, true
+		}
+	}
+}
+
+// workflowMatches: run is a run of the workflow named (its name, or its
+// file's: ci.yml, or .github/workflows/ci.yml).
+func workflowMatches(run ghWorkflowRun, name string) bool {
+	name = strings.TrimSpace(name)
+	return strings.EqualFold(run.Name, name) || strings.EqualFold(run.Path, name) || strings.EqualFold(path.Base(run.Path), name)
+}
+
+// ghWord is s if it's one of GitHub's own words (a conclusion, a reason:
+// lower case and _), else "".
+func ghWord(s string) string {
+	if s == "" || len(s) > 40 || strings.ContainsFunc(s, func(r rune) bool { return !(r >= 'a' && r <= 'z' || r == '_') }) {
+		return ""
+	}
+	return strings.ReplaceAll(s, "_", " ")
+}
+
+// ghHTMLURL is the web page for one of GitHub's API URLs
+// (api.github.com/repos/o/r/pulls/1 → github.com/o/r/pull/1).
+func ghHTMLURL(api string) string {
+	u, ok := strings.CutPrefix(api, "https://api.github.com/repos/")
+	if !ok {
+		return api
+	}
+	u = strings.Replace(u, "/pulls/", "/pull/", 1)
+	return "https://github.com/" + u
+}
+
 // ghNull: a GraphQL field that's missing or null.
 func ghNull(raw json.RawMessage) bool {
 	return len(raw) == 0 || string(raw) == "null"
@@ -648,6 +771,12 @@ func ghNull(raw json.RawMessage) bool {
 // ghMissing says why r has nothing for g when that's a mistake in g (a
 // branch the repository hasn't got), else "".
 func ghMissing(r *ghResult, g *pb.GitHubTrigger) string {
+	switch g.Event {
+	case pb.GitHubTrigger_EVENT_WORKFLOW:
+		return r.failed["workflows"]
+	case pb.GitHubTrigger_EVENT_NOTIFICATION:
+		return r.failed["notifications"]
+	}
 	if g.Event != pb.GitHubTrigger_EVENT_COMMIT || !r.asked["repo"] {
 		return ""
 	}
@@ -767,6 +896,58 @@ func ghFacts(r *ghResult, g *pb.GitHubTrigger, branch string) ([]ghFact, bool) {
 				e.Body = n.Body
 				out = append(out, ghFact{"cm:" + n.ID, e})
 			}
+		}
+	case pb.GitHubTrigger_EVENT_APPROVED:
+		if !r.asked["mine"] {
+			return nil, false
+		}
+		for _, pr := range r.mine {
+			for _, n := range pr.Reviews.Nodes {
+				if n.Author.Login == r.login || n.State != "APPROVED" {
+					continue
+				}
+				e := ev(fmt.Sprintf("#%d was approved", pr.Number), pr, [2]string{"reviewer", n.Author.Login}, [2]string{"review_url", n.URL})
+				e.Body = n.Body
+				out = append(out, ghFact{"ap:" + n.ID, e})
+			}
+		}
+	case pb.GitHubTrigger_EVENT_ISSUE_OPENED:
+		if !r.asked["issues"] {
+			return nil, false
+		}
+		for _, is := range r.issues {
+			if is.Author.Login == r.login {
+				continue // (yours)
+			}
+			out = append(out, ghFact{fmt.Sprintf("io:%d", is.Number), ev(fmt.Sprintf("Issue #%d was opened", is.Number), is)})
+		}
+	case pb.GitHubTrigger_EVENT_WORKFLOW:
+		if !r.asked["workflows"] {
+			return nil, false
+		}
+		for _, run := range r.runs {
+			if !workflowMatches(run, g.Workflow) {
+				continue
+			}
+			summary := "A run of the “" + g.Workflow + "” workflow finished"
+			if w := ghWord(run.Conclusion); w != "" {
+				summary += ": " + w
+			}
+			f := [][2]string{{"repo", r.repo}, {"workflow", run.Name}, {"conclusion", run.Conclusion}, {"branch", run.HeadBranch},
+				{"title", run.DisplayTitle}, {"url", run.HTMLURL}, {"run_number", fmt.Sprint(run.RunNumber)}, {"event", run.Event}}
+			out = append(out, ghFact{fmt.Sprintf("wf:%d", run.ID), &schedEvent{Kind: "github", Summary: summary, Source: "GitHub", Fields: f}})
+		}
+	case pb.GitHubTrigger_EVENT_NOTIFICATION:
+		if !r.asked["notifications"] {
+			return nil, false
+		}
+		for _, n := range r.notes {
+			summary := "A GitHub notification about " + r.repo
+			if w := ghWord(n.Reason); w != "" {
+				summary += " (" + w + ")"
+			}
+			f := [][2]string{{"repo", r.repo}, {"reason", n.Reason}, {"type", n.Subject.Type}, {"title", n.Subject.Title}, {"url", ghHTMLURL(n.Subject.URL)}}
+			out = append(out, ghFact{"nt:" + n.ID + "@" + n.UpdatedAt, &schedEvent{Kind: "github", Summary: summary, Source: "GitHub", Fields: f}})
 		}
 	case pb.GitHubTrigger_EVENT_REVIEW_REQUESTED:
 		if !r.asked["reviewReq"] {
@@ -934,6 +1115,9 @@ func GitHubKey(g *pb.GitHubTrigger) string {
 	k := fmt.Sprintf("%d:%s", g.Event, g.Label)
 	if g.Branch != "" || g.Tags != "" {
 		k += ":" + g.Branch + ":" + g.Tags
+	}
+	if g.Workflow != "" {
+		k += ":wf:" + g.Workflow
 	}
 	return k
 }

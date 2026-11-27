@@ -127,6 +127,7 @@ extension AppConfig {
         #   files-enabled = true                   (false: Hammock doesn't offer files panes, in its menus or to agents)
         #   log-enabled = true                     (false: Hammock doesn't offer log panes, in its menus or to agents)
         #   schedules-enabled = true               (false: Hammock doesn't offer automations (scheduled and triggered tasks), in its menus or to agents, and doesn't run them)
+        #   working-hours = mon-fri 09:00-17:00    (when automations' Free Time trigger may fire: days (weekdays, daily, or like mon,wed,fri) and hours; Mac only)
         #   sessions-enabled = true                (false: agents can't search or read past agents' sessions)
         #
         # Remote access and linked computers

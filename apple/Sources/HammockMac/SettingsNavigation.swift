@@ -438,6 +438,8 @@ enum SettingsIndex {
         ] + HammockTool.allCases.map { e(.tools, "Tools", $0.title, "tools.\($0.rawValue)", $0.keywords) } + [
             e(.tools, "Agents", "Show what agents do in browsers and simulators", "tools.agentpresence",
               "cursor pointer glow badge take over taps clicks mcp presence"),
+            e(.tools, "Automations", "Working hours", "tools.workinghours",
+              "free time calendar meetings work day office hours automation trigger"),
             e(.editor, "Editor panes", "Wrap long lines", "editor.wrap", "word wrap"),
             e(.editor, "Editor panes", "Line numbers", "editor.linenumbers", "gutter"),
             e(.editor, "Editor panes", "Indent with spaces or tabs", "editor.indent", "tabs editorconfig"),

@@ -679,6 +679,10 @@ message ClientMessage {
     // they're subscribed by: on connecting, and when it changes. Linked
     // computers only. No reply.
     Computers peer_record = 176;
+    // What the Mac app watches for This Mac triggers the daemon can't see
+    // itself: the Wi-Fi network, the apps open, the displays connected
+    // (macwatch.go). Sent as they change. The Mac app only; no reply.
+    MacAppState mac_app_state = 177;
   }
   reserved 96;  // ShareMembership (an earlier design)
 }
@@ -2372,6 +2376,11 @@ message Computer {
   // Its record comes over its own link (ClientMessage.peer_record); it's
   // online while that link is up. It has no addresses.
   bool out_only = 35;
+  // What its Hammock can do that an older one can't, for a computer that
+  // asks it to (an automation saved there with newer triggers):
+  // "automations-2" (This Mac triggers, Only If, calendar end and free
+  // time, newer GitHub events). An older one sends none.
+  repeated string features = 36;
 }
 
 // A computer this one is linked with, as kept here (not sent).
@@ -2754,6 +2763,31 @@ message Schedule {
   // Runs its events start are at least this far apart: events in between
   // wait, and start one run together when it's up (unset: 60; 0: none).
   optional int32 cooldown_seconds = 31;
+  // Only If (schedonlyif.go): a run it starts by itself (at its times, or
+  // on a trigger) is skipped unless all of these hold; its record says
+  // which didn't. Run Now isn't held to them.
+  repeated Condition only_if = 32;
+}
+
+// A condition a run must meet to start (Schedule.only_if).
+message Condition {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    KIND_POWER = 1;               // the Mac is plugged in
+    KIND_AWAY = 2;                // you're away from this computer (for minutes, if set)
+    KIND_WIFI = 3;                // on the Wi-Fi network wifi (the Mac app sees it)
+    KIND_HOURS = 4;               // between from_minute and to_minute, local time
+    KIND_DAYS = 5;                // on weekdays
+    KIND_FREE = 6;                // not in a calendar event marked busy
+    KIND_DISK = 7;                // the startup disk has more than percent free
+  }
+  Kind kind = 1;
+  int32 minutes = 2;              // KIND_AWAY: away at least this long (0: away now)
+  string wifi = 3;                // KIND_WIFI
+  int32 from_minute = 4;          // KIND_HOURS: minutes past midnight
+  int32 to_minute = 5;            // KIND_HOURS: before from_minute: through midnight
+  repeated int32 weekdays = 6;    // KIND_DAYS: 0 Sunday … 6 Saturday
+  int32 percent = 7;              // KIND_DISK
 }
 
 message ScheduleRun {
@@ -2806,6 +2840,7 @@ message EventTrigger {
     WebhookTrigger webhook = 8;
     CommandCheckTrigger check = 10;
     ShortcutTrigger shortcut = 11;
+    MacTrigger mac = 15;
   }
   string error = 9;               // read only: why it can't fire now (gh isn't signed in…)
   // Read only, the daemon's: when it last looked (a trigger that asks or
@@ -2830,6 +2865,10 @@ message GitHubTrigger {
     EVENT_MERGED = 6;             // your pull request was merged
     EVENT_COMMIT = 7;             // a new commit on branch (blank: the default branch)
     EVENT_RELEASE = 8;            // a new release, or tag, matching tags
+    EVENT_ISSUE_OPENED = 9;       // a new issue is opened
+    EVENT_APPROVED = 10;          // your pull request is approved
+    EVENT_WORKFLOW = 11;          // a run of the Actions workflow workflow finishes
+    EVENT_NOTIFICATION = 12;      // a new GitHub notification for you about the repository
   }
   Event event = 1;
   string label = 2;               // EVENT_LABELED
@@ -2837,6 +2876,7 @@ message GitHubTrigger {
   string watch = 4;               // "owner/name" to watch instead of the folder's repository
   string branch = 5;              // EVENT_COMMIT
   string tags = 6;                // EVENT_RELEASE: a glob the tag matches (blank: any)
+  string workflow = 7;            // EVENT_WORKFLOW: its name, or its file's (ci.yml)
 }
 
 // An agent finishing or needing you, in a Group or pane (neither: any).
@@ -2874,10 +2914,66 @@ message FilesTrigger {
 // A calendar event starting soon (the Mac app reads your calendars and
 // tells the daemon what's coming: CalendarEvents). Only on a Mac.
 message CalendarTrigger {
-  int32 minutes_before = 1;
+  int32 minutes_before = 1;       // WHEN_START: this long before it starts
   string title = 2;               // in its title (any case; "": any)
   string calendar = 3;            // its calendar's name ("": any)
   bool with_attendees = 4;        // only events with other people
+  enum When {
+    WHEN_START = 0;               // an event starts (minutes_before)
+    WHEN_END = 1;                 // an event ends
+    // Free time begins: the last busy event (not declined, tentative or
+    // marked free) of a stretch ends, within working hours (the config
+    // file's working-hours), with at least free_minutes before the next.
+    WHEN_FREE = 2;
+  }
+  When when = 5;
+  int32 free_minutes = 6;         // WHEN_FREE (0: 30)
+}
+
+// Something on this Mac (macwatch.go). The daemon watches the disks,
+// battery, power, sleep and you being away; the Mac app (MacAppState)
+// the Wi-Fi network, apps and displays, so those fire only while it's
+// open. What's already so when it's made doesn't fire. Only on a Mac.
+message MacTrigger {
+  enum Event {
+    EVENT_UNSPECIFIED = 0;
+    EVENT_DISK_LOW = 1;           // a disk's free space falls below percent, or gigabytes (once, until it's back above)
+    EVENT_BATTERY_LOW = 2;        // the battery falls below percent
+    EVENT_PLUGGED_IN = 3;         // the Mac is plugged in
+    EVENT_UNPLUGGED = 4;          // the Mac is unplugged
+    EVENT_WAKE = 5;               // it wakes, having slept at least minutes
+    EVENT_AWAY = 6;               // you've been away from it for minutes
+    EVENT_BACK = 7;               // you're back, after being away at least minutes (0: 10)
+    EVENT_DRIVE = 8;              // an external drive is connected (name: whose name has it)
+    EVENT_WIFI_JOINED = 9;        // it joins a Wi-Fi network (name: that one)
+    EVENT_WIFI_LEFT = 10;         // it leaves one (name: that one)
+    EVENT_APP_OPENED = 11;        // an app opens (name: its name or bundle id)
+    EVENT_APP_QUIT = 12;          // an app quits
+    EVENT_DISPLAY = 13;           // a display is connected (name: whose name has it)
+  }
+  Event event = 1;
+  string volume = 2;              // EVENT_DISK_LOW: its mount point ("": the startup disk)
+  int32 percent = 3;
+  int32 gigabytes = 4;            // EVENT_DISK_LOW, instead of percent
+  int32 minutes = 5;
+  string name = 6;
+}
+
+// The Mac app's view of what the daemon can't see (MacAppState).
+message MacAppState {
+  bool wifi_known = 1;            // it can tell the Wi-Fi network's name
+  bool location_denied = 2;       // it can't: Location Services is off for it
+  string wifi = 3;                // the network's name ("": none)
+  repeated MacApp apps = 4;       // the apps open (ones with a Dock icon)
+  repeated MacDisplay displays = 5;
+}
+message MacApp {
+  string name = 1;
+  string bundle_id = 2;
+}
+message MacDisplay {
+  string id = 1;                  // stays the same for a display (its serial, or its vendor and model)
+  string name = 2;
 }
 
 // A command run every every_minutes (in the schedule's folder, by the
@@ -2940,6 +3036,9 @@ message CalendarEvent {
   string location = 7;
   string url = 8;
   string notes = 9;               // the start of them
+  bool free = 10;                 // marked free, not busy
+  bool declined = 11;             // you declined it
+  bool tentative = 12;            // you said maybe
 }
 
 // description: an agent's reason, shown (as its words) with the request.

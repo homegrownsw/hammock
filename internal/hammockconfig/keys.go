@@ -260,6 +260,8 @@ var Keys = []Key{
 		Doc: "false: Hammock doesn't offer log panes, in its menus or to agents"},
 	{Name: "schedules-enabled", Group: "Tools", Value: "true", Default: "true",
 		Doc: "false: Hammock doesn't offer automations (scheduled and triggered tasks), in its menus or to agents, and doesn't run them"},
+	{Name: "working-hours", Group: "Tools", Value: "mon-fri 09:00-17:00", Default: "mon-fri 09:00-17:00",
+		Doc: "when automations' Free Time trigger may fire: days (weekdays, daily, or like mon,wed,fri) and hours", Only: "Mac"},
 	{Name: "sessions-enabled", Group: "Tools", Value: "true", Default: "true",
 		Doc: "false: agents can't search or read past agents' sessions"},
 

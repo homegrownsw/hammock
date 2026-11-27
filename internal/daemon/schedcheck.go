@@ -211,9 +211,11 @@ func (d *Daemon) checkDone(j checkJob, code int, why, output string, cutBefore b
 	prev := *st.Check
 	st.Check.Seen, st.Check.Failed, st.Check.Code, st.Check.Hash, st.Check.Out = true, failed, code, hash, kept
 	d.saveTrigState()
-	t.CheckedUnixMs = schedNow().UnixMilli()
-	c.LastResult = result
-	d.saveSchedule(s)
+	// Saved (and the apps told) when how it went changes, else now and then.
+	if due := d.noteChecked(t, schedNow()); due || c.LastResult != result {
+		c.LastResult = result
+		d.saveSchedule(s)
+	}
 	if !prev.Seen {
 		return // the first look: how things are
 	}

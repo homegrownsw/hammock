@@ -595,6 +595,7 @@ func (d *Daemon) Serve() error {
 	go d.watchGitHub()
 	go d.watchFiles()
 	go d.watchChecks()
+	go d.watchMac()
 	d.log.Info("listening", "socket", sock)
 	err = srv.Serve(httpLn)
 	if errors.Is(err, http.ErrServerClosed) {

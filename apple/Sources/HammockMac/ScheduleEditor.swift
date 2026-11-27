@@ -153,6 +153,7 @@ struct ScheduleEditor: View {
 
                 ScheduleTriggersSection(model: model, scheduleID: original.id, events: $draft.events, cooldown: Binding(get: { draft.cooldown }, set: { draft.cooldownSeconds = Int32($0) }),
                                         computerID: computer?.userID ?? "", isCommand: draft.kind == "command")
+                ScheduleOnlyIfSection(conditions: $draft.onlyIf, computerID: computer?.userID ?? "", model: model)
 
                 Section {
                     Picker("If still running", selection: $draft.overlap) {
@@ -351,6 +352,7 @@ struct ScheduleEditor: View {
             && (draft.timing != .repeat || when != .cron || !draft.cron.trimmingCharacters(in: .whitespaces).isEmpty)
             && (draft.timing != .events || !draft.events.isEmpty)
             && draft.events.allSatisfy { $0.missing.isEmpty }
+            && draft.onlyIf.allSatisfy { $0.missing.isEmpty }
     }
 
     /// "Next run: Tomorrow at 09:00", as the daemon will have it.

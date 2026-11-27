@@ -189,6 +189,11 @@ extension AppModel {
         _ = try await scheduleCall { $0.calendarEvents = events }
     }
 
+    /// What the Mac app sees, for This Mac triggers (MacWatcher).
+    public func sendMacAppState(_ state: Hammock_V1_MacAppState) async throws {
+        _ = try await scheduleCall { $0.macAppState = state }
+    }
+
     /// Skips its next run (skip false: runs it after all).
     public func skipNextRun(_ id: String, skip: Bool = true) async throws {
         _ = try await scheduleCall { $0.skipScheduleRun = .with { $0.scheduleID = id; $0.skip = skip } }
@@ -488,6 +493,10 @@ extension EventTrigger {
             case .merged: return "My pull request is merged" + repo
             case .commit: return "A new commit on " + (g.branch.isEmpty ? "the default branch" : g.branch) + repo
             case .release: return (g.tags.isEmpty ? "A new release or tag" : "A new release or tag matching \(g.tags)") + repo
+            case .issueOpened: return "A new issue is opened" + repo
+            case .approved: return "My pull request is approved" + repo
+            case .workflow: return "The “\(g.workflow)” workflow finishes" + repo
+            case .notification: return "I get a GitHub notification" + repo
             default: return "GitHub" + repo
             }
         case .agent(let a):
@@ -502,7 +511,12 @@ extension EventTrigger {
             if !f.folder.isEmpty { s += " in " + (f.folder as NSString).abbreviatingWithTildeInPath }
             return s
         case .calendar(let c):
-            var s = c.minutesBefore == 0 ? "At the start of events"
+            if c.when == .free {
+                let m = c.freeMinutes > 0 ? Int(c.freeMinutes) : 30
+                return "Free time of \(m == 1 ? "1 minute" : "\(m) minutes") or more begins in working hours" + (c.calendar.isEmpty ? "" : " (\(c.calendar))")
+            }
+            var s = c.when == .end ? "At the end of events"
+                : c.minutesBefore == 0 ? "At the start of events"
                 : c.minutesBefore == 1 ? "1 minute before events" : "\(c.minutesBefore) minutes before events"
             if !c.title.isEmpty { s += " titled “\(c.title)”" }
             if !c.calendar.isEmpty { s += " in \(c.calendar)" }
@@ -512,6 +526,8 @@ extension EventTrigger {
             return "Something calls its webhook URL"
         case .shortcut:
             return "Shortcuts runs it"
+        case .mac(let m):
+            return m.text
         case .check(let c):
             let what = switch c.on {
             case .change: "’s output changes"
@@ -590,8 +606,98 @@ extension EventTrigger {
         case .webhook: "link"
         case .shortcut: "square.2.layers.3d"
         case .check: "checkmark.seal"
+        case .mac(let m): m.symbol
         case nil: "bolt"
         }
+    }
+}
+
+/// A This Mac trigger (the daemon's macwatch.go).
+public typealias MacTrigger = Hammock_V1_MacTrigger
+/// An Only If condition (the daemon's schedonlyif.go).
+public typealias ScheduleCondition = Hammock_V1_Condition
+
+extension Hammock_V1_MacTrigger {
+    /// What fires it, in words (schedtrig's describeMac).
+    public var text: String {
+        func n(_ v: Int32, _ unit: String) -> String { v == 1 ? "1 \(unit)" : "\(v) \(unit)s" }
+        let disk = volume.isEmpty || volume == "/" ? "The startup disk" : (volume as NSString).abbreviatingWithTildeInPath
+        switch event {
+        case .diskLow:
+            return gigabytes > 0 ? "\(disk) has less than \(gigabytes) GB free" : "\(disk) has less than \(percent > 0 ? percent : 10)% free"
+        case .batteryLow: return "The battery falls below \(percent > 0 ? percent : 20)%"
+        case .pluggedIn: return "The Mac is plugged in"
+        case .unplugged: return "The Mac is unplugged"
+        case .wake: return minutes > 0 ? "The Mac wakes after sleeping \(n(minutes, "minute")) or more" : "The Mac wakes"
+        case .away: return "I’ve been away from the Mac for \(n(minutes > 0 ? minutes : 15, "minute"))"
+        case .back: return "I’m back at the Mac after \(n(minutes > 0 ? minutes : 10, "minute")) or more away"
+        case .drive: return name.isEmpty ? "A drive is connected" : "A drive named “\(name)” is connected"
+        case .wifiJoined: return name.isEmpty ? "The Mac joins a Wi-Fi network" : "The Mac joins the Wi-Fi “\(name)”"
+        case .wifiLeft: return name.isEmpty ? "The Mac leaves a Wi-Fi network" : "The Mac leaves the Wi-Fi “\(name)”"
+        case .appOpened: return "“\(name)” opens"
+        case .appQuit: return "“\(name)” quits"
+        case .display: return name.isEmpty ? "A display is connected" : "A display named “\(name)” is connected"
+        default: return "Something on this Mac"
+        }
+    }
+
+    /// The Mac app watches for it (the daemon can't): it fires only while the app is open.
+    public var appWatched: Bool {
+        switch event {
+        case .wifiJoined, .wifiLeft, .appOpened, .appQuit, .display: true
+        default: false
+        }
+    }
+
+    public var symbol: String {
+        switch event {
+        case .diskLow: "internaldrive"
+        case .batteryLow: "battery.25percent"
+        case .pluggedIn, .unplugged: "powerplug"
+        case .wake: "sun.horizon"
+        case .away, .back: "figure.walk"
+        case .drive: "externaldrive"
+        case .wifiJoined, .wifiLeft: "wifi"
+        case .appOpened, .appQuit: "app.badge"
+        case .display: "display"
+        default: "desktopcomputer"
+        }
+    }
+}
+
+extension Hammock_V1_Condition {
+    /// The condition in words, to follow "Only if" (schedtrig.DescribeCondition).
+    public var text: String {
+        switch kind {
+        case .power: return "the Mac is plugged in"
+        case .away: return minutes > 0 ? "I’ve been away for \(minutes == 1 ? "1 minute" : "\(minutes) minutes")" : "I’m away from the Mac"
+        case .wifi: return "on the Wi-Fi “\(wifi)”"
+        case .hours: return "between \(Self.hhmm(fromMinute)) and \(Self.hhmm(toMinute))"
+        case .days: return "on " + Self.daysWords(weekdays)
+        case .free: return "I’m not in a meeting"
+        case .disk: return "the startup disk has more than \(percent)% free"
+        default: return "an unknown condition"
+        }
+    }
+
+    /// "09:30" (24-hour, as the daemon writes it).
+    public static func hhmm(_ m: Int32) -> String { String(format: "%02d:%02d", m / 60, m % 60) }
+
+    /// "weekdays", "weekends", "every day", "Mon, Wed" (schedtrig.DaysWords).
+    public static func daysWords(_ days: [Int32]) -> String {
+        let set = Set(days)
+        if set.isEmpty || set.count == 7 { return "every day" }
+        if set == [1, 2, 3, 4, 5] { return "weekdays" }
+        if set == [0, 6] { return "weekends" }
+        let names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+        return [1, 2, 3, 4, 5, 6, 0].filter { set.contains($0) }.map { names[Int($0)] }.joined(separator: ", ")
+    }
+}
+
+extension Schedule {
+    /// Its Only If conditions in a line: "the Mac is plugged in and on weekdays" (nil: none).
+    public var onlyIfText: String? {
+        onlyIf.isEmpty ? nil : onlyIf.map(\.text).joined(separator: " and ")
     }
 }
 

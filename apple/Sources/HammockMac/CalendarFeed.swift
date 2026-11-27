@@ -40,7 +40,8 @@ final class CalendarFeed {
     private var wanted: Bool {
         guard let model else { return false }
         return model.schedules.values.contains { s in
-            (s.computerID.isEmpty || s.computerID == model.myUserID) && s.events.contains { if case .calendar = $0.kind { true } else { false } }
+            (s.computerID.isEmpty || s.computerID == model.myUserID)
+                && (s.events.contains { if case .calendar = $0.kind { true } else { false } } || s.onlyIf.contains { $0.kind == .free })
         }
     }
 
@@ -99,6 +100,13 @@ final class CalendarFeed {
         out.location = e.location ?? ""
         out.url = e.url?.absoluteString ?? ""
         out.notes = String((e.notes ?? "").prefix(2000))
+        // For free time, and Only If's "not in a meeting": what counts as busy.
+        out.free = e.availability == .free
+        switch e.attendees?.first(where: \.isCurrentUser)?.participantStatus {
+        case .declined: out.declined = true
+        case .tentative: out.tentative = true
+        default: break
+        }
         return out
     }
 }

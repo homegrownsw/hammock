@@ -1,4 +1,5 @@
 import AppKit
+import CoreWLAN
 import HammockKit
 import SwiftUI
 
@@ -49,12 +50,44 @@ struct ScheduleTriggersSection: View {
                         Button("Command Check…") { add(.check(.with { $0.everyMinutes = 5 })) }
                     }
                     if onThisMac {
+                        Section("This Mac") {
+                            Menu("Disk and Battery") {
+                                Button("Disk Space Is Low…") { add(.mac(.with { $0.event = .diskLow; $0.percent = 10 })) }
+                                Button("Battery Is Low…") { add(.mac(.with { $0.event = .batteryLow; $0.percent = 20 })) }
+                                Divider()
+                                Button("Mac Is Plugged In") { add(.mac(.with { $0.event = .pluggedIn })) }
+                                Button("Mac Is Unplugged") { add(.mac(.with { $0.event = .unplugged })) }
+                            }
+                            Menu("Away and Back") {
+                                Button("I’ve Been Away…") { add(.mac(.with { $0.event = .away; $0.minutes = 15 })) }
+                                Button("I’m Back…") { add(.mac(.with { $0.event = .back; $0.minutes = 10 })) }
+                                Button("Mac Wakes…") { add(.mac(.with { $0.event = .wake })) }
+                            }
+                            Menu("Apps Open or Quit") {
+                                Button("An App Opens…") { add(.mac(.with { $0.event = .appOpened })) }
+                                Button("An App Quits…") { add(.mac(.with { $0.event = .appQuit })) }
+                            }
+                            Menu("Drives and Displays") {
+                                Button("A Drive Is Connected…") { add(.mac(.with { $0.event = .drive })) }
+                                Button("A Display Is Connected…") { add(.mac(.with { $0.event = .display })) }
+                            }
+                            Menu("Wi-Fi") {
+                                Button("Mac Joins a Network…") {
+                                    add(.mac(.with { $0.event = .wifiJoined; $0.name = Self.currentWiFi }))
+                                    MacWatcher.shared.requestLocation()
+                                }
+                                Button("Mac Leaves a Network…") {
+                                    add(.mac(.with { $0.event = .wifiLeft; $0.name = Self.currentWiFi }))
+                                    MacWatcher.shared.requestLocation()
+                                }
+                            }
+                        }
                         Section("Time and Place") {
                             Menu("Calendar") {
-                                Button("Before an Event…") {
-                                    add(.calendar(.with { $0.minutesBefore = 10 }))
-                                    CalendarFeed.shared.requestAccess()
-                                }
+                                Button("Before an Event…") { addCalendar(.with { $0.minutesBefore = 10 }) }
+                                Button("When an Event Starts…") { addCalendar(.init()) }
+                                Button("When an Event Ends…") { addCalendar(.with { $0.when = .end }) }
+                                Button("When Free Time Begins…") { addCalendar(.with { $0.when = .free; $0.freeMinutes = 30 }) }
                             }
                         }
                     }
@@ -92,6 +125,8 @@ struct ScheduleTriggersSection: View {
         (.reviewed, "My Pull Request Gets a Review or Comment"), (.labeled, "An Issue or Pull Request Is Labelled…"),
         (.assigned, "Something Is Assigned to Me"), (.merged, "My Pull Request Is Merged"),
         (.commit, "A New Commit Is Pushed"), (.release, "A New Release or Tag"),
+        (.approved, "My Pull Request Is Approved"), (.issueOpened, "A New Issue Is Opened"),
+        (.workflow, "A Workflow Finishes…"), (.notification, "I Get a GitHub Notification"),
     ]
 
     private var cooldownChoices: [Int] {
@@ -107,6 +142,14 @@ struct ScheduleTriggersSection: View {
     private func add(_ kind: EventTrigger.OneOf_Kind) {
         events.append(.with { $0.kind = kind })
     }
+
+    private func addCalendar(_ c: Hammock_V1_CalendarTrigger) {
+        add(.calendar(c))
+        CalendarFeed.shared.requestAccess()
+    }
+
+    /// The Wi-Fi network this Mac is on, when the app may know it ("" if not).
+    static var currentWiFi: String { CWWiFiClient.shared().interface()?.ssid() ?? "" }
 }
 
 extension EventTrigger {
@@ -174,6 +217,7 @@ struct TriggerEditorRow: View {
                 case .labeled: TextField("Label", text: github(\.label), prompt: Text("needs triage"))
                 case .commit: TextField("Branch", text: github(\.branch), prompt: Text("The default branch"))
                 case .release: TextField("Tags", text: github(\.tags), prompt: Text("Any, or a pattern like v*"))
+                case .workflow: TextField("Workflow", text: github(\.workflow), prompt: Text("CI, or ci.yml"))
                 default: EmptyView()
                 }
                 TextField("Repository", text: github(\.watch), prompt: Text(githubFolderRepo.isEmpty ? "The folder’s, or owner/name" : githubFolderRepo))
@@ -228,13 +272,33 @@ struct TriggerEditorRow: View {
             }
         case .calendar:
             VStack(alignment: .leading, spacing: 4) {
-                Picker("Before", selection: calendar(\.minutesBefore)) {
-                    ForEach(minuteChoices, id: \.self) { m in Text(m == 0 ? "At the start" : "\(m) minutes before").tag(m) }
+                Picker("When", selection: calendar(\.when)) {
+                    Text("An event starts").tag(Hammock_V1_CalendarTrigger.When.start)
+                    Text("An event ends").tag(Hammock_V1_CalendarTrigger.When.end)
+                    Text("Free time begins").tag(Hammock_V1_CalendarTrigger.When.free)
                 }
-                TextField("Title has", text: calendar(\.title), prompt: Text("Any event"))
-                TextField("Calendar", text: calendar(\.calendar), prompt: Text("Any calendar"))
-                Toggle("Only events with other people", isOn: calendar(\.withAttendees))
+                switch calendar(\.when).wrappedValue {
+                case .free:
+                    Picker("Free for at least", selection: calendar(\.freeMinutes)) {
+                        ForEach(freeChoices, id: \.self) { m in Text(Schedule.durationText(minutes: Int(m))).tag(m) }
+                    }
+                    TextField("Calendar", text: calendar(\.calendar), prompt: Text("Any calendar"))
+                    Text("Within your working hours (Settings ▸ Tools).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                default:
+                    if calendar(\.when).wrappedValue == .start {
+                        Picker("Before", selection: calendar(\.minutesBefore)) {
+                            ForEach(minuteChoices, id: \.self) { m in Text(m == 0 ? "At the start" : "\(m) minutes before").tag(m) }
+                        }
+                    }
+                    TextField("Title has", text: calendar(\.title), prompt: Text("Any event"))
+                    TextField("Calendar", text: calendar(\.calendar), prompt: Text("Any calendar"))
+                    Toggle("Only events with other people", isOn: calendar(\.withAttendees))
+                }
             }
+        case .mac(let m):
+            MacTriggerFields(trigger: mac, event: m.event)
         case .webhook:
             VStack(alignment: .leading, spacing: 4) {
                 Text("Webhook")
@@ -297,6 +361,18 @@ struct TriggerEditorRow: View {
         let base: [Int32] = [0, 10, 30, 300, 900, 1800, 3600]
         let cur = check(\.timeoutSeconds).wrappedValue
         return base.contains(cur) ? base : (base + [cur]).sorted()
+    }
+
+    private var freeChoices: [Int32] {
+        let base: [Int32] = [15, 30, 45, 60, 90, 120]
+        let cur = calendar(\.freeMinutes).wrappedValue
+        return base.contains(cur) || cur <= 0 ? base : (base + [cur]).sorted()
+    }
+
+    /// The This Mac trigger, bound into the oneof.
+    private var mac: Binding<Hammock_V1_MacTrigger> {
+        Binding(get: { if case .mac(let m) = trigger.kind { return m }; return .init() },
+                set: { trigger.kind = .mac($0) })
     }
 
     private var minuteChoices: [Int32] {
@@ -436,7 +512,10 @@ extension EventTrigger {
     /// What still needs filling in before it can be saved ("" when nothing).
     var missing: String {
         switch kind {
-        case .github(let g): g.event == .labeled && g.label.trimmingCharacters(in: .whitespaces).isEmpty ? "Which label?" : ""
+        case .github(let g):
+            g.event == .labeled && g.label.trimmingCharacters(in: .whitespaces).isEmpty ? "Which label?"
+                : g.event == .workflow && g.workflow.trimmingCharacters(in: .whitespaces).isEmpty ? "Which workflow?" : ""
+        case .mac(let m): (m.event == .appOpened || m.event == .appQuit) && m.name.trimmingCharacters(in: .whitespaces).isEmpty ? "Which app?" : ""
         case .agent(let a): !a.finished && !a.needsYou ? "An agent trigger fires when it finishes, needs you, or both" : ""
         case .log(let l): l.paneID.isEmpty ? "Which log pane?" : l.pattern.trimmingCharacters(in: .whitespaces).isEmpty ? "What should the log line match?" : ""
         case .check(let c): c.command.trimmingCharacters(in: .whitespaces).isEmpty ? "Which command should the check run?" : ""
@@ -509,7 +588,10 @@ enum ScheduleSamples {
                     $0.firedUnixMs = ms(3 * 3600)
                     $0.held = "waiting for its cooldown, until 14:05"
                 },
+                .with { $0.id = "tr_s10"; $0.kind = .mac(.with { $0.event = .pluggedIn }); $0.firedUnixMs = ms(5 * 3600) },
+                .with { $0.id = "tr_s11"; $0.kind = .mac(.with { $0.event = .wifiJoined; $0.name = "Office" }) },
             ]
+            $0.onlyIf = [.with { $0.kind = .power }, .with { $0.kind = .hours; $0.fromMinute = 9 * 60; $0.toMinute = 18 * 60 }]
         }
         return [ci, prep, tests]
     }

@@ -87,6 +87,12 @@ type schedState struct {
 	filesWake chan struct{}            // look at files now (schedfiles.go)
 	checkWake chan struct{}            // see which command checks are due now (schedcheck.go)
 	checking  map[string]bool          // command check trigger id → one of its checks is running
+	mac       macState                 // what's known of this Mac (macwatch.go)
+	// checkSaved is when each trigger's last look was last saved and sent
+	// (a trigger that looks often is saved for that only now and then:
+	// noteChecked).
+	checkSaved map[string]int64
+	workHours  workHours // the config file's working-hours (schedcalendar.go)
 }
 
 // schedMaker is the agent that made a schedule: its pane, and which agent
@@ -142,8 +148,10 @@ func (d *Daemon) runSchedules() {
 	defer t.Stop()
 	for {
 		on := toolOn("schedules") // the config file: read outside d.mu
+		wh := configWorkHours()
 		d.mu.Lock()
 		d.sched.off = !on
+		d.sched.workHours = wh
 		d.sched.ready = true // (restored by now)
 		d.checkSchedules(schedTime())
 		d.mu.Unlock()
@@ -431,6 +439,18 @@ func (d *Daemon) startRunFor(s *pb.Schedule, due time.Time, manual bool, evs []*
 	if !due.IsZero() {
 		r.DueUnixMs = due.UnixMilli()
 		r.CatchUp = now.Sub(due) > lateAfter
+	}
+	// Only If: a run it starts by itself is skipped unless they all hold.
+	if !manual && len(s.OnlyIf) > 0 {
+		if why := d.onlyIfWhy(s, now); why != "" {
+			r.Status, r.Note, r.StartedUnixMs = pb.ScheduleRun_STATUS_SKIPPED, why, 0
+			d.noteRun(s, r)
+			if len(evs) > 0 {
+				d.noteHeld(s, evs, "its run was skipped ("+why+")")
+			}
+			d.audit("schedule:"+s.Id, "schedule-skip", s.Id, s.Name+": "+why)
+			return r, nil
+		}
 	}
 	var active []*pb.ScheduleRun
 	for _, x := range s.Runs {
@@ -837,6 +857,14 @@ func scheduleNotifies(s *pb.Schedule, ready bool) bool {
 
 // saveSchedule persists s and tells clients. Callers hold d.mu.
 func (d *Daemon) saveSchedule(s *pb.Schedule) {
+	if d.sched.checkSaved == nil {
+		d.sched.checkSaved = map[string]int64{}
+	}
+	for _, t := range s.Events {
+		if t.CheckedUnixMs > 0 {
+			d.sched.checkSaved[t.Id] = t.CheckedUnixMs // (what's sent now has it)
+		}
+	}
 	d.persist(d.store.PutRecord("schedule", s.Id, s))
 	d.publish(&pb.StateUpdate{Schedules: []*pb.Schedule{proto.CloneOf(s)}})
 }

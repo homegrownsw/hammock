@@ -16,7 +16,7 @@ Claude Code by default, or any agent with a tick in the Schedules column of [Sup
 Choose File ▸ New Automation… (⌥⇧⌘N), or right-click a tab in the sidebar and choose **Automate This…** to start from what it's doing. Besides the prompt or command and when to run it, the sheet sets:
 
 - **Folder**, where it runs, and **Group**, where its tabs open.
-- **Runs** on a schedule, once (at a date and time), or only on its triggers, and its **Triggers**.
+- **Runs** on a schedule, once (at a date and time), or only on its triggers, its **Triggers**, and **Only If**: [conditions](#only-if) a run must meet.
 - **If still running:** skip the new run (the default), stop the last one, or run both.
 - **Give up after** (agents): stop a run that's waited on you this long.
 - **Keep the last** few runs' tabs; older ones close, unless you've typed in them.
@@ -41,6 +41,7 @@ It runs in the current folder and Group unless you give `--dir` or `--group`. Qu
 | `--once 'YYYY-MM-DD HH:MM'` | Run once, then, instead of on a schedule. |
 | `--trigger T` | Run when something happens ([Triggers](#triggers)). Repeat it for more. Without `--at`, `--cron` or `--once`, it runs only on its triggers. |
 | `--check-cmd CMD` | Run when a [command check](#command-checks) starts failing. Repeat it for more. |
+| `--only-if C`, `--no-only-if` | Skip a run unless `C` holds ([Only If](#only-if)). Repeat it for more; drop them all. |
 | `--events-only`, `--no-triggers` | Run only on its triggers; drop its triggers. |
 | `--cooldown SECONDS` | The least time between runs its triggers start (60 by default; 0 for none; at most 30 days). |
 | `--claude`, `--codex`, `--AGENT` | Which agent runs it (Claude Code by default). `AGENT` is the agent's id, such as `--gemini` or `--cursor`. |
@@ -93,16 +94,35 @@ A trigger starts a run when something happens, as well as at the automation's ti
 | | `github:merged` | Your pull request is merged. |
 | | `github:commit`, `github:commit=BRANCH` | A new commit lands on the default branch, or on `BRANCH`. |
 | | `github:release`, `github:release=TAGS` | A new release or tag is published, or one whose tag matches `TAGS`, a pattern such as `v*`. |
+| | `github:approved` | Your pull request is approved. |
+| | `github:issue-opened` | Someone opens an issue. |
+| | `github:workflow=NAME` | A run of the Actions workflow `NAME` (its name, or its file's, such as `ci.yml`) finishes. |
+| | `github:notification` | You get a GitHub notification about the repository. |
 | Agent | `agent:finished`, `agent:needs-you`, `agent:finished,needs-you` | An agent finishes, or needs you. Add `@GROUP` or `@PANE` for one Group or pane. |
 | Command | `exit`, `exit@GROUP`, `exit@PANE` | A pane's command exits with an error. |
 | Log | `log:REGEX@PANE` | A line in a [log pane](/hammock/docs/panes/) matches. It ignores case unless the pattern has a capital. |
 | Files | `files`, `files:GLOB`, `files:GLOB@DIR` | Files change in the automation's folder (or `DIR`), once they've settled. `*.go` matches names anywhere; `src/**/*.ts` matches paths. In a git repository, what `.gitignore` leaves out isn't watched; elsewhere, `node_modules` and build folders aren't. |
-| Calendar | `calendar:MINUTES[,title=TEXT][,calendar=NAME][,attendees]` | Minutes before an event whose title contains the text, in that calendar, with other people. Mac only. |
+| Calendar | `calendar:MINUTES[,title=TEXT][,calendar=NAME][,attendees]` | Minutes before an event whose title contains the text, in that calendar, with other people (`calendar:0` as it starts). Mac only. |
+| | `calendar:end[,…]` | An event ends. |
+| | `calendar:free`, `calendar:free=MINUTES` | Free time of at least 30 minutes (or `MINUTES`) begins in your working hours: your last meeting before it ends. |
+| This Mac | `mac:disk<10%`, `mac:disk<50GB`, `mac:disk<10%@/Volumes/NAME` | The startup disk (or another) falls below that much free space. |
+| | `mac:battery<20%` | The battery falls below that. |
+| | `mac:plugged-in`, `mac:unplugged` | The Mac is plugged in, or unplugged. |
+| | `mac:wake`, `mac:wake=MINUTES` | The Mac wakes, after sleeping at least that long. |
+| | `mac:away=MINUTES`, `mac:back`, `mac:back=MINUTES` | You've been away from the Mac that long; you're back after at least 10 minutes (or `MINUTES`) away. |
+| | `mac:drive`, `mac:drive=NAME` | An external drive is connected (whose name has `NAME`). |
+| | `mac:wifi-joined[=NAME]`, `mac:wifi-left[=NAME]` | The Mac joins or leaves a Wi-Fi network (or that one). Needs the app open. |
+| | `mac:app-opened=NAME`, `mac:app-quit=NAME` | An app opens or quits: its name or bundle id. Needs the app open. |
+| | `mac:display`, `mac:display=NAME` | A display is connected. Needs the app open. |
 | Command check | `--check-cmd CMD` | A command run every few minutes starts failing, changes its output, or passes again ([Command checks](#command-checks)). |
 | Webhook | `webhook` | Its [webhook](#webhooks) is called. |
 | Shortcuts | `shortcut` | Shortcuts runs it ([From Shortcuts](#from-shortcuts)). Mac only. |
 
-GitHub triggers watch the folder's GitHub repository (`gh repo set-default`'s, else the `upstream` remote's, else `origin`'s), or another one named after `@` (`github:release=v*@acme/widgets`, or **Repository** in the app), with the [GitHub CLI](https://cli.github.com), every couple of minutes, so install `gh` and run `gh auth login` first. Calendar triggers read your calendars in the Hammock app, which asks for access the first time; runs still start while the app is closed, for events it has already read. Nothing that's already so when you add a trigger starts a run. Under each trigger in the automation's sheet (and in `hmk automation show`), a line says when it last checked and fired, or what's holding back a run it started, such as its cooldown. What happens in an automation's run, or in panes a run opened, never triggers an automation, so automations can't set each other off in a loop.
+GitHub triggers watch the folder's GitHub repository (`gh repo set-default`'s, else the `upstream` remote's, else `origin`'s), or another one named after `@` (`github:release=v*@acme/widgets`, or **Repository** in the app), with the [GitHub CLI](https://cli.github.com), every couple of minutes, so install `gh` and run `gh auth login` first. Calendar triggers read your calendars in the Hammock app, which asks for access the first time; runs still start while the app is closed, for events it has already read. Events you declined, said maybe to or marked free don't count as meetings for free time, and **Working hours** are in Settings ▸ Tools (`working-hours`).
+
+This Mac triggers work with the app closed, except Wi-Fi, apps and displays: the app watches those, so their row says **Needs Hammock open** when it isn't. To watch those with the app closed, use a [Shortcuts automation](#from-shortcuts) instead. Wi-Fi triggers need Location access, which the app asks for (macOS gives the network's name only to apps with it). Free space is what the Finder shows as available. A drive is one you connect, not a disk image or a Time Machine backup. You're away once the Mac is locked or hasn't been touched for 2 minutes, or you've used Hammock on your phone or another computer since. A disk or battery trigger fires once as it falls below its mark, and again only after it's been back above it.
+
+Nothing that's already so when you add a trigger starts a run. Under each trigger in the automation's sheet (and in `hmk automation show`), a line says when it last checked and fired, or what's holding back a run it started, such as its cooldown. What happens in an automation's run, or in panes a run opened, never triggers an automation, so automations can't set each other off in a loop.
 
 ### What the run gets
 
@@ -140,6 +160,27 @@ What a trigger passes on is written by other people: a pull request's title, a c
 ### Bursts
 
 Runs started by triggers are at least a minute apart, or the automation's **At most every**: up to a month, or no limit. Events in between wait, and start one run together, which gets all of them. When the automation skips runs while one is going, they wait for it to end instead.
+
+### Only If
+
+Conditions a run must meet: one the automation starts itself (at its times, or on a trigger) is skipped unless they all hold, and its record says which didn't, such as **Only if: not plugged in**. **Run Now** always runs. In the app, add them with **Add Condition** under **Only If**; with `hmk`, `--only-if`:
+
+| Condition | Holds when |
+|---|---|
+| `power` | The Mac is plugged in. |
+| `away`, `away=MINUTES` | You're away from the Mac (for that long). |
+| `wifi=NAME` | The Mac is on that Wi-Fi network. Only while the app is open. |
+| `hours=HH:MM-HH:MM` | It's between those times (`22:00-06:00` runs through midnight). |
+| `days=weekdays`, `days=mon,wed` | It's one of those days. |
+| `free` | You're not in a meeting, as your calendars say. |
+| `disk>N%` | The startup disk has more than that free. |
+
+```sh
+hmk automation add "Big build" --trigger mac:away=20 --only-if power --only-if hours=09:00-18:00 \
+  --command -- 'make release'
+```
+
+An automation with This Mac triggers or Only If can't be added on a linked computer with an older Hammock: update it first.
 
 ### Command checks
 

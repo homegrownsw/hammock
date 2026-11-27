@@ -62,6 +62,9 @@ options:
     --check-every MINUTES                   how often (default 5, at least 1)
     --check-on fail|change|recover          it starts failing (default), its output changes, it passes again
     --check-timeout SECONDS                 stop it after this long, as failing (default 60)
+  --only-if C (repeatable)                  a run it starts itself is skipped unless C holds, C one of:
+                                              ` + schedtrig.ConditionUsage + `
+  --no-only-if                              drop its Only If conditions
   --events-only                             run only on its triggers (and Run Now)
   --no-triggers                             drop its triggers
   --cooldown SECONDS                        runs its triggers start are this far apart (default 60, at most 30 days)
@@ -297,6 +300,15 @@ func scheduleFlags(w *world, s *pb.Schedule, args []string, adding bool) error {
 					}
 				}
 			}
+		case "--only-if":
+			if v, err = val(); err == nil {
+				var c *pb.Condition
+				if c, err = schedtrig.ParseCondition(v); err == nil {
+					s.OnlyIf = append(s.OnlyIf, c)
+				}
+			}
+		case "--no-only-if":
+			s.OnlyIf = nil
 		case "--no-triggers":
 			s.Events = nil
 			if s.Timing == pb.Schedule_TIMING_EVENTS {
@@ -617,6 +629,9 @@ func printSchedule(w *world, s *pb.Schedule) {
 	}
 	if len(s.Events) > 0 {
 		printfSafe("  cooldown %s\n", schedtrig.CooldownWords(schedtrig.Cooldown(s)))
+	}
+	for _, c := range s.OnlyIf {
+		printfSafe("  only if  %s  (%s)\n", schedtrig.DescribeCondition(c), schedtrig.SpecCondition(c))
 	}
 	printfSafe("  group    %s\n", cmpOr(s.GroupName, s.GroupId))
 	if c := w.scheduleComputer(s.ComputerId); c != "" {

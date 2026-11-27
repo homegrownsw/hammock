@@ -1242,6 +1242,11 @@ func (d *Daemon) routeFor(c *conn, msg *pb.ClientMessage) (*peerLink, error) {
 		if !l.online {
 			return nil, fmt.Errorf("%s is offline", strings.TrimSuffix(l.tok.HostName, ".local"))
 		}
+		if m, ok := msg.Msg.(*pb.ClientMessage_SaveSchedule); ok {
+			if err := d.peerCanSave(cid, m.SaveSchedule.Schedule); err != nil {
+				return nil, err
+			}
+		}
 		return l, nil
 	}
 	id := msgTarget(msg)
@@ -1262,9 +1267,13 @@ func (d *Daemon) routeFor(c *conn, msg *pb.ClientMessage) (*peerLink, error) {
 				return nil, fmt.Errorf("%s is offline", strings.TrimSuffix(l.tok.HostName, ".local"))
 			}
 		}
-		switch msg.Msg.(type) {
+		switch m := msg.Msg.(type) {
 		case *pb.ClientMessage_CreateInvite, *pb.ClientMessage_StopSharing:
 			return nil, errors.New("share it from the computer it's on")
+		case *pb.ClientMessage_SaveSchedule:
+			if err := d.peerCanSave(l.tok.HostUserId, m.SaveSchedule.Schedule); err != nil {
+				return nil, err
+			}
 		}
 		return l, nil
 	}

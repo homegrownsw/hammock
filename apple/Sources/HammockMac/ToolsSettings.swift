@@ -107,9 +107,67 @@ struct ToolsSettings: View {
                 Toggle("Show what agents do in browsers and simulators", isOn: Prefs.shared.boolBinding(.agentPresence))
                     .settingAnchor("tools.agentpresence")
             }
+            Section("Automations") {
+                WorkingHoursRow().settingAnchor("tools.workinghours")
+            }
         }
         .formStyle(.grouped)
         .settingsScrollTarget()
+    }
+}
+
+/// Working hours (the config file's working-hours, "[DAYS ]HH:MM-HH:MM"):
+/// when automations' Free Time trigger may fire.
+private struct WorkingHoursRow: View {
+    private var value: Binding<String> { Prefs.shared.stringBinding(.workingHours) }
+
+    /// Its parts: days as written ("mon-fri"), and from and to (minutes).
+    private var parts: (days: String, from: Int, to: Int) {
+        let v = value.wrappedValue.trimmingCharacters(in: .whitespaces)
+        var days = "mon-fri", hours = v
+        if let sp = v.lastIndex(of: " ") {
+            days = String(v[..<sp]).trimmingCharacters(in: .whitespaces)
+            hours = String(v[v.index(after: sp)...])
+        }
+        let hm = hours.split(separator: "-").map { p -> Int? in
+            let c = p.split(separator: ":").compactMap { Int($0) }
+            return c.count == 2 ? c[0] * 60 + c[1] : nil
+        }
+        guard hm.count == 2, let f = hm[0], let t = hm[1] else { return (days, 9 * 60, 17 * 60) }
+        return (days, f, t)
+    }
+
+    private func set(days: String? = nil, from: Int? = nil, to: Int? = nil) {
+        let p = parts
+        let f = from ?? p.from, t = to ?? p.to
+        value.wrappedValue = "\(days ?? p.days) " + String(format: "%02d:%02d-%02d:%02d", f / 60, f % 60, t / 60, t % 60)
+    }
+
+    private func time(_ m: Int, _ set: @escaping (Int) -> Void) -> Binding<Date> {
+        Binding(get: { Calendar.current.date(bySettingHour: m / 60, minute: m % 60, second: 0, of: Date()) ?? Date() },
+                set: { d in
+                    let c = Calendar.current.dateComponents([.hour, .minute], from: d)
+                    set((c.hour ?? 0) * 60 + (c.minute ?? 0))
+                })
+    }
+
+    var body: some View {
+        LabeledContent("Working hours") {
+            HStack {
+                Picker("Days", selection: Binding(get: { parts.days }, set: { set(days: $0) })) {
+                    Text("Weekdays").tag("mon-fri")
+                    Text("Every day").tag("daily")
+                    if !["mon-fri", "daily"].contains(parts.days) { Text(parts.days).tag(parts.days) }
+                }
+                .labelsHidden()
+                .fixedSize()
+                DatePicker("From", selection: time(parts.from) { set(from: $0) }, displayedComponents: .hourAndMinute)
+                    .labelsHidden()
+                Text("to")
+                DatePicker("To", selection: time(parts.to) { set(to: $0) }, displayedComponents: .hourAndMinute)
+                    .labelsHidden()
+            }
+        }
     }
 }
 

@@ -79,9 +79,12 @@ import com.homegrownsw.hammock.client.AgentCatalog
 import com.homegrownsw.hammock.client.AppModel
 import com.homegrownsw.hammock.client.Workspace
 import hammock.v1.Hammock
+import hammock.v1.Hammock.CalendarTrigger
 import hammock.v1.Hammock.CommandCheckTrigger
+import hammock.v1.Hammock.Condition
 import hammock.v1.Hammock.EventTrigger
 import hammock.v1.Hammock.GitHubTrigger
+import hammock.v1.Hammock.MacTrigger
 import hammock.v1.Hammock.Schedule
 import hammock.v1.Hammock.ScheduleRun
 import hammock.v1.Hammock.ScheduleRun.Status
@@ -221,6 +224,10 @@ object ScheduleWords {
                     GitHubTrigger.Event.EVENT_MERGED -> "My pull request is merged"
                     GitHubTrigger.Event.EVENT_COMMIT -> "A new commit on " + g.branch.ifEmpty { "the default branch" }
                     GitHubTrigger.Event.EVENT_RELEASE -> if (g.tags.isEmpty()) "A new release or tag" else "A new release or tag matching ${g.tags}"
+                    GitHubTrigger.Event.EVENT_ISSUE_OPENED -> "A new issue is opened"
+                    GitHubTrigger.Event.EVENT_APPROVED -> "My pull request is approved"
+                    GitHubTrigger.Event.EVENT_WORKFLOW -> "The “${g.workflow}” workflow finishes"
+                    GitHubTrigger.Event.EVENT_NOTIFICATION -> "I get a GitHub notification"
                     else -> "GitHub"
                 } + repo
             }
@@ -239,9 +246,15 @@ object ScheduleWords {
             }
             EventTrigger.KindCase.CALENDAR -> {
                 val c = t.calendar
-                var out = when (c.minutesBefore) {
-                    0 -> "At the start of events"
-                    1 -> "1 minute before events"
+                if (c.`when` == CalendarTrigger.When.WHEN_FREE) {
+                    val m = if (c.freeMinutes > 0) c.freeMinutes else 30
+                    return "Free time of " + (if (m == 1) "1 minute" else "$m minutes") + " or more begins in working hours" +
+                        if (c.calendar.isEmpty()) "" else " (${c.calendar})"
+                }
+                var out = when {
+                    c.`when` == CalendarTrigger.When.WHEN_END -> "At the end of events"
+                    c.minutesBefore == 0 -> "At the start of events"
+                    c.minutesBefore == 1 -> "1 minute before events"
                     else -> "${c.minutesBefore} minutes before events"
                 }
                 if (c.title.isNotEmpty()) out += " titled “${c.title}”"
@@ -251,6 +264,7 @@ object ScheduleWords {
             }
             EventTrigger.KindCase.WEBHOOK -> "Something calls its webhook URL"
             EventTrigger.KindCase.SHORTCUT -> "Shortcuts runs it"
+            EventTrigger.KindCase.MAC -> mac(t.mac)
             EventTrigger.KindCase.CHECK -> {
                 val c = t.check
                 val what = when (c.on) {
@@ -262,6 +276,56 @@ object ScheduleWords {
             }
             else -> "An unknown event"
         }
+    }
+
+    /** A This Mac trigger in words (schedtrig's describeMac). */
+    fun mac(m: MacTrigger): String {
+        fun n(v: Int, unit: String) = if (v == 1) "1 $unit" else "$v ${unit}s"
+        val disk = if (m.volume.isEmpty() || m.volume == "/") "The startup disk" else m.volume.replace(Regex("^/(Users|home)/[^/]+"), "~")
+        return when (m.event) {
+            MacTrigger.Event.EVENT_DISK_LOW -> if (m.gigabytes > 0) "$disk has less than ${m.gigabytes} GB free"
+                else "$disk has less than ${if (m.percent > 0) m.percent else 10}% free"
+            MacTrigger.Event.EVENT_BATTERY_LOW -> "The battery falls below ${if (m.percent > 0) m.percent else 20}%"
+            MacTrigger.Event.EVENT_PLUGGED_IN -> "The Mac is plugged in"
+            MacTrigger.Event.EVENT_UNPLUGGED -> "The Mac is unplugged"
+            MacTrigger.Event.EVENT_WAKE -> if (m.minutes > 0) "The Mac wakes after sleeping ${n(m.minutes, "minute")} or more" else "The Mac wakes"
+            MacTrigger.Event.EVENT_AWAY -> "I’ve been away from the Mac for ${n(if (m.minutes > 0) m.minutes else 15, "minute")}"
+            MacTrigger.Event.EVENT_BACK -> "I’m back at the Mac after ${n(if (m.minutes > 0) m.minutes else 10, "minute")} or more away"
+            MacTrigger.Event.EVENT_DRIVE -> if (m.name.isEmpty()) "A drive is connected" else "A drive named “${m.name}” is connected"
+            MacTrigger.Event.EVENT_WIFI_JOINED -> if (m.name.isEmpty()) "The Mac joins a Wi-Fi network" else "The Mac joins the Wi-Fi “${m.name}”"
+            MacTrigger.Event.EVENT_WIFI_LEFT -> if (m.name.isEmpty()) "The Mac leaves a Wi-Fi network" else "The Mac leaves the Wi-Fi “${m.name}”"
+            MacTrigger.Event.EVENT_APP_OPENED -> "“${m.name}” opens"
+            MacTrigger.Event.EVENT_APP_QUIT -> "“${m.name}” quits"
+            MacTrigger.Event.EVENT_DISPLAY -> if (m.name.isEmpty()) "A display is connected" else "A display named “${m.name}” is connected"
+            else -> "Something on this Mac"
+        }
+    }
+
+    /** An Only If condition in words, to follow "Only if" (schedtrig.DescribeCondition). */
+    fun condition(c: Condition): String = when (c.kind) {
+        Condition.Kind.KIND_POWER -> "the Mac is plugged in"
+        Condition.Kind.KIND_AWAY -> if (c.minutes > 0) "I’ve been away for " + (if (c.minutes == 1) "1 minute" else "${c.minutes} minutes") else "I’m away from the Mac"
+        Condition.Kind.KIND_WIFI -> "on the Wi-Fi “${c.wifi}”"
+        Condition.Kind.KIND_HOURS -> "between ${hhmm(c.fromMinute)} and ${hhmm(c.toMinute)}"
+        Condition.Kind.KIND_DAYS -> "on " + daysWords(c.weekdaysList)
+        Condition.Kind.KIND_FREE -> "I’m not in a meeting"
+        Condition.Kind.KIND_DISK -> "the startup disk has more than ${c.percent}% free"
+        else -> "an unknown condition"
+    }
+
+    /** All of a schedule's Only If conditions in a line ("" for none). */
+    fun onlyIf(s: Schedule): String = s.onlyIfList.joinToString(" and ") { condition(it) }
+
+    private fun hhmm(m: Int) = String.format(Locale.ROOT, "%02d:%02d", m / 60, m % 60)
+
+    /** "weekdays", "weekends", "every day", "Mon, Wed" (schedtrig.DaysWords). */
+    private fun daysWords(days: List<Int>): String {
+        val set = days.toSet()
+        if (set.isEmpty() || set.size == 7) return "every day"
+        if (set == setOf(1, 2, 3, 4, 5)) return "weekdays"
+        if (set == setOf(0, 6)) return "weekends"
+        val names = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+        return listOf(1, 2, 3, 4, 5, 6, 0).filter { it in set }.joinToString(", ") { names[it] }
     }
 
     /** How often, in minutes: "every minute", "every 5 minutes", "every hour", "every 2 days" (schedtrig.EveryWords). */
@@ -719,6 +783,7 @@ fun ScheduleScreen(model: AppModel, id: String, nav: Nav, showBack: Boolean) {
                         add(Triple("Folder", s.cwd.replace(Regex("^/(Users|home)/[^/]+"), "~"), true))
                         add(Triple("Group", ScheduleWords.group(w, s), false))
                         if (s.kind == "claude" && s.allowedToolsCount > 0) add(Triple("Always Allowed", s.allowedToolsList.joinToString(", "), false))
+                        ScheduleWords.onlyIf(s).takeIf { it.isNotEmpty() }?.let { add(Triple("Only If", it.replaceFirstChar { c -> c.uppercase() }, false)) }
                         add(Triple("Made By", s.createdBy.ifEmpty { "You" } + if (s.createdUnixMs > 0) " · " + ScheduleWords.date(s.createdUnixMs, now, ctx) else "", false))
                     }
                     rows.forEachIndexed { i, (label, value, mono) ->

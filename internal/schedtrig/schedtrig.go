@@ -6,12 +6,18 @@
 //
 //	github:ci-failed | github:review-requested | github:reviewed |
 //	github:label=NAME | github:assigned | github:merged |
-//	github:commit[=BRANCH] | github:release[=TAGS]  [@OWNER/NAME: another repository]
+//	github:commit[=BRANCH] | github:release[=TAGS] | github:issue-opened |
+//	github:approved | github:workflow=NAME | github:notification
+//	                                    [@OWNER/NAME: another repository]
 //	agent:finished | agent:needs-you | agent:finished,needs-you  [@GROUP|PANE]
 //	exit  [@GROUP|PANE]                 a pane's command exits non-zero
 //	log:REGEX@PANE                      a log pane's line matches
 //	files[:GLOB][@DIR]                  files change (DIR: the task's folder)
-//	calendar:MINUTES[,title=TEXT][,calendar=NAME][,attendees]
+//	calendar:MINUTES|start|end|free[=MINUTES][,title=TEXT][,calendar=NAME][,attendees]
+//	mac:disk<N%|disk<NGB[@VOLUME] | mac:battery<N% | mac:plugged-in |
+//	mac:unplugged | mac:wake[=MIN] | mac:away=MIN | mac:back[=MIN] |
+//	mac:drive[=NAME] | mac:wifi-joined[=NAME] | mac:wifi-left[=NAME] |
+//	mac:app-opened=NAME | mac:app-quit=NAME | mac:display[=NAME]   (mac.go)
 //	webhook
 //	shortcut                            Shortcuts' Run Hammock Automation (Mac)
 //
@@ -35,9 +41,13 @@ import (
 )
 
 // Usage lists the forms Parse reads, for usage texts.
-const Usage = `github:ci-failed|review-requested|reviewed|label=NAME|assigned|merged|commit[=BRANCH]|release[=TAGS][@OWNER/NAME]
-agent:finished|needs-you[,…][@GROUP|PANE]   exit[@GROUP|PANE]   log:REGEX@PANE
-files[:GLOB][@DIR]   calendar:MINUTES[,title=TEXT][,calendar=NAME][,attendees]   webhook   shortcut`
+const Usage = `github:ci-failed|review-requested|reviewed|approved|label=NAME|assigned|merged|issue-opened|
+  commit[=BRANCH]|release[=TAGS]|workflow=NAME|notification[@OWNER/NAME]
+agent:finished|needs-you[,…][@GROUP|PANE]   exit[@GROUP|PANE]   log:REGEX@PANE   files[:GLOB][@DIR]
+calendar:MINUTES|end|free[=MINUTES][,title=TEXT][,calendar=NAME][,attendees]
+mac:disk<10%|disk<50GB[@VOLUME]|battery<20%|plugged-in|unplugged|wake[=MIN]|away=MIN|back[=MIN]|
+  drive[=NAME]|wifi-joined[=NAME]|wifi-left[=NAME]|app-opened=NAME|app-quit=NAME|display[=NAME]
+webhook   shortcut`
 
 // Resolver finds the pane or Group ref names (an id, a name, an index), for
 // a trigger that may be in either (groups) or a pane only.
@@ -48,6 +58,8 @@ var githubEvents = map[string]pb.GitHubTrigger_Event{
 	"reviewed": pb.GitHubTrigger_EVENT_REVIEWED, "label": pb.GitHubTrigger_EVENT_LABELED,
 	"assigned": pb.GitHubTrigger_EVENT_ASSIGNED, "merged": pb.GitHubTrigger_EVENT_MERGED,
 	"commit": pb.GitHubTrigger_EVENT_COMMIT, "release": pb.GitHubTrigger_EVENT_RELEASE,
+	"issue-opened": pb.GitHubTrigger_EVENT_ISSUE_OPENED, "approved": pb.GitHubTrigger_EVENT_APPROVED,
+	"workflow": pb.GitHubTrigger_EVENT_WORKFLOW, "notification": pb.GitHubTrigger_EVENT_NOTIFICATION,
 }
 
 var githubRepoRE = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/[A-Za-z0-9._-]{1,100}$`)
@@ -136,7 +148,7 @@ func Parse(spec string, resolve Resolver) (*pb.EventTrigger, error) {
 		val = strings.TrimSpace(val)
 		e, ok := githubEvents[strings.ToLower(ev)]
 		if !ok {
-			return nil, fmt.Errorf("%q: github:ci-failed, review-requested, reviewed, label=NAME, assigned, merged, commit[=BRANCH] or release[=TAGS], then @OWNER/NAME for another repository", spec)
+			return nil, fmt.Errorf("%q: github:ci-failed, review-requested, reviewed, approved, label=NAME, assigned, merged, issue-opened, commit[=BRANCH], release[=TAGS], workflow=NAME or notification, then @OWNER/NAME for another repository", spec)
 		}
 		g := &pb.GitHubTrigger{Event: e, Watch: watch}
 		switch e {
@@ -152,6 +164,11 @@ func Parse(spec string, resolve Resolver) (*pb.EventTrigger, error) {
 				return nil, err
 			}
 			g.Tags = val
+		case pb.GitHubTrigger_EVENT_WORKFLOW:
+			if val == "" {
+				return nil, errors.New("github:workflow=NAME: which workflow (its name, or its file's, like ci.yml)?")
+			}
+			g.Workflow = val
 		}
 		return &pb.EventTrigger{Kind: &pb.EventTrigger_Github{Github: g}}, nil
 	case "agent":
@@ -211,10 +228,22 @@ func Parse(spec string, resolve Resolver) (*pb.EventTrigger, error) {
 			w = strings.TrimSpace(w)
 			k, v, _ := strings.Cut(w, "=")
 			switch {
+			case i == 0 && (w == "start" || w == "starts"):
+			case i == 0 && (w == "end" || w == "ends"):
+				c.When = pb.CalendarTrigger_WHEN_END
+			case i == 0 && k == "free":
+				c.When = pb.CalendarTrigger_WHEN_FREE
+				if v != "" {
+					n, err := strconv.Atoi(strings.TrimSuffix(strings.TrimSuffix(v, "m"), "min"))
+					if err != nil || n < 1 || n > 24*60 {
+						return nil, fmt.Errorf("%q: calendar:free=MINUTES (free for at least that long, 1 to 1440)", spec)
+					}
+					c.FreeMinutes = int32(n)
+				}
 			case i == 0:
 				n, err := strconv.Atoi(strings.TrimSuffix(strings.TrimSuffix(w, "m"), "min"))
 				if err != nil || n < 0 || n > 24*60 {
-					return nil, fmt.Errorf("%q: calendar:MINUTES (before the event, 0 to 1440)", spec)
+					return nil, fmt.Errorf("%q: calendar:MINUTES (before the event, 0 to 1440), calendar:end or calendar:free", spec)
 				}
 				c.MinutesBefore = int32(n)
 			case k == "title":
@@ -224,7 +253,7 @@ func Parse(spec string, resolve Resolver) (*pb.EventTrigger, error) {
 			case w == "attendees" || w == "with-attendees":
 				c.WithAttendees = true
 			default:
-				return nil, fmt.Errorf("%q: calendar:MINUTES[,title=TEXT][,calendar=NAME][,attendees]", spec)
+				return nil, fmt.Errorf("%q: calendar:MINUTES|end|free[=MINUTES][,title=TEXT][,calendar=NAME][,attendees]", spec)
 			}
 		}
 		return &pb.EventTrigger{Kind: &pb.EventTrigger_Calendar{Calendar: c}}, nil
@@ -232,6 +261,12 @@ func Parse(spec string, resolve Resolver) (*pb.EventTrigger, error) {
 		return &pb.EventTrigger{Kind: &pb.EventTrigger_Webhook{Webhook: &pb.WebhookTrigger{}}}, nil
 	case "shortcut", "shortcuts":
 		return &pb.EventTrigger{Kind: &pb.EventTrigger_Shortcut{Shortcut: &pb.ShortcutTrigger{}}}, nil
+	case "mac", "this-mac":
+		m, err := parseMac(spec, rest)
+		if err != nil {
+			return nil, err
+		}
+		return &pb.EventTrigger{Kind: &pb.EventTrigger_Mac{Mac: m}}, nil
 	case "check", "command-check":
 		return nil, errors.New("a command check is given with its own options: --check-cmd COMMAND [--check-every MINUTES] [--check-on fail|change|recover] [--check-timeout SECONDS]")
 	}
@@ -291,6 +326,14 @@ func Describe(t *pb.EventTrigger, names Names) string {
 				return "A new release or tag matching " + g.Tags + in
 			}
 			return "A new release or tag" + in
+		case pb.GitHubTrigger_EVENT_ISSUE_OPENED:
+			return "A new issue is opened" + in
+		case pb.GitHubTrigger_EVENT_APPROVED:
+			return "My pull request is approved" + in
+		case pb.GitHubTrigger_EVENT_WORKFLOW:
+			return "The “" + g.Workflow + "” workflow finishes" + in
+		case pb.GitHubTrigger_EVENT_NOTIFICATION:
+			return "I get a GitHub notification" + in
 		}
 		return "GitHub" + in
 	case *pb.EventTrigger_Agent:
@@ -320,9 +363,18 @@ func Describe(t *pb.EventTrigger, names Names) string {
 	case *pb.EventTrigger_Calendar:
 		c := k.Calendar
 		out := fmt.Sprintf("%d minutes before ", c.MinutesBefore)
-		if c.MinutesBefore == 0 {
+		switch {
+		case c.When == pb.CalendarTrigger_WHEN_END:
+			out = "At the end of "
+		case c.When == pb.CalendarTrigger_WHEN_FREE:
+			out = "Free time of " + plural(FreeMinutes(c), "minute") + " or more begins in working hours"
+			if c.Calendar != "" {
+				out += " (" + c.Calendar + ")"
+			}
+			return out
+		case c.MinutesBefore == 0:
 			out = "At the start of "
-		} else if c.MinutesBefore == 1 {
+		case c.MinutesBefore == 1:
 			out = "1 minute before "
 		}
 		out += "events"
@@ -340,6 +392,8 @@ func Describe(t *pb.EventTrigger, names Names) string {
 		return "Something calls its webhook URL"
 	case *pb.EventTrigger_Shortcut:
 		return "Shortcuts runs it"
+	case *pb.EventTrigger_Mac:
+		return describeMac(k.Mac)
 	case *pb.EventTrigger_Check:
 		c := k.Check
 		what := " starts failing"
@@ -373,6 +427,8 @@ func Spec(t *pb.EventTrigger) string {
 			s += "=" + g.Branch
 		case g.Event == pb.GitHubTrigger_EVENT_RELEASE && g.Tags != "":
 			s += "=" + g.Tags
+		case g.Event == pb.GitHubTrigger_EVENT_WORKFLOW:
+			s += "=" + g.Workflow
 		}
 		if g.Watch != "" {
 			s += "@" + g.Watch
@@ -403,6 +459,15 @@ func Spec(t *pb.EventTrigger) string {
 	case *pb.EventTrigger_Calendar:
 		c := k.Calendar
 		s := "calendar:" + strconv.Itoa(int(c.MinutesBefore))
+		switch c.When {
+		case pb.CalendarTrigger_WHEN_END:
+			s = "calendar:end"
+		case pb.CalendarTrigger_WHEN_FREE:
+			s = "calendar:free"
+			if c.FreeMinutes > 0 {
+				s += "=" + strconv.Itoa(int(c.FreeMinutes))
+			}
+		}
 		if c.Title != "" {
 			s += ",title=" + c.Title
 		}
@@ -417,6 +482,8 @@ func Spec(t *pb.EventTrigger) string {
 		return "webhook"
 	case *pb.EventTrigger_Shortcut:
 		return "shortcut"
+	case *pb.EventTrigger_Mac:
+		return specMac(k.Mac)
 	case *pb.EventTrigger_Check:
 		return CheckFlags(k.Check)
 	}
@@ -578,7 +645,7 @@ func When(at, now time.Time) string {
 }
 
 // Kind is t's kind's word: "github", "agent", "exit", "log", "files",
-// "calendar", "webhook", "shortcut" or "check".
+// "calendar", "webhook", "shortcut", "check" or "mac".
 func Kind(t *pb.EventTrigger) string {
 	switch t.GetKind().(type) {
 	case *pb.EventTrigger_Github:
@@ -599,8 +666,18 @@ func Kind(t *pb.EventTrigger) string {
 		return "shortcut"
 	case *pb.EventTrigger_Check:
 		return "check"
+	case *pb.EventTrigger_Mac:
+		return "mac"
 	}
 	return ""
+}
+
+// FreeMinutes is how long free time must be for a calendar free trigger.
+func FreeMinutes(c *pb.CalendarTrigger) int {
+	if c.GetFreeMinutes() <= 0 {
+		return 30
+	}
+	return int(c.GetFreeMinutes())
 }
 
 // CompileLog compiles a log trigger's pattern: case-insensitive unless it

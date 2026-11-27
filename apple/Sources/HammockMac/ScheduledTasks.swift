@@ -482,6 +482,9 @@ struct ScheduleDetail: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
+            if let only = schedule.onlyIfText {
+                row("Only if", only.prefix(1).uppercased() + only.dropFirst())
+            }
             row(schedule.kind == "command" ? "Command" : "Prompt", schedule.prompt, mono: schedule.kind == "command", lines: 3)
             row("Folder", GroupFolder.tilde(schedule.cwd), mono: true)
             row("If still running", ScheduleText.overlap(schedule.overlap))

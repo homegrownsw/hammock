@@ -1,7 +1,12 @@
 package com.homegrownsw.hammock.ui
 
+import hammock.v1.Hammock.CalendarTrigger
 import hammock.v1.Hammock.CommandCheckTrigger
+import hammock.v1.Hammock.Condition
 import hammock.v1.Hammock.EventTrigger
+import hammock.v1.Hammock.GitHubTrigger
+import hammock.v1.Hammock.MacTrigger
+import hammock.v1.Hammock.Schedule
 import hammock.v1.Hammock.ShortcutTrigger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -27,6 +32,39 @@ class TriggerWordsTest {
 
     @Test fun shortcuts() {
         assertEquals("Shortcuts runs it", ScheduleWords.trigger(EventTrigger.newBuilder().setShortcut(ShortcutTrigger.getDefaultInstance()).build(), null))
+    }
+
+    private fun mac(b: MacTrigger.Builder) = ScheduleWords.trigger(EventTrigger.newBuilder().setMac(b).build(), null)
+
+    @Test fun thisMac() {
+        assertEquals("The startup disk has less than 10% free", mac(MacTrigger.newBuilder().setEvent(MacTrigger.Event.EVENT_DISK_LOW).setPercent(10)))
+        assertEquals("/Volumes/Backup has less than 50 GB free",
+            mac(MacTrigger.newBuilder().setEvent(MacTrigger.Event.EVENT_DISK_LOW).setGigabytes(50).setVolume("/Volumes/Backup")))
+        assertEquals("The battery falls below 20%", mac(MacTrigger.newBuilder().setEvent(MacTrigger.Event.EVENT_BATTERY_LOW).setPercent(20)))
+        assertEquals("The Mac wakes after sleeping 30 minutes or more", mac(MacTrigger.newBuilder().setEvent(MacTrigger.Event.EVENT_WAKE).setMinutes(30)))
+        assertEquals("I’ve been away from the Mac for 15 minutes", mac(MacTrigger.newBuilder().setEvent(MacTrigger.Event.EVENT_AWAY).setMinutes(15)))
+        assertEquals("I’m back at the Mac after 10 minutes or more away", mac(MacTrigger.newBuilder().setEvent(MacTrigger.Event.EVENT_BACK)))
+        assertEquals("The Mac joins the Wi-Fi “Office”", mac(MacTrigger.newBuilder().setEvent(MacTrigger.Event.EVENT_WIFI_JOINED).setName("Office")))
+        assertEquals("“Xcode” opens", mac(MacTrigger.newBuilder().setEvent(MacTrigger.Event.EVENT_APP_OPENED).setName("Xcode")))
+        assertEquals("A display is connected", mac(MacTrigger.newBuilder().setEvent(MacTrigger.Event.EVENT_DISPLAY)))
+    }
+
+    @Test fun calendarAndGitHub() {
+        fun cal(b: CalendarTrigger.Builder) = ScheduleWords.trigger(EventTrigger.newBuilder().setCalendar(b).build(), null)
+        assertEquals("At the end of events titled “Standup”", cal(CalendarTrigger.newBuilder().setWhen(CalendarTrigger.When.WHEN_END).setTitle("Standup")))
+        assertEquals("Free time of 60 minutes or more begins in working hours (Work)",
+            cal(CalendarTrigger.newBuilder().setWhen(CalendarTrigger.When.WHEN_FREE).setFreeMinutes(60).setCalendar("Work")))
+        val wf = GitHubTrigger.newBuilder().setEvent(GitHubTrigger.Event.EVENT_WORKFLOW).setWorkflow("ci.yml").setRepo("acme/w")
+        assertEquals("The “ci.yml” workflow finishes (acme/w)", ScheduleWords.trigger(EventTrigger.newBuilder().setGithub(wf).build(), null))
+    }
+
+    @Test fun onlyIf() {
+        val s = Schedule.newBuilder()
+            .addOnlyIf(Condition.newBuilder().setKind(Condition.Kind.KIND_POWER))
+            .addOnlyIf(Condition.newBuilder().setKind(Condition.Kind.KIND_HOURS).setFromMinute(9 * 60).setToMinute(17 * 60 + 30))
+            .addOnlyIf(Condition.newBuilder().setKind(Condition.Kind.KIND_DAYS).addAllWeekdays(listOf(1, 3)))
+            .build()
+        assertEquals("the Mac is plugged in and between 09:00 and 17:30 and on Mon, Wed", ScheduleWords.onlyIf(s))
     }
 
     @Test fun every() {

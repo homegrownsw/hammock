@@ -103,7 +103,8 @@ func plainAllowed(msg *pb.ClientMessage) bool {
 func personStrict(msg *pb.ClientMessage) bool {
 	switch m := msg.Msg.(type) {
 	case *pb.ClientMessage_RespondGrant, *pb.ClientMessage_RespondHammockKey, *pb.ClientMessage_ConfigWritten,
-		*pb.ClientMessage_CalendarEvents: // (the app's calendars: what fires calendar triggers)
+		*pb.ClientMessage_CalendarEvents, // (the app's calendars: what fires calendar triggers)
+		*pb.ClientMessage_MacAppState:    // (what the app sees: what fires its This Mac triggers)
 		return true
 	case *pb.ClientMessage_ClearAttention:
 		return strings.HasPrefix(m.ClearAttention.Id, configAttentionPrefix) || strings.HasPrefix(m.ClearAttention.Id, bootstrapAttentionPrefix)

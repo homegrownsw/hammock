@@ -556,6 +556,9 @@ struct ScheduleDetailScreen: View {
                 if s.kind == "claude", !s.allowedTools.isEmpty {
                     LabeledContent("Always Allowed", value: s.allowedTools.joined(separator: ", "))
                 }
+                if let only = s.onlyIfText {
+                    LabeledContent("Only If", value: only.prefix(1).uppercased() + only.dropFirst())
+                }
                 let made = s.createdUnixMs > 0 ? " · " + Schedule.dateText(s.createdUnixMs, now: now) : ""
                 LabeledContent("Made By", value: (s.createdBy.isEmpty ? "You" : s.createdBy) + made)
             }

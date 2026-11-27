@@ -46,6 +46,7 @@ struct HammockApp: App {
             // Windows of their own open when Hammock last quit, now their tabs are here.
             DetachedWindows.shared.restoreOnce(m)
             CalendarFeed.shared.attach(m) // calendar triggers' events, while any task has one
+            MacWatcher.shared.attach(m) // This Mac triggers' Wi-Fi, apps and displays, while any task has one
         }
         DetachedWindows.shared.attach(m)
         AutomationIntents.attach(m) // Shortcuts' Run Hammock Automation
