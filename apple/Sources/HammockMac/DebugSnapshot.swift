@@ -120,6 +120,67 @@ enum DebugSnapshot {
                 window.close()
             } }
         }
+        // HMK_DEBUG_FOOTER=1 (with HMK_DEBUG_SNAPSHOT): the sidebar's footer
+        // (Groups | Sessions and the computers) with 0, 1, 3 and 5 made-up
+        // linked computers, at the sidebar's narrowest, ideal and widest, with
+        // all shown and with one chosen, to <prefix>-footer-<light|dark>.png.
+        if env["HMK_DEBUG_FOOTER"] != nil, let prefix = env["HMK_DEBUG_SNAPSHOT"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { MainActor.assumeIsolated {
+                let kinds = [("Studio", "studio"), ("MacBook", "laptop"), ("Server", "server"), ("Mini", "mini"), ("Tower", "tower")]
+                @MainActor func model(_ n: Int, chosen: Bool) -> AppModel {
+                    let m = AppModel(socketPath: "/nonexistent", clientKind: "debug")
+                    m.debugApply(.with {
+                        $0.full = true
+                        $0.computers = .with {
+                            $0.list = [.with { $0.userID = "us_here"; $0.name = "This Mac"; $0.kind = "laptop"; $0.os = "macos"; $0.thisComputer = true; $0.online = true }]
+                                + kinds.prefix(n).enumerated().map { i, k in .with {
+                                    $0.userID = "us_\(i)"; $0.name = k.0; $0.kind = k.1; $0.os = k.1 == "server" ? "linux" : "macos"; $0.online = i != 2
+                                } }
+                        }
+                    })
+                    // The filter is kept in defaults: chosen only while drawn.
+                    if chosen, n > 0 { m.computerFilter = "us_0" }
+                    return m
+                }
+                let saved = UserDefaults.standard.string(forKey: "computerFilter")
+                defer { UserDefaults.standard.set(saved, forKey: "computerFilter") }
+                let rows: [(String, AppModel, CGFloat)] = [0, 1, 3, 5].flatMap { n in
+                    [false, true].filter { !$0 || n > 0 }.flatMap { chosen in
+                        [CGFloat(220), 272, 380].map { w in ("\(n) linked\(chosen ? ", one chosen" : ""), \(Int(w))pt", model(n, chosen: chosen), w) }
+                    }
+                }
+                let content = VStack(alignment: .leading, spacing: 10) {
+                    ForEach(Array(rows.enumerated()), id: \.offset) { _, r in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(r.0).font(.caption).foregroundStyle(.secondary)
+                            HostFooter(model: r.1)
+                                .frame(width: r.2)
+                                .background(Color.primary.opacity(0.04))
+                                .overlay(Rectangle().stroke(Color.red.opacity(0.5), lineWidth: 1))
+                        }
+                    }
+                }
+                .padding(12)
+                .frame(width: 420, alignment: .leading)
+                .background(Color(nsColor: .windowBackgroundColor))
+                let host = NSHostingView(rootView: content)
+                host.setFrameSize(host.fittingSize)
+                let window = NSWindow(contentRect: NSRect(origin: .zero, size: host.fittingSize), styleMask: [.titled], backing: .buffered, defer: false)
+                window.isReleasedWhenClosed = false
+                window.contentView = host
+                window.orderFront(nil)
+                for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+                    window.appearance = NSAppearance(named: appearance)
+                    host.layoutSubtreeIfNeeded()
+                    host.displayIfNeeded()
+                    RunLoop.main.run(until: Date().addingTimeInterval(1))
+                    guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { continue }
+                    host.cacheDisplay(in: host.bounds, to: rep)
+                    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: "\(prefix)-footer-\(name).png"))
+                }
+                window.close()
+            } }
+        }
         // HMK_DEBUG_ISLAND=1 (with HMK_DEBUG_SNAPSHOT): Hammock Island in a
         // window of its own, captured as it's drawn (RealityKit isn't in a
         // layer render) every half second, to <prefix>-island-NN.png; with

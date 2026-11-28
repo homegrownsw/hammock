@@ -124,6 +124,11 @@ struct SessionsView: View {
                             ForEach(rows.working, id: \.tab.id) { r in sessionLink(r) }
                         }
                     }
+                    if !rows.finished.isEmpty {
+                        Section("Finished") {
+                            ForEach(rows.finished, id: \.tab.id) { r in sessionLink(r) }
+                        }
+                    }
                     if !rows.recent.isEmpty {
                         Section("Recent") {
                             // The last 48 hours', then the rest on asking (all

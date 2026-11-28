@@ -536,6 +536,8 @@ struct ComputerSwitcher: View {
     @Bindable var model: AppModel
     /// The chosen computer shows its name (when the footer has room).
     var names = true
+    /// One pop-up button for them all, when there isn't room for each.
+    var collapsed = false
     @State private var confirmStop = false
     var body: some View {
         HStack(spacing: 2) {
@@ -549,7 +551,9 @@ struct ComputerSwitcher: View {
                     .accessibilityLabel("Disconnected")
                     .help("Connecting to hmkd…")
             }
-            if model.hasLinkedComputers {
+            if model.hasLinkedComputers, collapsed {
+                popUp
+            } else if model.hasLinkedComputers {
                 chip(nil)
                 ForEach(model.computers, id: \.userID) { c in chip(c) }
             } else {
@@ -598,6 +602,50 @@ struct ComputerSwitcher: View {
         .accessibilityLabel(c.map { "Show only \($0.thisComputer ? "this Mac" : $0.name)" } ?? "Show all computers")
         .accessibilityAddTraits(on ? .isSelected : [])
         .contextMenu { if let c { menu(c) } else { Button("Link a Computer…") { LinkUI.shared.open() } } }
+    }
+
+    /// The computer shown (All, or the chosen one's icon), choosing another
+    /// from a menu; right-click for the chosen one's menu.
+    private var popUp: some View {
+        let chosen = model.computers.first { c in
+            !model.computerFilter.isEmpty && (model.computerFilter == c.userID || (c.thisComputer && model.computerFilter == model.myUserID))
+        }
+        return Menu {
+            Picker("Show", selection: Binding(get: { chosen?.userID ?? "" }, set: { id in
+                withAnimation(.snappy(duration: 0.25)) {
+                    model.computerFilter = model.computer(id)?.thisComputer == true ? model.myUserID : id
+                }
+            })) {
+                Text("All Computers").tag("")
+                Divider()
+                ForEach(model.computers, id: \.userID) { c in
+                    Text(c.thisComputer ? "This Mac" : c.name).tag(c.userID)
+                }
+            }
+            .pickerStyle(.inline)
+            Divider()
+            Button("Link a Computer…") { LinkUI.shared.open() }
+        } label: {
+            HStack(spacing: 4) {
+                if let chosen {
+                    ComputerIcon(chosen, size: 15).opacity(chosen.online ? 1 : 0.5)
+                } else {
+                    Text("All").font(.callout.weight(.semibold))
+                }
+                Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 8)
+            .frame(minHeight: 28)
+            .background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 7))
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(chosen.map { help($0) } ?? help(nil))
+        .accessibilityLabel(chosen.map { "Showing \($0.thisComputer ? "this Mac" : $0.name)" } ?? "Showing all computers")
+        .contextMenu { if let chosen { menu(chosen) } else { Button("Link a Computer…") { LinkUI.shared.open() } } }
     }
 
     /// This computer, the only one: nothing to choose between, so only its

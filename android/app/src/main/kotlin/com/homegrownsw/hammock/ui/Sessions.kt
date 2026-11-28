@@ -103,8 +103,9 @@ import kotlinx.coroutines.flow.drop
 /** A tab with an agent, as its most pressing agent pane. */
 data class SessionRow(val tab: Tab, val pane: Pane)
 
-data class SessionRows(val needsYou: List<SessionRow>, val working: List<SessionRow>, val recent: List<SessionRow>) {
-    val isEmpty get() = needsYou.isEmpty() && working.isEmpty() && recent.isEmpty()
+/** Most pressing first: needs you, working, finished and not yet looked at, then at rest. */
+data class SessionRows(val needsYou: List<SessionRow>, val working: List<SessionRow>, val finished: List<SessionRow>, val recent: List<SessionRow>) {
+    val isEmpty get() = needsYou.isEmpty() && working.isEmpty() && finished.isEmpty() && recent.isEmpty()
 
     companion object {
         private val rank = mapOf(
@@ -115,6 +116,7 @@ data class SessionRows(val needsYou: List<SessionRow>, val working: List<Session
         fun of(w: Workspace): SessionRows {
             val needs = ArrayList<SessionRow>()
             val working = ArrayList<SessionRow>()
+            val finished = ArrayList<SessionRow>()
             val recent = ArrayList<SessionRow>()
             for (tab in w.orderedTabs) {
                 val p = w.panes(tab).filter { it.hasAgent() && !it.exited && rank[it.agent.shownState] != null }
@@ -123,11 +125,12 @@ data class SessionRows(val needsYou: List<SessionRow>, val working: List<Session
                 when (p.agent.shownState) {
                     AgentState.AGENT_STATE_NEEDS_INPUT, AgentState.AGENT_STATE_ERRORED -> needs += row
                     AgentState.AGENT_STATE_WORKING, AgentState.AGENT_STATE_STARTING -> working += row
-                    else -> recent += row
+                    // Waiting out a usage limit is at rest, seen or not.
+                    else -> if (!p.agent.seen && !p.agent.waitingOnLimit) finished += row else recent += row
                 }
             }
             val newest = compareByDescending<SessionRow> { it.pane.agent.stateSinceUnixMs }
-            return SessionRows(needs.sortedWith(newest), working.sortedWith(newest), recent.sortedWith(newest))
+            return SessionRows(needs.sortedWith(newest), working.sortedWith(newest), finished.sortedWith(newest), recent.sortedWith(newest))
         }
     }
 }
@@ -220,6 +223,11 @@ fun SessionsScreen(session: Session, model: AppModel, nav: Nav) {
             if (working.isNotEmpty()) {
                 section("Working")
                 cardItems(working, key = { "work:" + it.tab.id }) { r -> SessionLink(model, w, r, nav, ::canClose, ::requestClose, now) }
+            }
+            val finished = rows.finished.filter { it.pane.id !in readyPanes }
+            if (finished.isNotEmpty()) {
+                section("Finished")
+                cardItems(finished, key = { "done:" + it.tab.id }) { r -> SessionLink(model, w, r, nav, ::canClose, ::requestClose, now) }
             }
             val recentAll = rows.recent.filter { it.pane.id !in readyPanes }
             if (recentAll.isNotEmpty()) {

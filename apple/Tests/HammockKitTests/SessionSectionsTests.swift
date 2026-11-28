@@ -6,8 +6,8 @@ import Testing
 /// its most pressing agent, in Needs You, Working and Recent, newest first.
 @MainActor
 @Suite(.serialized) struct SessionSectionsTests {
-    private func agent(_ state: Hammock_V1_AgentState, since: Int64) -> Hammock_V1_Agent {
-        .with { $0.harness = "claude"; $0.state = state; $0.stateSinceUnixMs = since }
+    private func agent(_ state: Hammock_V1_AgentState, since: Int64, seen: Bool = true) -> Hammock_V1_Agent {
+        .with { $0.harness = "claude"; $0.state = state; $0.stateSinceUnixMs = since; $0.seen = seen }
     }
 
     private func model() -> AppModel {
@@ -16,9 +16,9 @@ import Testing
             $0.full = true
             $0.groups = [
                 .with { $0.id = "gp_a"; $0.name = "A"; $0.order = 0; $0.tabIds = ["tb_ask", "tb_old", "tb_two", "tb_shell"] },
-                .with { $0.id = "gp_b"; $0.name = "B"; $0.order = 1; $0.tabIds = ["tb_new", "tb_work"] },
+                .with { $0.id = "gp_b"; $0.name = "B"; $0.order = 1; $0.tabIds = ["tb_new", "tb_work", "tb_done"] },
             ]
-            $0.tabs = [("tb_ask", "gp_a"), ("tb_old", "gp_a"), ("tb_shell", "gp_a"), ("tb_new", "gp_b"), ("tb_work", "gp_b")]
+            $0.tabs = [("tb_ask", "gp_a"), ("tb_old", "gp_a"), ("tb_shell", "gp_a"), ("tb_new", "gp_b"), ("tb_work", "gp_b"), ("tb_done", "gp_b")]
                 .map { t in .with { $0.id = t.0; $0.groupID = t.1; $0.layout = .with { $0.paneID = "pn_" + t.0.dropFirst(3) } } }
                 + [.with {
                     $0.id = "tb_two"; $0.groupID = "gp_a"
@@ -32,6 +32,8 @@ import Testing
                 .with { $0.id = "pn_two_err"; $0.tabID = "tb_two"; $0.agent = agent(.errored, since: 40) },
                 // No agent: not a session.
                 .with { $0.id = "pn_shell"; $0.tabID = "tb_shell" },
+                // Finished, not yet looked at.
+                .with { $0.id = "pn_done"; $0.tabID = "tb_done"; $0.agent = agent(.idle, since: 95, seen: false) },
                 .with { $0.id = "pn_new"; $0.tabID = "tb_new"; $0.agent = agent(.idle, since: 90) },
                 .with { $0.id = "pn_work"; $0.tabID = "tb_work"; $0.agent = agent(.working, since: 70) },
             ]
@@ -45,6 +47,7 @@ import Testing
         #expect(s.needsYou.map(\.pane.id) == ["pn_ask", "pn_two_err"])
         #expect(s.working.map(\.pane.id) == ["pn_work"])
         #expect(s.recent.map(\.pane.id) == ["pn_new", "pn_old"])
+        #expect(s.finished.map(\.pane.id) == ["pn_done"])
     }
 
     @Test func onlyTheGroupsGiven() {

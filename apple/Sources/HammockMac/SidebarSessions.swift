@@ -95,6 +95,10 @@ struct SidebarSessionsList: View {
             heading("Working")
             ForEach(sections.working) { row($0) }
         }
+        if !sections.finished.isEmpty {
+            heading("Finished")
+            ForEach(sections.finished) { row($0) }
+        }
         if !sections.recent.isEmpty {
             heading("Recent")
             // The last 48 hours', then the rest on asking. (As of this
