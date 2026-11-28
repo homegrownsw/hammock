@@ -140,6 +140,8 @@ var Keys = []Key{
 		Doc: "show agents acting in browser and simulator panes: a cursor, a glow and a badge"},
 	{Name: "confirm-close-busy-agent", Group: "Agents", Value: "true", Default: "true",
 		Doc: "ask before closing a pane or tab whose agent is at work", Only: "Mac and hmk tui"},
+	{Name: "quick-reply", Group: "Agents", Value: "Looks good, thanks", Repeat: true,
+		Doc: "a reply the Apple Watch offers agents in one tap, one line each; unset: Continue, Looks good, Run the tests", Only: "Apple Watch"},
 
 	// Agent view
 	{Name: "agent-default-view", Group: "Agent view", Value: "terminal | agent",

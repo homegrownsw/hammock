@@ -32,6 +32,7 @@ var gateExempt = map[string][]string{
 		"SetRemoteAccess", "SetRemoteNetworks", "SetSchedulePaused", "ShowOutput", "ShowPairing", "ShutdownDaemon",
 		"SkipScheduleRun", "SshAgentCall", "SshSetup", "StopSharing", "UnlinkComputer",
 		"PeerRecord", // a linked computer's (ownerCheck), never a guest's
+		"QuickReplyCommand",
 	},
 	// peer.go: the group, tab or pane a message is about, so a guest's daemon sends it to the host. Not named:
 	// about nothing hosted elsewhere (handled here).
@@ -46,6 +47,7 @@ var gateExempt = map[string][]string{
 		"ServerStatus", "SessionExcerpts", "SetApprovalKey", "SetColors", "SetComputerTint", "SetMediaView",
 		"SetMember", "SetProfile", "SetRemoteAccess", "SetRemoteNetworks", "ShowPairing", "ShutdownDaemon",
 		"SshAgentCall", "SshSetup", "Subscribe", "UnlinkComputer", "UnlinkRequest", "PeerRecord",
+		"QuickReplyCommand", // this computer's config
 	},
 	// caller.go: what an agent in a pane may do. Not named: refused to agents.
 	"agentCheck": {
@@ -61,6 +63,7 @@ var gateExempt = map[string][]string{
 		"SetComposerDraft", "StopSharing", "UnlinkComputer", "UnlinkRequest", "UploadFile",
 		"PinCommand", // design notes are you telling an agent something
 		"PeerRecord",
+		"QuickReplyCommand", // your phone's Settings
 	},
 	// computers.go: what your other computers may ask of this one. Not named: refused to them.
 	"ownerCheck": {
@@ -72,6 +75,7 @@ var gateExempt = map[string][]string{
 		"RevokeDevice", "RevokeInvite", "ServerStatus", "SetApprovalKey", "SetColors", "SetMember", "SetProfile",
 		"SetRemoteAccess", "SetRemoteNetworks", "ShowOutput", "ShowPairing", "ShutdownDaemon", "SshSetup",
 		"StopSharing", "UnlinkComputer", "UnlinkRequest",
+		"QuickReplyCommand", // your phone sets each computer's itself
 	},
 }
 

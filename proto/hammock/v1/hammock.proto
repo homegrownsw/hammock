@@ -688,6 +688,11 @@ message ClientMessage {
     // and computers only (never an agent, a guest or a phone). Replies
     // SlackReply.
     SlackCommand slack_command = 178;
+    // The quick replies the Apple Watch offers agents (the quick-reply
+    // config key): read, or set from your phone's Settings. From your own
+    // phone or app only (never an agent, a guest or another computer).
+    // Replies QuickReplies.
+    QuickReplyCommand quick_reply_command = 179;
   }
   reserved 96;  // ShareMembership (an earlier design)
 }
@@ -977,6 +982,7 @@ message ServerMessage {
     PinReply pin_reply = 90;                        // reply to PinCommand
     TriggerReply trigger_reply = 91;                // reply to RunSchedule with trigger and status_reply
     SlackReply slack_reply = 92;                    // reply to SlackCommand
+    QuickReplies quick_replies = 93;                // reply to QuickReplyCommand
   }
 }
 
@@ -2445,6 +2451,16 @@ message SlackReply {
   string user_token = 3;          // HAND_OVER only
   string app_token = 4;
   string team_id = 5;             // HAND_OVER: the tokens' workspace
+}
+
+// Reads the quick replies, or (set) replaces them all: an empty list
+// clears them, leaving the defaults.
+message QuickReplyCommand {
+  bool set = 1;
+  repeated string replies = 2;
+}
+message QuickReplies {
+  repeated string replies = 1;    // as they are now (the defaults when none are set)
 }
 
 // A computer this one is linked with, as kept here (not sent).

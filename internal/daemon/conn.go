@@ -1736,6 +1736,9 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		defer d.mu.Unlock()
 		return nil, d.registerPush(c, m.RegisterPush)
 
+	case *pb.ClientMessage_QuickReplyCommand:
+		return quickReplies(m.QuickReplyCommand) // (quickreplies.go; who may: the gates)
+
 	case *pb.ClientMessage_MoveGroup:
 		d.mu.Lock()
 		defer d.mu.Unlock()

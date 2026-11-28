@@ -57,6 +57,7 @@ extension AppConfig {
         #   agent-resume-after-limit = true        (an agent whose turn ended at its usage limit carries on when the limit resets: Claude Code's own wait where it offers one, else Hammock sends it "continue")
         #   agent-keep-awake = false               (true: the Mac doesn't sleep while an agent is working (the display still can, and closing the lid still sleeps it); Mac only)
         #   confirm-close-busy-agent = true        (ask before closing a pane or tab whose agent is at work; Mac and hmk tui only)
+        #   quick-reply = Looks good, thanks       (a reply the Apple Watch offers agents in one tap, one line each; unset: Continue, Looks good, Run the tests; Apple Watch only)
         #
         # Agent view
         #   agent-default-view = terminal | agent   (which view agent panes open in; unset: terminal)
