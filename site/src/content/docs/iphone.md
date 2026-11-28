@@ -57,13 +57,26 @@ Tap a file the agent mentions to see it, or one of its running tasks or subagent
 
 An agent waiting for permission appears at the top of Sessions with what it's asking to do, and **Allow**, **Deny** and **Open**. When that's more than fits, **Review** opens the pane in place of **Allow**. For a scheduled Claude Code run, touch and hold **Allow** for **Always Allow for This Schedule**. Hammock's own requests, such as an agent asking to type in a pane it didn't open, appear there too.
 
-Notifications are sent while you're away from your Mac. Choose which in Settings ▸ Notify Me When: someone asks to join, or an agent needs you, finishes or hits an error. You can answer Hammock's requests, join requests and an agent's permission prompt (**Allow** or **Deny**) from the notification itself, once your iPhone is unlocked. If the agent's prompt has changed, or can only be answered in the agent view, nothing is pressed and the notification says so: tap it to open the pane. Hammock's icon and the Sessions tab count what's waiting on you: agents that need your input, and permission, join and Hammock Key requests. Notifications are encrypted on your Mac, and only your iPhone can read them. See [Permissions](/hammock/docs/permissions/#on-your-iphone) for allowing them.
+Notifications are sent while you're away from your Mac. Choose which in Settings ▸ Notify Me When: someone asks to join, or an agent needs you, finishes or hits an error. You can answer Hammock's requests, join requests and an agent's permission prompt (**Allow** or **Deny**) from the notification itself, once your iPhone is unlocked. **Reply**, on an agent that finished or needs you, sends it a message; not while it's asking a question or for permission, which you answer in the app. If the agent's prompt has changed, or can only be answered in the agent view, nothing is pressed and the notification says so: tap it to open the pane. Hammock's icon and the Sessions tab count what's waiting on you: agents that need your input, and permission, join and Hammock Key requests. Notifications are encrypted on your Mac, and only your iPhone can read them. See [Permissions](/hammock/docs/permissions/#on-your-iphone) for allowing them.
 
 ## Live Activities and the Needs You widget
 
 Turn on **Live Activities** in Settings to see your agents on the Lock Screen and in the Dynamic Island, in your theme's colours, while you're away from your Mac: the agent that needs you most (else the one most recently at work), its Group and tab, what it's doing, for how long, and how many others are working. It starts while an agent is working once you've used Hammock on your iPhone since you last used your Mac (not just for your Mac being locked), and ends when you're back at your Mac, or soon after the last agent stops. When the agent is waiting on a permission prompt, **Allow** and **Deny** answer it once your iPhone is unlocked. Apple shows a Live Activity's content as it's sent, so it can't be encrypted: with them on, agent names, Groups and what they're doing pass through Hammock's push relay unencrypted.
 
 The **Needs You** widget, on the Home Screen or the Lock Screen, shows how many things are waiting on you and the first of them; tap one to open its pane. It doesn't need Live Activities on.
+
+## Apple Watch
+
+Hammock's watch app comes with the iPhone app. It reaches your Macs through your iPhone, so keep it nearby; Hammock on it needn't be open.
+
+- **Sessions** lists every paired Mac's agents: those that need you, those working, and those finished.
+- **A session** shows its conversation cut down for your wrist: your messages, the agent's text and pictures (tap one, then turn the Digital Crown to zoom), a line for each run of tools, and where each turn finished. A question or permission prompt appears below it, to answer.
+- **Reply** to dictate, scribble or type a message, or tap a suggested reply: a yes or no when the agent asked, then your quick replies. A message waits for the agent's turn to end; touch and hold a reply to send it now (Claude Code). **Stop** interrupts the agent, after asking.
+- **Usage**, from the gauge at the top, shows the agents' usage limits you chose in Settings, and the next scheduled tasks, with **Run Now**.
+- **Notifications** show the agent and what it's asking. **Reply** offers your quick replies too.
+- **Complications** show how many agents need you, and what they're asking. With Live Activities on, the Smart Stack shows the agent at work.
+
+Edit your quick replies in Settings ▸ Apple Watch ▸ Quick Replies: each of your Macs keeps them, as `quick-reply` in its [config file](/hammock/docs/configuration/).
 
 ## Approving the Hammock Key
 

@@ -92,6 +92,15 @@ With it:
 | `HMK_DEBUG_SCREEN_BAR=1\|<name>` | A made-up Mac's screen (Studio, or `<name>`) minimised: its bar with a drawn thumbnail above the tab bar, and at the top of a pane (`HMK_DEBUG_PATH=p_polish`). No stream; tapping it does nothing. |
 | `HMK_DEBUG_LIVE_ACTIVITY=working\|needs_you\|finished` | Start a Live Activity with made-up content (an agent at work, one waiting on a permission with Allow and Deny, or one finished) and fill the Needs You widget, to look at on the Lock Screen and in the Dynamic Island (`LiveActivities.showSample`). Without the demo too. On iOS 27.2 a screenshot leaves the Dynamic Island out unless you pass `--mask=black`. |
 
+| `HMK_DEBUG_WATCH_SETTINGS=1` | Show Settings ▸ Apple Watch without a paired watch. Quick Replies loads them from the Mac shown, so it needs a real one. |
+
+The Apple Watch app (`apple/Watch/HammockWatch`) has its own, set with `SIMCTL_CHILD_` on a watch simulator:
+
+| Variable | What it does |
+| --- | --- |
+| `HMK_DEBUG_SAMPLE=1` | Made-up sessions, usage and a schedule (`WatchSample.swift`), with no iPhone: its asks are answered there. |
+| `HMK_DEBUG_CONVERSATION=s1\|s2\|s3\|s4` | With it, open a session: a permission prompt, a question, one working, one finished with suggested replies. |
+
 Screenshot with `xcrun simctl io <udid> screenshot`, after `xcrun simctl ui <udid> appearance light|dark`. Boot
 a simulator of your own (`xcrun simctl create`) and delete it afterwards. Don't open simulator panes on a
 scratch daemon against a device another session is using.
