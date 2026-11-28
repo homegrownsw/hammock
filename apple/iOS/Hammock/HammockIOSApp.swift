@@ -18,6 +18,8 @@ struct HammockIOSApp: App {
         // Here, not in a view: a notification's answer can launch the app in
         // the background, where no window comes up, and needs it all the same.
         Push.shared.session = s
+        // The watch's asks wake the app in the background too (WatchBridge).
+        WatchBridge.shared.session = s
         // A conversation page loaded ahead, for the first agent view opened.
         Task { @MainActor in AgentViewWarmup.start() }
     }
@@ -522,6 +524,11 @@ struct RootView: View {
                         s.badge = badge
                         return s
                     }
+                }
+                // The watch's complications and list follow the sessions.
+                .onChange(of: WatchSnapshots.sessions(model, host: session.host?.id ?? "", hostName: ""), initial: true) { _, _ in
+                    guard model.connected, !session.isDemo else { return }
+                    WatchBridge.shared.shownMacChanged()
                 }
                 .onChange(of: model.connected, initial: true) { _, on in
                     guard on else { return }

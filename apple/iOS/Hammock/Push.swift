@@ -491,6 +491,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         MainActor.assumeIsolated {
             Push.shared.start()
             LiveActivities.shared.start()
+            WatchBridge.shared.start()
         }
         return true
     }
