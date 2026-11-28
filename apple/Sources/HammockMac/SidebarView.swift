@@ -1160,15 +1160,22 @@ struct HostFooter: View {
     let model: AppModel
 
     var body: some View {
-        // Narrower, the chosen computer drops its name, then the switch its
-        // words; then the computers fold into one pop-up button, with the
-        // words back if there's room for them beside it.
-        ViewThatFits(in: .horizontal) {
-            row(names: true)
-            row(names: false)
-            row(names: false, icons: true)
-            row(names: false, collapsed: true)
-            row(names: false, icons: true, collapsed: true)
+        Group {
+            if !SidebarModeState.shared.applies, !model.hasLinkedComputers {
+                // Nothing else in the footer: this Mac across it, in words.
+                ComputerSwitcher(model: model, wide: true)
+            } else {
+                // Narrower, the chosen computer drops its name, then the
+                // switch its words; then the computers fold into one pop-up
+                // button, with the words back if there's room beside it.
+                ViewThatFits(in: .horizontal) {
+                    row(names: true)
+                    row(names: false)
+                    row(names: false, icons: true)
+                    row(names: false, collapsed: true)
+                    row(names: false, icons: true, collapsed: true)
+                }
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
