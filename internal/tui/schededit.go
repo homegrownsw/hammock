@@ -933,29 +933,21 @@ func (ed *schedEditor) addTriggerSections(a *App) []struct {
 		name    string
 		sources []edSource
 	}
+	// Most used first, as on the Mac.
 	return []section{
-		{"Hammock", []edSource{
-			{label: "Agents", events: []edEvent{
-				{"An Agent Finishes", func() *pb.EventTrigger {
-					return &pb.EventTrigger{Kind: &pb.EventTrigger_Agent{Agent: &pb.AgentTrigger{Finished: true}}}
-				}},
-				{"An Agent Needs You", func() *pb.EventTrigger {
-					return &pb.EventTrigger{Kind: &pb.EventTrigger_Agent{Agent: &pb.AgentTrigger{NeedsYou: true}}}
-				}},
+		{"Time and Place", []edSource{
+			{label: "Schedule…", off: ed.s.Timing == pb.Schedule_TIMING_REPEAT, add: func() { ed.askTimes(a, nil) }},
+			{label: "Once…", off: ed.s.Timing == pb.Schedule_TIMING_ONCE, add: func() { ed.askOnce(a, nil) }},
+			{label: "Calendar", off: !onMac, events: []edEvent{
+				{"Before an Event…", cal(&pb.CalendarTrigger{MinutesBefore: 10})},
+				{"When an Event Starts…", cal(&pb.CalendarTrigger{})},
+				{"When an Event Ends…", cal(&pb.CalendarTrigger{When: pb.CalendarTrigger_WHEN_END})},
+				{"When Free Time Begins…", cal(&pb.CalendarTrigger{When: pb.CalendarTrigger_WHEN_FREE, FreeMinutes: 30})},
 			}},
-			{label: "Commands", events: []edEvent{{"A Command Fails", func() *pb.EventTrigger {
-				return &pb.EventTrigger{Kind: &pb.EventTrigger_Exit{Exit: &pb.ExitTrigger{}}}
-			}}}},
-			{label: "Log Lines", events: []edEvent{{"A Log Line Matches…", func() *pb.EventTrigger {
-				l := &pb.LogTrigger{}
-				if ps := a.logPanes(ed.s.ComputerId); len(ps) > 0 {
-					l.PaneId = ps[0].Id
-				}
-				return &pb.EventTrigger{Kind: &pb.EventTrigger_Log{Log: l}}
-			}}}},
-			{label: "Files", events: []edEvent{{"Files Change…", func() *pb.EventTrigger {
-				return &pb.EventTrigger{Kind: &pb.EventTrigger_Files{Files: &pb.FilesTrigger{}}}
-			}}}},
+			{label: "Places", off: !onMac, events: []edEvent{
+				{"Mac Arrives at a Place…", mac(&pb.MacTrigger{Event: pb.MacTrigger_EVENT_PLACE_ARRIVE})},
+				{"Mac Leaves a Place…", mac(&pb.MacTrigger{Event: pb.MacTrigger_EVENT_PLACE_LEAVE})},
+			}},
 		}},
 		{"Code", []edSource{
 			{label: "GitHub", events: github},
@@ -994,19 +986,28 @@ func (ed *schedEditor) addTriggerSections(a *App) []struct {
 				{"Mac Leaves a Network…", mac(&pb.MacTrigger{Event: pb.MacTrigger_EVENT_WIFI_LEFT})},
 			}},
 		}},
-		{"Time and Place", []edSource{
-			{label: "Schedule…", off: ed.s.Timing == pb.Schedule_TIMING_REPEAT, add: func() { ed.askTimes(a, nil) }},
-			{label: "Once…", off: ed.s.Timing == pb.Schedule_TIMING_ONCE, add: func() { ed.askOnce(a, nil) }},
-			{label: "Calendar", off: !onMac, events: []edEvent{
-				{"Before an Event…", cal(&pb.CalendarTrigger{MinutesBefore: 10})},
-				{"When an Event Starts…", cal(&pb.CalendarTrigger{})},
-				{"When an Event Ends…", cal(&pb.CalendarTrigger{When: pb.CalendarTrigger_WHEN_END})},
-				{"When Free Time Begins…", cal(&pb.CalendarTrigger{When: pb.CalendarTrigger_WHEN_FREE, FreeMinutes: 30})},
+		{"Hammock", []edSource{
+			{label: "Agents", events: []edEvent{
+				{"An Agent Finishes", func() *pb.EventTrigger {
+					return &pb.EventTrigger{Kind: &pb.EventTrigger_Agent{Agent: &pb.AgentTrigger{Finished: true}}}
+				}},
+				{"An Agent Needs You", func() *pb.EventTrigger {
+					return &pb.EventTrigger{Kind: &pb.EventTrigger_Agent{Agent: &pb.AgentTrigger{NeedsYou: true}}}
+				}},
 			}},
-			{label: "Places", off: !onMac, events: []edEvent{
-				{"Mac Arrives at a Place…", mac(&pb.MacTrigger{Event: pb.MacTrigger_EVENT_PLACE_ARRIVE})},
-				{"Mac Leaves a Place…", mac(&pb.MacTrigger{Event: pb.MacTrigger_EVENT_PLACE_LEAVE})},
-			}},
+			{label: "Commands", events: []edEvent{{"A Command Fails", func() *pb.EventTrigger {
+				return &pb.EventTrigger{Kind: &pb.EventTrigger_Exit{Exit: &pb.ExitTrigger{}}}
+			}}}},
+			{label: "Log Lines", events: []edEvent{{"A Log Line Matches…", func() *pb.EventTrigger {
+				l := &pb.LogTrigger{}
+				if ps := a.logPanes(ed.s.ComputerId); len(ps) > 0 {
+					l.PaneId = ps[0].Id
+				}
+				return &pb.EventTrigger{Kind: &pb.EventTrigger_Log{Log: l}}
+			}}}},
+			{label: "Files", events: []edEvent{{"Files Change…", func() *pb.EventTrigger {
+				return &pb.EventTrigger{Kind: &pb.EventTrigger_Files{Files: &pb.FilesTrigger{}}}
+			}}}},
 		}},
 		{"Other", []edSource{
 			{label: "Shortcuts", off: !onMac, add: func() {

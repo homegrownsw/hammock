@@ -50,20 +50,24 @@ struct ScheduleWhenBox: View {
     // MARK: Add Trigger
 
     private var addMenu: some View {
+        // Most used first.
         Menu {
-            Section("Hammock") {
-                Menu("Agents") {
-                    Button("An Agent Finishes") { add(.agent(.with { $0.finished = true })) }
-                    Button("An Agent Needs You") { add(.agent(.with { $0.needsYou = true })) }
-                }
-                Menu("Commands") {
-                    Button("A Command Fails") { add(.exit(.init())) }
-                }
-                Menu("Log Lines") {
-                    Button("A Log Line Matches…") { add(.log(.with { $0.paneID = logPanes.first?.id ?? "" })) }
-                }
-                Menu("Files") {
-                    Button("Files Change…") { add(.files(.init())) }
+            Section("Time and Place") {
+                Button("Schedule…") { addTimes(.repeat) }
+                    .disabled(draft.s.timing == .repeat)
+                Button("Once…") { addTimes(.once) }
+                    .disabled(draft.s.timing == .once)
+                if onThisMac {
+                    Menu("Calendar") {
+                        Button("Before an Event…") { addCalendar(.with { $0.minutesBefore = 10 }) }
+                        Button("When an Event Starts…") { addCalendar(.init()) }
+                        Button("When an Event Ends…") { addCalendar(.with { $0.when = .end }) }
+                        Button("When Free Time Begins…") { addCalendar(.with { $0.when = .free; $0.freeMinutes = 30 }) }
+                    }
+                    Menu("Places") {
+                        Button("Mac Arrives at a Place…") { addPlace(.placeArrive) }
+                        Button("Mac Leaves a Place…") { addPlace(.placeLeave) }
+                    }
                 }
             }
             Section("Code") {
@@ -120,22 +124,19 @@ struct ScheduleWhenBox: View {
                     }
                 }
             }
-            Section("Time and Place") {
-                Button("Schedule…") { addTimes(.repeat) }
-                    .disabled(draft.s.timing == .repeat)
-                Button("Once…") { addTimes(.once) }
-                    .disabled(draft.s.timing == .once)
-                if onThisMac {
-                    Menu("Calendar") {
-                        Button("Before an Event…") { addCalendar(.with { $0.minutesBefore = 10 }) }
-                        Button("When an Event Starts…") { addCalendar(.init()) }
-                        Button("When an Event Ends…") { addCalendar(.with { $0.when = .end }) }
-                        Button("When Free Time Begins…") { addCalendar(.with { $0.when = .free; $0.freeMinutes = 30 }) }
-                    }
-                    Menu("Places") {
-                        Button("Mac Arrives at a Place…") { addPlace(.placeArrive) }
-                        Button("Mac Leaves a Place…") { addPlace(.placeLeave) }
-                    }
+            Section("Hammock") {
+                Menu("Agents") {
+                    Button("An Agent Finishes") { add(.agent(.with { $0.finished = true })) }
+                    Button("An Agent Needs You") { add(.agent(.with { $0.needsYou = true })) }
+                }
+                Menu("Commands") {
+                    Button("A Command Fails") { add(.exit(.init())) }
+                }
+                Menu("Log Lines") {
+                    Button("A Log Line Matches…") { add(.log(.with { $0.paneID = logPanes.first?.id ?? "" })) }
+                }
+                Menu("Files") {
+                    Button("Files Change…") { add(.files(.init())) }
                 }
             }
             Section("Other") {

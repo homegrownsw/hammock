@@ -93,12 +93,12 @@ func TestAddTriggerMenu(t *testing.T) {
 		labels = append(labels, strings.TrimSpace(it.label))
 	}
 	got := strings.Join(labels, "|")
-	for _, want := range []string{"HAMMOCK|Agents|Commands|Log Lines|Files", "CODE|GitHub|Command Check…|URL Check…", "MESSAGES|Slack",
+	// Most used first.
+	want := strings.Join([]string{"TIME AND PLACE|Schedule…|Once…|Calendar|Places", "CODE|GitHub|Command Check…|URL Check…", "MESSAGES|Slack",
 		"THIS MAC|Disk and Battery|Away and Back|Apps Open or Quit|Drives and Displays|Wi-Fi",
-		"TIME AND PLACE|Schedule…|Once…|Calendar|Places", "OTHER|Shortcuts|Webhook"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("menu %q lacks %q", got, want)
-		}
+		"HAMMOCK|Agents|Commands|Log Lines|Files", "OTHER|Shortcuts|Webhook"}, "||")
+	if got != want {
+		t.Errorf("menu\n%q, want\n%q", got, want)
 	}
 	// The new automation has a schedule: Schedule… is there but can't be chosen.
 	if i := slices.Index(labels, "Schedule…"); i < 0 || !m.items[i].disabled {
@@ -106,7 +106,7 @@ func TestAddTriggerMenu(t *testing.T) {
 	}
 	out := drawn(a)
 	t.Log("\n" + out)
-	if !strings.Contains(out, "New Automation") || !strings.Contains(out, "HAMMOCK") {
+	if !strings.Contains(out, "New Automation") || !strings.Contains(out, "TIME AND PLACE") {
 		t.Errorf("the editor isn't under its menu:\n%s", out)
 	}
 
@@ -133,7 +133,7 @@ func TestAddTriggerMenu(t *testing.T) {
 	a.overlay.key(a, keysOf([]byte("a")))
 	choose("Agents")
 	a.overlay.key(a, keysOf([]byte("\x1b")))
-	if m, ok := a.overlay.(*menu); !ok || strings.TrimSpace(m.items[0].label) != "HAMMOCK" {
+	if m, ok := a.overlay.(*menu); !ok || strings.TrimSpace(m.items[0].label) != "TIME AND PLACE" {
 		t.Fatalf("Esc didn't go back to the sections: %T", a.overlay)
 	}
 	a.overlay.key(a, keysOf([]byte("\x1b")))
