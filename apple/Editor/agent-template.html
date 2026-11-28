@@ -70,6 +70,8 @@ html.preview { scrollbar-width: none; } html.preview::-webkit-scrollbar { displa
   /* SwiftUI's bubble.gradient, sampled (AgentWebView.swift). */ background: var(--bubble-fill); }
 /* Bold set as wide as the native text's bold (configure measures it). */
 strong, b, .md h1, .md h2, .md h3, .md h4, .md h5, .md h6 { letter-spacing: var(--bold-track, var(--track)); }
+/* WebKit's own highlight is the theme's colour, which the bubble already is. */
+.bubble::selection, .bubble ::selection { background: rgba(255, 255, 255, 0.4); color: #fff; }
 .bubble a { color: #fff; text-decoration: none; }
 .bubble code { font-family: var(--code); font-size: 0.92em; }
 .user.pending { opacity: 0.7; }
