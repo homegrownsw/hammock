@@ -250,25 +250,18 @@ struct PanePill: View {
     private var waiting: Bool { pane?.hasAgent == true && pane?.agent.shownState == .needsInput }
 
     var body: some View {
-        // The plain pill fading into the selected one (never both whole:
-        // their texts, regular and semibold, would show through each other).
-        ZStack {
-            face(current: false).opacity(1 - selected)
-            face(current: true).opacity(selected)
-        }
-        .opacity(minimised && selected < 0.5 ? 0.6 : 1)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(selected > 0.5 ? .isSelected : [])
-        .accessibilityHint(minimised ? "Minimised on the Mac" : "")
-    }
-
-    private func face(current: Bool) -> some View {
+        // One face, its mark following `selected`: the fill and border fade
+        // between plain and selected, the colour mixes, and the name
+        // thickens by grade, which keeps every glyph's width, so it never
+        // reflows or truncates differently. (Two faces fading into each
+        // other showed both names, regular and semibold, through each other.)
         let p = pane
-        return HStack(spacing: 6) {
+        let s = min(max(selected, 0), 1)
+        HStack(spacing: 6) {
             PaneIcon(pane: p, size: 16)
-                .opacity(current ? 1 : 0.7)
+                .opacity(0.7 + 0.3 * s)
             Text(stripName(p))
-                .font(.subheadline.weight(current ? .semibold : .regular))
+                .modifier(GradedFont(textStyle: .subheadline, emphasis: s))
                 .lineLimit(1)
                 .frame(maxWidth: 140)
                 .fixedSize(horizontal: true, vertical: false)
@@ -276,11 +269,25 @@ struct PanePill: View {
         }
         .padding(.horizontal, 14)
         .frame(height: 40)
-        .foregroundStyle(waiting ? Color.orange : current ? theme.accent : Color.secondary)
-        .background(Capsule().fill(fill(current)))
+        .foregroundStyle(waiting ? Color.orange : Color(.secondaryLabel).mix(with: theme.accent, by: s))
+        .background {
+            ZStack {
+                Capsule().fill(fill(false)).opacity(1 - s)
+                Capsule().fill(fill(true)).opacity(s)
+            }
+        }
         .overlay(alignment: .bottom) { progressBar(p) }
         .clipShape(Capsule())
-        .overlay(border(current))
+        .overlay {
+            ZStack {
+                border(false).opacity(1 - s)
+                border(true).opacity(s)
+            }
+        }
+        .opacity(minimised && selected < 0.5 ? 0.6 : 1)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(selected > 0.5 ? .isSelected : [])
+        .accessibilityHint(minimised ? "Minimised on the Mac" : "")
     }
 
     private func fill(_ current: Bool) -> Color {
@@ -324,6 +331,32 @@ struct PanePill: View {
             }
             .accessibilityLabel("\(progress)%")
         }
+    }
+}
+
+/// A text style's system font, from regular (`emphasis` 0) to about as
+/// heavy as semibold (1) by the font's grade axis rather than its weight:
+/// grade thickens the strokes without widening a glyph, so a label can
+/// move between the two, animated or following a finger, in one piece.
+struct GradedFont: ViewModifier, Animatable {
+    let textStyle: UIFont.TextStyle
+    var emphasis: Double
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var animatableData: Double {
+        get { emphasis }
+        set { emphasis = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(typeSize))
+        let size = UIFont.preferredFont(forTextStyle: textStyle, compatibleWith: traits).pointSize
+        // GRAD runs 400 (regular) up; ~560 matches semibold's stroke.
+        let grade = 400 + 160 * min(max(emphasis, 0), 1)
+        let descriptor = UIFont.systemFont(ofSize: size).fontDescriptor.addingAttributes([
+            UIFontDescriptor.AttributeName(rawValue: kCTFontVariationAttribute as String): [0x4752_4144: grade],
+        ])
+        return content.font(Font(UIFont(descriptor: descriptor, size: size)))
     }
 }
 
