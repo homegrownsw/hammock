@@ -7,22 +7,24 @@ import SwiftUI
 struct CockpitView: View {
     let model: AppModel
     let session: Session
-    // Not remembered: the app opens on Sessions (on Groups with the dev aid
-    // HMK_DEBUG_OPEN_FIRST, which opens its first tab).
+    /// Settings ▸ Default Tab: Sessions or Groups, first in the tab bar.
+    @AppStorage(CockpitView.defaultTabKey) private var defaultTab = "sessions"
+    static let defaultTabKey = "defaultTab"
+    // Not remembered: the app opens on the default tab (on Groups with the
+    // dev aid HMK_DEBUG_OPEN_FIRST, which opens its first tab).
     // HMK_DEBUG_COCKPIT_TAB=groups (devices, settings) opens on that tab.
     @State private var tab = ProcessInfo.processInfo.environment["HMK_DEBUG_OPEN_FIRST"] == "1" ? "groups"
-        : ProcessInfo.processInfo.environment["HMK_DEBUG_COCKPIT_TAB"] ?? "sessions"
+        : ProcessInfo.processInfo.environment["HMK_DEBUG_COCKPIT_TAB"]
+        ?? (UserDefaults.standard.string(forKey: CockpitView.defaultTabKey) == "groups" ? "groups" : "sessions")
 
     var body: some View {
         TabView(selection: $tab) {
-            Tab("Sessions", systemImage: "bubble.left.and.text.bubble.right", value: "sessions") {
-                SessionsView(model: model, session: session)
-                    .environment(\.cockpitTab, "sessions")
-            }
-            .badge(model.badgeCount)
-            Tab("Groups", systemImage: "square.stack.3d.up", value: "groups") {
-                GroupsView(model: model, session: session)
-                    .environment(\.cockpitTab, "groups")
+            if defaultTab == "groups" {
+                groupsTab
+                sessionsTab
+            } else {
+                sessionsTab
+                groupsTab
             }
             Tab("Devices", systemImage: "desktopcomputer", value: "devices") {
                 DevicesView(session: session)
@@ -71,6 +73,21 @@ struct CockpitView: View {
             let origin = tab
             StartAgentView(model: model, groupID: r.groupID, onDone: { _ in AgentStarter.shared.request = nil },
                            onStarted: { AgentStarter.shared.didOpen($0, origin: origin) })
+        }
+    }
+
+    private var sessionsTab: some TabContent<String> {
+        Tab("Sessions", systemImage: "bubble.left.and.text.bubble.right", value: "sessions") {
+            SessionsView(model: model, session: session)
+                .environment(\.cockpitTab, "sessions")
+        }
+        .badge(model.badgeCount)
+    }
+
+    private var groupsTab: some TabContent<String> {
+        Tab("Groups", systemImage: "square.stack.3d.up", value: "groups") {
+            GroupsView(model: model, session: session)
+                .environment(\.cockpitTab, "groups")
         }
     }
 }

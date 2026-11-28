@@ -74,7 +74,7 @@ With it:
 
 | Variable | What it does |
 | --- | --- |
-| `HMK_DEBUG_COCKPIT_TAB=groups\|devices\|settings` | Open that tab. |
+| `HMK_DEBUG_COCKPIT_TAB=sessions\|groups\|devices\|settings` | Open that tab, whatever Settings ▸ Default Tab says. |
 | `HMK_DEBUG_PATH=schedules,schedule:<id>` | Push those screens onto Sessions (tab and pane ids too). Open sheets and screens this way rather than with tap loops. |
 | `HMK_DEBUG_BOTTOM=1` | Scroll Sessions to Coming Up (a schedule's page to its runs). |
 | `HMK_DEBUG_MAC_THEME=<name>\|custom` | The sample Mac's theme (Tokyo Night otherwise). |

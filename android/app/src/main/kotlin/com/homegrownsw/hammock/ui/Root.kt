@@ -60,6 +60,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.homegrownsw.hammock.OpenRequest
 import com.homegrownsw.hammock.Session
 import com.homegrownsw.hammock.rememberBoolPref
+import com.homegrownsw.hammock.rememberPref
 import com.homegrownsw.hammock.client.AppModel
 import com.homegrownsw.hammock.client.PairingCodes
 import com.homegrownsw.hammock.media.ScreenShare
@@ -180,7 +181,10 @@ private fun Workspace(session: Session, model: AppModel, opening: OpenRequest?, 
     }
     val wide = LocalConfiguration.current.screenWidthDp >= 840
     val showingDetail = nav.stack.isNotEmpty() && (nav.dest == Dest.Sessions || nav.dest == Dest.Groups)
-    var lastDest by rememberSaveable { mutableStateOf(Dest.Sessions.name) }
+    // Settings ▸ Default tab: Sessions or Groups, first in the bar, and where the app opens.
+    val defaultTab by rememberPref(com.homegrownsw.hammock.Prefs.DEFAULT_TAB, "sessions")
+    val dests = if (defaultTab == "groups") listOf(Dest.Groups, Dest.Sessions, Dest.Devices, Dest.Settings) else Dest.entries
+    var lastDest by rememberSaveable { mutableStateOf(dests.first().name) }
     LaunchedEffect(lastDest) { nav.dest = Dest.valueOf(lastDest) }
 
     BackHandler(nav.stack.isNotEmpty()) { nav.pop() }
@@ -277,7 +281,7 @@ private fun Workspace(session: Session, model: AppModel, opening: OpenRequest?, 
         modifier = if (fullScreen) Modifier.clearAndSetSemantics {} else Modifier,
         layoutType = layout,
         navigationSuiteItems = {
-            Dest.entries.forEach { d ->
+            dests.forEach { d ->
                 item(
                     selected = nav.dest == d,
                     onClick = {

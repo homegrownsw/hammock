@@ -23,6 +23,7 @@ struct SettingsScreen: View {
     @AppStorage(TerminalPrefs.fontSize) private var terminalSize = TerminalPrefs.defaultSize
     @AppStorage(TerminalPrefs.lineSpacing) private var terminalSpacing = 0.0
     @AppStorage("appearance") private var appearance = "system"
+    @AppStorage(CockpitView.defaultTabKey) private var defaultTab = "sessions"
 
     /// Only with Hammock on a paired Apple Watch (dev aid: HMK_DEBUG_WATCH_SETTINGS=1).
     private var showsWatch: Bool {
@@ -62,6 +63,15 @@ struct SettingsScreen: View {
                     Text("Appearance")
                 } footer: {
                     Text("The app's colour, your messages' and the terminal's. By default, your Mac's theme.")
+                }
+                Section {
+                    Picker("Default Tab", selection: $defaultTab) {
+                        Text("Sessions").tag("sessions")
+                        Text("Groups").tag("groups")
+                    }
+                    // As Agent tabs open in's: made again with the theme's colour.
+                    .tint(theme.accent)
+                    .id(theme.name)
                 }
                 Section {
                     Picker("Agent tabs open in", selection: $defaultView) {

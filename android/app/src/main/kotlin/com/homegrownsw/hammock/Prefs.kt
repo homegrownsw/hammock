@@ -20,6 +20,7 @@ object Prefs {
 
     // Keys, and their defaults.
     const val APPEARANCE = "appearance"         // system, light, dark
+    const val DEFAULT_TAB = "defaultTab"        // sessions, groups: first in the bar, and where the app opens
     const val THEME = "theme"                   // "" (the computer's) or a theme's name
     const val AGENT_TABS_OPEN_IN = "agentTabsOpenIn" // agent, terminal
     const val TERMINAL_FONT = "terminalFont"    // "" (JetBrains Mono) or a system family

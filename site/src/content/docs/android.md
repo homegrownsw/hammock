@@ -9,8 +9,9 @@ The Android app does what the [iPhone app](/hammock/docs/iphone/) does, in Andro
 ## Finding your way
 
 The bar along the bottom (along the side on a tablet or an open foldable) has **Sessions**, **Groups**, **Devices**
-and **Settings**. Tap a session or tab to open it, and swipe back from the edge of the screen to return. On a tablet,
-what you open shows beside the list.
+and **Settings**; Settings ▸ Default tab chooses whether Sessions or Groups comes first, and opens. Tap a session
+or tab to open it, and swipe back from the edge of the screen to return. On a tablet, what you open shows beside the
+list.
 
 - **Sessions** lists your agents, most pressing first, as on the iPhone. **Allow**, **Deny** and **Open** answer a
   permission request where it is; when what it asks is more than fits, **Review** opens the pane in place of **Allow**.

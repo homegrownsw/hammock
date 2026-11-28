@@ -83,6 +83,7 @@ fun SettingsScreen(session: Session, model: AppModel) {
     val w by model.workspace.collectAsStateWithLifecycle()
     var themePref by rememberPref(Prefs.THEME, HammockTheme.SAME_AS_COMPUTER)
     var appearance by rememberPref(Prefs.APPEARANCE, "system")
+    var defaultTab by rememberPref(Prefs.DEFAULT_TAB, "sessions")
     var opensIn by rememberPref(Prefs.AGENT_TABS_OPEN_IN, "agent")
     var warnBusy by rememberBoolPref(Prefs.WARN_CLOSE_BUSY, true)
     var codeWrap by rememberPref(Prefs.CODE_WRAP, "prose")
@@ -143,6 +144,9 @@ fun SettingsScreen(session: Session, model: AppModel) {
                     }
                 }
                 Footer("The app's colour, your messages' and the terminal's. By default, your computer's theme.")
+            }
+            item {
+                GroupedCard(Modifier.padding(top = 16.dp)) { Choice("Default tab", defaultTab, listOf("sessions" to "Sessions", "groups" to "Groups")) { defaultTab = it } }
             }
             item {
                 SectionTitle("Agent View")
