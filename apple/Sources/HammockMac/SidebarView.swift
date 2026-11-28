@@ -416,7 +416,9 @@ struct SidebarView: View {
         // selectable rows wouldn't drag.
         ScrollViewReader { proxy in
         List {
-            Group {
+            if SidebarModeState.shared.showsSessions {
+                SidebarSessionsList(model: model)
+            } else {
                 ForEach(rows) { row in
                     switch row {
                     case .header(let group, let isCollapsed, let tabsShown):
@@ -500,7 +502,10 @@ struct SidebarView: View {
         // A bar (macOS 26): the list scrolling beneath it fades under, not shows through.
         .safeAreaBar(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
-                NeedsYouView(model: model)
+                // Sessions has its own Needs You, at the top of its list.
+                if !SidebarModeState.shared.showsSessions {
+                    NeedsYouView(model: model)
+                }
                 ScheduleFooter(model: model)
                 UsageFooter(model: model)
                 HostFooter(model: model)
@@ -1132,63 +1137,28 @@ struct Favicon: View {
     }
 }
 
+/// The sidebar's footer: Groups | Sessions, then your computers (only this
+/// one until another is linked: LinkComputers.swift). The chosen computer
+/// shows its name, when there's room for it.
 struct HostFooter: View {
     let model: AppModel
-    @State private var confirmStop = false
-
-    private var status: String {
-        guard model.connected else { return "Connecting to hmkd…" }
-        let s = model.sharing
-        guard s.groups > 0 else { return "This Mac" }
-        let groups = s.groups == 1 ? "1 Group" : "\(s.groups) Groups"
-        return s.online > 0 ? "Sharing \(groups) · \(s.online) here" : "Sharing \(groups)"
-    }
 
     var body: some View {
-        if model.hasLinkedComputers {
-            // Your computers: the switcher (LinkComputers.swift).
-            ComputerSwitcher(model: model)
-        } else {
-            single
+        ViewThatFits(in: .horizontal) {
+            row(names: true)
+            row(names: false)
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
     }
 
-    private var single: some View {
-        HStack(spacing: 8) {
-            Group {
-                if let me = model.thisComputer {
-                    ComputerIcon(me, size: 13, weight: .regular)
-                } else {
-                    Image(systemName: "desktopcomputer").foregroundStyle(.secondary)
-                }
+    private func row(names: Bool) -> some View {
+        HStack(spacing: 6) {
+            if SidebarModeState.shared.applies {
+                SidebarModePicker()
             }
-            VStack(alignment: .leading, spacing: 0) {
-                Text(model.hostName.isEmpty ? "This Mac" : model.hostName.replacingOccurrences(of: ".local", with: ""))
-                    .font(.callout.weight(.medium))
-                Text(status)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            if model.sharing.groups > 0 {
-                Button("Stop") { confirmStop = true }
-                    .controlSize(.small)
-                    .tooltip("Stop all sharing: everyone is disconnected")
-                    .confirmationDialog("Stop sharing everything?", isPresented: $confirmStop) {
-                        Button("Stop All Sharing", role: .destructive) { Task { await model.stopSharing(nil) } }
-                    } message: {
-                        Text("Everyone is disconnected and every invite link stops working.")
-                    }
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .contentShape(Rectangle())
-        .contextMenu {
-            if let me = model.thisComputer {
-                Button("Icon…") { LinkUI.shared.customise(me) }
-            }
-            Button("Link a Computer…") { LinkUI.shared.open() }
+            Spacer(minLength: 0)
+            ComputerSwitcher(model: model, names: names)
         }
     }
 }

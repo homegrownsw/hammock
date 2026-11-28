@@ -305,6 +305,15 @@ struct HammockApp: App {
             }
             CommandGroup(after: .sidebar) {
                 Button(sidebarHidden ? "Show Sidebar" : "Hide Sidebar") { sidebarHidden.toggle() }.keyboardShortcut(Keys.toggleSidebar)
+                if SidebarModeState.shared.applies {
+                    // Ticked as View menus tick a view; showing either shows the sidebar.
+                    Toggle("Show Groups", isOn: Binding(get: { SidebarModeState.shared.mode == .groups },
+                                                        set: { _ in sidebarHidden = false; SidebarModeState.shared.show(.groups) }))
+                        .keyboardShortcut(Keys.showGroups)
+                    Toggle("Show Sessions", isOn: Binding(get: { SidebarModeState.shared.mode == .sessions },
+                                                          set: { _ in sidebarHidden = false; SidebarModeState.shared.show(.sessions) }))
+                        .keyboardShortcut(Keys.showSessions)
+                }
                 if HammockTool.editor.on {
                     Toggle("Wrap Lines in Editors", isOn: Prefs.shared.boolBinding(.editorWrap)).keyboardShortcut(Keys.editorWrap)
                 }

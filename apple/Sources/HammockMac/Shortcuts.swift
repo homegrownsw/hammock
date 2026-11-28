@@ -78,6 +78,8 @@ enum Keys {
     // View
     static var toggleSidebar: KeyboardShortcut? { shortcut("toggle_sidebar") }
     static var allComputers: KeyboardShortcut? { shortcut("show_all_computers") }
+    static var showGroups: KeyboardShortcut? { shortcut("show_groups") }
+    static var showSessions: KeyboardShortcut? { shortcut("show_sessions") }
     static var scheduledTasks: KeyboardShortcut? { shortcut("scheduled_tasks") }
     static var nextTab: KeyboardShortcut? { shortcut("next_tab") }
     static var previousTab: KeyboardShortcut? { shortcut("previous_tab") }
