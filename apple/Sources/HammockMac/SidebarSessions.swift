@@ -22,25 +22,39 @@ final class SidebarModeState {
     var applies: Bool { SidebarLayout.current != .horizontal }
     var showsSessions: Bool { applies && mode == .sessions }
 
+    /// Shows Groups or Sessions, and the sidebar if it's hidden.
     func show(_ m: SidebarMode) {
+        UserDefaults.standard.set(false, forKey: SidebarHiding.key)
         withAnimation(.snappy(duration: 0.2)) { mode = m }
     }
 }
 
-/// Groups | Sessions, at the left of the sidebar's footer.
+/// Groups | Sessions, at the left of the sidebar's footer: in words, or
+/// (`icons`, a narrow sidebar) their symbols.
 struct SidebarModePicker: View {
+    var icons = false
     private var state: SidebarModeState { .shared }
 
     var body: some View {
-        Picker("Sidebar", selection: Binding(get: { state.mode }, set: { state.show($0) })) {
-            Text("Groups").tag(SidebarMode.groups)
-                .help(Keys.hint("Groups", "show_groups"))
-            Text("Sessions").tag(SidebarMode.sessions)
-                .help(Keys.hint("Sessions", "show_sessions"))
+        // Read here, not only in the binding, so the control follows the
+        // mode however it changes (the View menu, the palette).
+        let mode = state.mode
+        Picker("Sidebar", selection: Binding(get: { mode }, set: { state.show($0) })) {
+            segment("Groups", "square.stack.3d.up").tag(SidebarMode.groups)
+            segment("Sessions", "bubble.left.and.text.bubble.right").tag(SidebarMode.sessions)
         }
         .pickerStyle(.segmented)
         .labelsHidden()
         .fixedSize()
+        .help("\(Keys.hint("Groups", "show_groups")) or \(Keys.hint("Sessions", "show_sessions"))")
+    }
+
+    @ViewBuilder private func segment(_ title: String, _ symbol: String) -> some View {
+        if icons {
+            Image(systemName: symbol).accessibilityLabel(title)
+        } else {
+            Text(title)
+        }
     }
 }
 
@@ -59,17 +73,21 @@ struct SidebarSessionsList: View {
         let groups = model.shownGroups
         let sections = model.sessionSections(in: groups)
         let shownPanes = Set(groups.flatMap { g in model.tabs(in: g).flatMap { model.panes(in: $0).map(\.id) } })
-        let cards = model.needsYou.filter { $0.paneID.isEmpty || shownPanes.contains($0.paneID) }
+        // The computer chosen in the footer: its agents' cards. Requests to
+        // link or join aren't any one Group's.
+        let shown: (String) -> Bool = { $0.isEmpty || shownPanes.contains($0) }
+        let cards = model.needsYou.filter { shown($0.paneID) }
+        let grants = model.grants.filter { shown($0.requesterPaneID) }
         // A session the queue has a card for shows as its card.
         let others = sections.needsYou.filter { s in !cards.contains { $0.paneID == s.pane.id } }
         let links = NeedsYouView.incomingLinks(model)
-        let needsYou = !links.isEmpty || !model.joinRequests.isEmpty || !model.grants.isEmpty || !cards.isEmpty || !others.isEmpty
+        let needsYou = !links.isEmpty || !model.joinRequests.isEmpty || !grants.isEmpty || !cards.isEmpty || !others.isEmpty
 
         if needsYou {
             heading("Needs You")
             ForEach(links, id: \.id) { card(LinkRequestCard(model: model, request: $0)) }
             ForEach(model.joinRequests, id: \.id) { card(JoinCard(model: model, request: $0)) }
-            ForEach(model.grants) { card(GrantCard(model: model, grant: $0)) }
+            ForEach(grants) { card(GrantCard(model: model, grant: $0)) }
             ForEach(cards) { card(AttentionCard(model: model, item: $0)) }
             ForEach(others) { row($0) }
         }
@@ -79,13 +97,11 @@ struct SidebarSessionsList: View {
         }
         if !sections.recent.isEmpty {
             heading("Recent")
-            // The last 48 hours', then the rest on asking (all of them when
-            // none are that new).
-            let cutoff = Int64((Date().timeIntervalSince1970 - 48 * 3600) * 1000)
-            let fresh = sections.recent.filter { $0.pane.agent.stateSinceUnixMs >= cutoff }
-            let shown = showingAllRecent || fresh.isEmpty ? sections.recent : fresh
-            ForEach(shown) { row($0) }
-            if !fresh.isEmpty, fresh.count < sections.recent.count {
+            // The last 48 hours', then the rest on asking. (As of this
+            // update: the list updates with every state change.)
+            let recent = sections.shownRecent(all: showingAllRecent, now: Date())
+            ForEach(recent.rows) { row($0) }
+            if recent.more {
                 Button(showingAllRecent ? "Show Less" : "Show More…") {
                     withAnimation(.snappy(duration: 0.25)) { showingAllRecent.toggle() }
                 }
@@ -96,7 +112,7 @@ struct SidebarSessionsList: View {
                 .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
             }
         }
-        if !needsYou, sections.isEmpty {
+        if !needsYou, sections.isEmpty, model.connected {
             Text("No Agent Sessions")
                 .font(.callout)
                 .foregroundStyle(.secondary)

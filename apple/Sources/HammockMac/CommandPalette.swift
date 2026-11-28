@@ -395,12 +395,16 @@ struct CommandPalette: View {
                 }
             }
         }
+        // The other of Groups and Sessions.
         if SidebarModeState.shared.applies {
-            action("show-groups", "Show Groups", "square.stack.3d.up", .secondary, "sidebar groups tabs tree view", keys: Keys.showGroups) {
-                SidebarModeState.shared.show(.groups)
-            }
-            action("show-sessions", "Show Sessions", "bubble.left.and.text.bubble.right", .secondary, "sidebar sessions agents working recent needs you view", keys: Keys.showSessions) {
-                SidebarModeState.shared.show(.sessions)
+            if SidebarModeState.shared.mode == .sessions {
+                action("show-groups", "Show Groups", "square.stack.3d.up", .secondary, "sidebar groups tabs tree view", keys: Keys.showGroups) {
+                    SidebarModeState.shared.show(.groups)
+                }
+            } else {
+                action("show-sessions", "Show Sessions", "bubble.left.and.text.bubble.right", .secondary, "sidebar sessions agents working recent needs you view", keys: Keys.showSessions) {
+                    SidebarModeState.shared.show(.sessions)
+                }
             }
         }
         if !model.hasLinkedComputers, let me = model.thisComputer {

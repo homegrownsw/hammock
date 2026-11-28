@@ -128,11 +128,9 @@ struct SessionsView: View {
                         Section("Recent") {
                             // The last 48 hours', then the rest on asking (all
                             // of them when none are that new).
-                            let cutoff = Int64((ctx.date.timeIntervalSince1970 - 48 * 3600) * 1000)
-                            let fresh = rows.recent.filter { $0.pane.agent.stateSinceUnixMs >= cutoff }
-                            let shown = showingAllRecent || fresh.isEmpty ? rows.recent : fresh
-                            ForEach(shown, id: \.tab.id) { r in sessionLink(r) }
-                            if !fresh.isEmpty, fresh.count < rows.recent.count {
+                            let shown = rows.shownRecent(all: showingAllRecent, now: ctx.date)
+                            ForEach(shown.rows, id: \.tab.id) { r in sessionLink(r) }
+                            if shown.more {
                                 Button(showingAllRecent ? "Show Less" : "Show More…") {
                                     withAnimation { showingAllRecent.toggle() }
                                 }
@@ -235,7 +233,7 @@ struct SessionsView: View {
         }
     }
 
-    private func sessionLink(_ r: SessionRow) -> some View {
+    private func sessionLink(_ r: SessionEntry) -> some View {
         // Straight to the agent's pane, even in a tab of several.
         NavigationLink(value: r.pane.id) { SessionRowView(model: model, row: r) }
             .modifier(closeSwipe(paneID: r.pane.id))
@@ -274,9 +272,6 @@ struct SessionsView: View {
         }
     }
 
-    /// A tab with an agent, represented by its most pressing agent pane.
-    typealias SessionRow = SessionEntry
-
     private var sessionRows: SessionSections { model.sessionSections(in: model.groups) }
 }
 
@@ -305,7 +300,7 @@ private struct CloseSessionSwipe: ViewModifier {
 /// beside the name it's about.
 struct SessionRowView: View {
     let model: AppModel
-    let row: SessionsView.SessionRow
+    let row: SessionEntry
 
     var body: some View {
         let a = row.pane.agent
