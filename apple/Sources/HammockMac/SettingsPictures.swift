@@ -566,6 +566,38 @@ struct FinishedPicture: View {
     }
 }
 
+/// The bottom of the sidebar: (if on) Groups | Sessions, then this Mac.
+struct SessionsSwitchPicture: View {
+    let on: Bool
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let look = MiniLook.current(dark: scheme == .dark)
+        CloseUp(background: look.sidebar) {
+            VStack(alignment: .leading, spacing: 1) {
+                groupHeader("Hammock", open: true)
+                SidebarRow(symbol: "terminal", color: .secondary, name: "shell")
+                SidebarRow(symbol: "terminal", color: .secondary, name: "server")
+                Spacer(minLength: 4)
+                HStack(spacing: 4) {
+                    HStack(spacing: 0) {
+                        Text("Groups").font(.system(size: 8, weight: .medium))
+                            .padding(.horizontal, 5).frame(height: 13)
+                            .background(RoundedRectangle(cornerRadius: 3).fill(Color.primary.opacity(look.dark ? 0.22 : 0.12)))
+                        Text("Sessions").font(.system(size: 8)).foregroundStyle(.secondary).padding(.horizontal, 5)
+                    }
+                    .padding(1)
+                    .background(RoundedRectangle(cornerRadius: 4).fill(Color.primary.opacity(0.06)))
+                    .modifier(Ghosted(off: !on))
+                    Spacer(minLength: 2)
+                    Image(systemName: "laptopcomputer").font(.system(size: 10)).foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 8).padding(.vertical, 5)
+        }
+    }
+}
+
 /// Two Groups and their tabs, the headings prominent (bigger than the tabs)
 /// or subtle (smaller, dimmer), with or without the Groups' icons.
 struct GroupHeadingsPicture: View {

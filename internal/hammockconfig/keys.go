@@ -104,6 +104,8 @@ var Keys = []Key{
 		Doc: "false: no preview of a tab's panes when you hover over it, only its title", Only: "Mac"},
 	{Name: "sidebar-finished", Group: "Window and sidebar", Value: "true", Default: "true",
 		Doc: "finished agents get their own list at the bottom of the sidebar", Only: "Mac"},
+	{Name: "sidebar-sessions", Group: "Window and sidebar", Value: "true", Default: "true",
+		Doc: "false: no Groups | Sessions switch in the sidebar's footer, which lists only Groups", Only: "Mac"},
 	{Name: "collapsed-group-agents", Group: "Window and sidebar", Value: "false", Default: "false",
 		Doc: "true: a collapsed Group still shows its tabs with an active agent", Only: "Mac"},
 	{Name: "keep-empty-groups", Group: "Window and sidebar", Value: "true", Default: "true",

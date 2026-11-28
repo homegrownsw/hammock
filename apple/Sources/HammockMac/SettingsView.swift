@@ -441,6 +441,7 @@ struct AppearanceSettings: View {
     private var layout: SidebarLayout { .current }
     private var showFinished: Bool { Prefs.shared.bool(FinishedPrefs.pref) }
     private var showAgentsCollapsed: Bool { Prefs.shared.bool(CollapsedAgentsPrefs.pref) }
+    private var showSessionsSwitch: Bool { Prefs.shared.bool(SessionsSwitch.pref) }
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -511,6 +512,11 @@ struct AppearanceSettings: View {
                 }
                 .disabled(layout == .horizontal)
                 .settingAnchor("appearance.collapsed")
+                PictureToggle(label: "Groups and Sessions switch", isOn: Prefs.shared.boolBinding(SessionsSwitch.pref)) {
+                    SessionsSwitchPicture(on: showSessionsSwitch)
+                }
+                .disabled(layout == .horizontal)
+                .settingAnchor("appearance.sessions")
                 PictureToggle(label: "Close button on hover",
                               isOn: Binding(get: { config.tabCloseButton }, set: { config.set("tab-close-button", $0 ? nil : "false") })) {
                     TabClosePicture(on: config.tabCloseButton)
