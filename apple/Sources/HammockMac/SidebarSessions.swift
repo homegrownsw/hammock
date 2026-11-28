@@ -23,9 +23,9 @@ final class SidebarModeState {
         didSet { UserDefaults.standard.set(mode.rawValue, forKey: Self.key) }
     }
 
-    /// Sessions is the vertical sidebar's, while its switch is on: with
-    /// Horizontal Tabs, or the switch off, the sidebar lists only Groups.
-    var applies: Bool { SidebarLayout.current != .horizontal && Prefs.shared.bool(SessionsSwitch.pref) }
+    /// Sessions is offered while its switch is on (with Horizontal Tabs
+    /// too, whose tab bar hides while Sessions shows).
+    var applies: Bool { Prefs.shared.bool(SessionsSwitch.pref) }
     var showsSessions: Bool { applies && mode == .sessions }
 
     /// Where the sidebar's two pages sit: 0 Groups, 1 Sessions, between
@@ -357,6 +357,9 @@ struct SidebarSessionsList: View {
                 SidebarPill(selected: model.selectedTabID == s.tab.id, hovered: hovered == s.tab.id)
                     .padding(.vertical, compact ? 1 : 2)
             }
+            // Out to the sidebar's edges, as Groups' tabs' pills (tabPill),
+            // the row's content with it.
+            .padding(.horizontal, -8)
             .tabPreview(model: model, tab: s.tab, edge: .trailing)
             .onHover { inside in
                 if inside, !PaletteState.shared.isOpen { hovered = s.tab.id } else if hovered == s.tab.id { hovered = nil }

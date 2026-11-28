@@ -515,7 +515,6 @@ struct AppearanceSettings: View {
                 PictureToggle(label: "Groups and Sessions switch", isOn: Prefs.shared.boolBinding(SessionsSwitch.pref)) {
                     SessionsSwitchPicture(on: showSessionsSwitch)
                 }
-                .disabled(layout == .horizontal)
                 .settingAnchor("appearance.sessions")
                 PictureToggle(label: "Close button on hover",
                               isOn: Binding(get: { config.tabCloseButton }, set: { config.set("tab-close-button", $0 ? nil : "false") })) {

@@ -799,8 +799,10 @@ struct ContentView: View {
         } detail: {
             if let tab = model.selectedTab {
                 VStack(spacing: 0) {
-                    if layout == .horizontal, let group = model.group(of: tab) {
+                    // Not while the sidebar shows Sessions: its rows are the tabs.
+                    if layout == .horizontal, !(SidebarModeState.shared.showsSessions && !sidebarHidden), let group = model.group(of: tab) {
                         TabStrip(model: model, group: group)
+                            .transition(.move(edge: .top).combined(with: .opacity))
                     }
                     TabDetailView(model: model, tab: tab)
                         .id(tab.id)
