@@ -11,12 +11,14 @@ public struct AvatarView: View {
     let person: Person
     var size: CGFloat = 20
     var typing = false
+    var ring = false
     @State private var glow = false
 
-    public init(person: Person, size: CGFloat = 20, typing: Bool = false) {
+    public init(person: Person, size: CGFloat = 20, typing: Bool = false, ring: Bool = false) {
         self.person = person
         self.size = size
         self.typing = typing
+        self.ring = ring
     }
 
     private var color: Color { Color(hue: person.hue, saturation: 0.55, brightness: 0.78) }
@@ -39,7 +41,10 @@ public struct AvatarView: View {
         .frame(width: size, height: size)
         .clipShape(Circle())
         .overlay {
-            Circle().strokeBorder(.background, lineWidth: max(1, size / 14))
+            // Only where avatars overlap, to part them: drawn inside the
+            // circle, it covers the picture's edge, so a lone avatar looked
+            // more tightly cropped than the system's account picture.
+            if ring { Circle().strokeBorder(.background, lineWidth: max(1, size / 14)) }
         }
         .background {
             if typing {
@@ -71,7 +76,7 @@ public struct AvatarStack: View {
         if !people.isEmpty {
             HStack(spacing: -size * 0.3) {
                 ForEach(people.prefix(4), id: \.0.userID) { m, p in
-                    AvatarView(person: p, size: size, typing: m.typing)
+                    AvatarView(person: p, size: size, typing: m.typing, ring: true)
                 }
             }
         }
