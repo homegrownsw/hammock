@@ -538,12 +538,16 @@ struct ComputerSwitcher: View {
     var names = true
     /// One pop-up button for them all, when there isn't room for each.
     var collapsed = false
+    /// Alone, the whole footer's width: this Mac's name, status and Stop
+    /// (when the footer has no Groups | Sessions switch).
+    var wide = false
     @State private var confirmStop = false
     var body: some View {
         HStack(spacing: 2) {
             // Only when something's wrong: connected is the normal state, and a
-            // green dot beside the computers read as one of theirs.
-            if !model.connected {
+            // green dot beside the computers read as one of theirs. The wide
+            // row says so in words.
+            if !model.connected, !(wide && !model.hasLinkedComputers) {
                 Circle()
                     .fill(Color.orange)
                     .frame(width: 7, height: 7)
@@ -556,6 +560,8 @@ struct ComputerSwitcher: View {
             } else if model.hasLinkedComputers {
                 chip(nil)
                 ForEach(model.computers, id: \.userID) { c in chip(c) }
+            } else if wide {
+                aloneWide
             } else {
                 alone
             }
@@ -663,6 +669,48 @@ struct ComputerSwitcher: View {
         .contentShape(Rectangle())
         .help(model.thisComputer.map(help) ?? "This Mac")
         .accessibilityLabel("This Mac")
+        .contextMenu {
+            if let me = model.thisComputer {
+                menu(me)
+            } else {
+                Button("Link a Computer…") { LinkUI.shared.open() }
+            }
+        }
+    }
+
+    private var status: String {
+        guard model.connected else { return "Connecting to hmkd…" }
+        let s = model.sharing
+        guard s.groups > 0 else { return "This Mac" }
+        let groups = s.groups == 1 ? "1 Group" : "\(s.groups) Groups"
+        return s.online > 0 ? "Sharing \(groups) · \(s.online) here" : "Sharing \(groups)"
+    }
+
+    private var aloneWide: some View {
+        HStack(spacing: 8) {
+            Group {
+                if let me = model.thisComputer {
+                    ComputerIcon(me, size: 13, weight: .regular)
+                } else {
+                    Image(systemName: "desktopcomputer").foregroundStyle(.secondary)
+                }
+            }
+            VStack(alignment: .leading, spacing: 0) {
+                Text(model.hostName.isEmpty ? "This Mac" : model.hostName.replacingOccurrences(of: ".local", with: ""))
+                    .font(.callout.weight(.medium))
+                Text(status)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            if model.sharing.groups > 0 {
+                Button("Stop") { confirmStop = true }
+                    .controlSize(.small)
+                    .tooltip("Stop all sharing: everyone is disconnected")
+            }
+        }
+        .padding(.horizontal, 6)
+        .contentShape(Rectangle())
         .contextMenu {
             if let me = model.thisComputer {
                 menu(me)
