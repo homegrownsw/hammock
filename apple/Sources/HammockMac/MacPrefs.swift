@@ -9,7 +9,7 @@ extension Pref {
     static var mac: [Pref] {
         [NotifyPrefs.needsInput, NotifyPrefs.grants, NotifyPrefs.finished, NotifyPrefs.errored, NotifyPrefs.reviewReplies, NotifyPrefs.sound,
          NotifyPrefs.whenVisible, NotifyPrefs.badge, NotifyPrefs.style,
-         SidebarLayout.pref, FinishedPrefs.pref, CollapsedAgentsPrefs.pref, CloseGuard.pref, Pref.simulatorFrame]
+         SidebarLayout.pref, FinishedPrefs.pref, CollapsedAgentsPrefs.pref, SessionsSwitch.pref, CloseGuard.pref, Pref.simulatorFrame]
     }
 
     /// Simulator panes draw the device around the screen.

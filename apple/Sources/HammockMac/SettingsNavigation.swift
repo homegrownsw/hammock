@@ -416,6 +416,7 @@ enum SettingsIndex {
             e(.appearance, "Tabs", "Agent and program status", "appearance.tabstatus", "icon end of row osc 7501 progress"),
             e(.appearance, "Tabs", "Show finished agents", "appearance.finished", "done needs you"),
             e(.appearance, "Tabs", "Show active agents in collapsed Groups", "appearance.collapsed"),
+            e(.appearance, "Tabs", "Groups and Sessions switch", "appearance.sessions", "sidebar footer agents list mode hide"),
             e(.appearance, "Tabs", "Close button on hover", "appearance.closebutton", "tab close x"),
             e(.appearance, "Tabs", "Preview on hover", "appearance.tabpreview", "tab preview thumbnail peek popover card"),
             e(.appearance, "Tabs", "Program icons", "appearance.programicons", "vim git colorful plain"),

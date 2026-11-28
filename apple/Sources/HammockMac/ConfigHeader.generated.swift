@@ -38,6 +38,7 @@ extension AppConfig {
         #   tab-close-button = true                (false: no close button on a tab you hover over, in the sidebar or the tab bar; Mac only)
         #   tab-preview = true                     (false: no preview of a tab's panes when you hover over it, only its title; Mac only)
         #   sidebar-finished = true                (finished agents get their own list at the bottom of the sidebar; Mac only)
+        #   sidebar-sessions = true                (false: no Groups | Sessions switch in the sidebar's footer, which lists only Groups; Mac only)
         #   collapsed-group-agents = false         (true: a collapsed Group still shows its tabs with an active agent; Mac only)
         #   keep-empty-groups = true               (⌘W on a Group's last tab keeps the Group; false: closes it too; Mac only)
         #   menu-bar = always | active             (the menu bar item; active: only while a screen's shared, an agent needs you (menu-bar-agents) or the server's down; Mac only)

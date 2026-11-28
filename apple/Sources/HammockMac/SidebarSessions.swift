@@ -7,6 +7,12 @@ enum SidebarMode: String {
     case groups, sessions
 }
 
+/// The Groups | Sessions switch is on (Settings ▸ Appearance); off, the
+/// sidebar lists only Groups.
+enum SessionsSwitch {
+    static let pref = Pref("sidebar-sessions", defaults: "sidebarSessions", true)
+}
+
 /// The sidebar's mode, remembered between launches (state, not a setting).
 @MainActor @Observable
 final class SidebarModeState {
@@ -17,9 +23,9 @@ final class SidebarModeState {
         didSet { UserDefaults.standard.set(mode.rawValue, forKey: Self.key) }
     }
 
-    /// Sessions is the vertical sidebar's: with Horizontal Tabs the sidebar
-    /// lists only Groups.
-    var applies: Bool { SidebarLayout.current != .horizontal }
+    /// Sessions is the vertical sidebar's, while its switch is on: with
+    /// Horizontal Tabs, or the switch off, the sidebar lists only Groups.
+    var applies: Bool { SidebarLayout.current != .horizontal && Prefs.shared.bool(SessionsSwitch.pref) }
     var showsSessions: Bool { applies && mode == .sessions }
 
     /// Shows Groups or Sessions, and the sidebar if it's hidden.
