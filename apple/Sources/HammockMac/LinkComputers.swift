@@ -527,30 +527,35 @@ struct LinkRequestCard: View {
     }
 }
 
-/// The sidebar's footer once computers are linked: All, then each computer
-/// (its badge and whether it's reachable). Clicking one shows only its
-/// Groups (and again, or All, shows them all); the chosen one shows its
-/// name. Its status, key and sharing are in its help and right-click menu.
+/// Your computers, in the sidebar's footer: All, then each computer (its
+/// badge and whether it's reachable). Clicking one shows only its Groups
+/// (and again, or All, shows them all); the chosen one shows its name
+/// (`names`). Before another is linked, only this one, to right-click.
+/// Its status, key and sharing are in its help and right-click menu.
 struct ComputerSwitcher: View {
     @Bindable var model: AppModel
+    /// The chosen computer shows its name (when the footer has room).
+    var names = true
     @State private var confirmStop = false
     var body: some View {
         HStack(spacing: 2) {
-            chip(nil)
-            ForEach(model.computers, id: \.userID) { c in chip(c) }
-            Spacer(minLength: 0)
             // Only when something's wrong: connected is the normal state, and a
             // green dot beside the computers read as one of theirs.
             if !model.connected {
                 Circle()
                     .fill(Color.orange)
                     .frame(width: 7, height: 7)
+                    .padding(.trailing, 4)
                     .accessibilityLabel("Disconnected")
                     .help("Connecting to hmkd…")
             }
+            if model.hasLinkedComputers {
+                chip(nil)
+                ForEach(model.computers, id: \.userID) { c in chip(c) }
+            } else {
+                alone
+            }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
         .confirmationDialog("Stop sharing everything?", isPresented: $confirmStop) {
             Button("Stop All Sharing", role: .destructive) { Task { await model.stopSharing(nil) } }
         } message: {
@@ -578,7 +583,7 @@ struct ComputerSwitcher: View {
                                 .frame(width: 6, height: 6)
                                 .offset(x: 3, y: 2)
                         }
-                    if on { Text(c.thisComputer ? "This Mac" : c.name).font(.callout.weight(.semibold)).lineLimit(1) }
+                    if on, names { Text(c.thisComputer ? "This Mac" : c.name).font(.callout.weight(.semibold)).lineLimit(1) }
                 } else {
                     Text("All").font(.callout.weight(.semibold))
                 }
@@ -593,6 +598,30 @@ struct ComputerSwitcher: View {
         .accessibilityLabel(c.map { "Show only \($0.thisComputer ? "this Mac" : $0.name)" } ?? "Show all computers")
         .accessibilityAddTraits(on ? .isSelected : [])
         .contextMenu { if let c { menu(c) } else { Button("Link a Computer…") { LinkUI.shared.open() } } }
+    }
+
+    /// This computer, the only one: nothing to choose between, so only its
+    /// help and right-click menu.
+    private var alone: some View {
+        Group {
+            if let me = model.thisComputer {
+                ComputerIcon(me, size: 15)
+            } else {
+                Image(systemName: "desktopcomputer").foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 8)
+        .frame(minWidth: 34, minHeight: 28)
+        .contentShape(Rectangle())
+        .help(model.thisComputer.map(help) ?? "This Mac")
+        .accessibilityLabel("This Mac")
+        .contextMenu {
+            if let me = model.thisComputer {
+                menu(me)
+            } else {
+                Button("Link a Computer…") { LinkUI.shared.open() }
+            }
+        }
     }
 
     private func help(_ c: Computer?) -> String {
@@ -633,7 +662,7 @@ struct ComputerSwitcher: View {
         if c.needsLinking {
             Button("Remove \(c.name) from This Mac") { Task { await model.unlinkComputer(c.userID, forget: true) } }
             Button("Unlink \(c.name) from All Your Computers…") { LinkUI.shared.askUnlink(c) }
-        } else {
+        } else if !c.thisComputer || model.hasLinkedComputers {
             Button(c.thisComputer ? "Unlink This Mac…" : "Unlink \(c.name)…") { LinkUI.shared.askUnlink(c) }
         }
         Divider()

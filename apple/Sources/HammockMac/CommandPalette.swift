@@ -395,6 +395,14 @@ struct CommandPalette: View {
                 }
             }
         }
+        if SidebarModeState.shared.applies {
+            action("show-groups", "Show Groups", "square.stack.3d.up", .secondary, "sidebar groups tabs tree view", keys: Keys.showGroups) {
+                SidebarModeState.shared.show(.groups)
+            }
+            action("show-sessions", "Show Sessions", "bubble.left.and.text.bubble.right", .secondary, "sidebar sessions agents working recent needs you view", keys: Keys.showSessions) {
+                SidebarModeState.shared.show(.sessions)
+            }
+        }
         if !model.hasLinkedComputers, let me = model.thisComputer {
             // Before anything's linked: this Mac's icon (the footer shows it).
             action("look:" + me.userID, "Icon of This Mac…", "paintpalette", me.color, "computer icon emoji symbol picture badge color colour tint \(me.name)") {

@@ -275,43 +275,9 @@ struct SessionsView: View {
     }
 
     /// A tab with an agent, represented by its most pressing agent pane.
-    struct SessionRow {
-        let tab: WorkspaceTab
-        let pane: Pane
-    }
+    typealias SessionRow = SessionEntry
 
-    struct Rows {
-        var needsYou: [SessionRow] = [], working: [SessionRow] = [], recent: [SessionRow] = []
-        var isEmpty: Bool { needsYou.isEmpty && working.isEmpty && recent.isEmpty }
-
-        /// Without these panes' rows.
-        func without(panes: Set<String>) -> Rows {
-            guard !panes.isEmpty else { return self }
-            return Rows(needsYou: needsYou, working: working, recent: recent.filter { !panes.contains($0.pane.id) })
-        }
-    }
-
-    private var sessionRows: Rows {
-        var out = Rows()
-        let rank: [AgentState: Int] = [.needsInput: 0, .errored: 1, .working: 2, .starting: 2, .idle: 3]
-        for group in model.groups {
-            for tab in model.tabs(in: group) {
-                let agents = model.panes(in: tab).filter { $0.hasAgent && !$0.exited && rank[$0.agent.shownState] != nil }
-                guard let p = agents.min(by: { rank[$0.agent.shownState]! < rank[$1.agent.shownState]! }) else { continue }
-                let row = SessionRow(tab: tab, pane: p)
-                switch p.agent.shownState {
-                case .needsInput, .errored: out.needsYou.append(row)
-                case .working, .starting: out.working.append(row)
-                default: out.recent.append(row)
-                }
-            }
-        }
-        // Newest change first.
-        for k in [\Rows.needsYou, \Rows.working, \Rows.recent] {
-            out[keyPath: k].sort { $0.pane.agent.stateSinceUnixMs > $1.pane.agent.stateSinceUnixMs }
-        }
-        return out
-    }
+    private var sessionRows: SessionSections { model.sessionSections(in: model.groups) }
 }
 
 /// A session row's swipe to close it, there only if you can drive its Group.

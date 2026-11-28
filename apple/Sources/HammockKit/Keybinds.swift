@@ -283,6 +283,9 @@ public enum Keybinds {
             .init("toggle_sidebar", "Show or Hide Sidebar", "View", c("s", cc), "hide show peek"),
             .init("show_all_computers", "Show All Computers", "View", c("0", cc), "filter sidebar every linked"),
             .init("show_computer", "Show Computer 1…9", "View", c(KeyChord.digits, cc), "filter sidebar only linked"),
+            // ⌥⌘1 and ⌥⌘2, as Finder's views are ⌘1…4 (here those are tabs): free in macOS and here.
+            .init("show_groups", "Show Groups", "View", c("1", co), "sidebar groups tabs tree"),
+            .init("show_sessions", "Show Sessions", "View", c("2", co), "sidebar sessions agents working recent needs you"),
             // Not ⌥⌘S: AppKit's own (hidden) Toggle Sidebar has it, and took it.
             .init("scheduled_tasks", "Automations", "View", c("s", cs), "automations schedule scheduled tasks cron timer recurring runs triggers"),
             // ⌥⌘R: free in macOS and here.
