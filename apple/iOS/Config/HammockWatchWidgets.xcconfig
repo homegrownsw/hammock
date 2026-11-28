@@ -1,0 +1,20 @@
+// The Apple Watch's complications (both configurations): the agents waiting
+// on you, from the list the watch app keeps in the App Group
+// (HammockWatchWidgets.entitlements). It makes no connections of its own.
+
+#include "Version.xcconfig"
+MARKETING_VERSION = $(HAMMOCK_IOS_VERSION)
+
+PRODUCT_BUNDLE_IDENTIFIER = com.homegrownsw.hammock.watchkitapp.widgets
+SDKROOT = watchos
+WATCHOS_DEPLOYMENT_TARGET = 26.0
+TARGETED_DEVICE_FAMILY = 4
+SWIFT_VERSION = 5.0
+SKIP_INSTALL = YES
+GENERATE_INFOPLIST_FILE = YES
+INFOPLIST_FILE = $(SRCROOT)/../Watch/HammockWatchWidgets/Info.plist
+INFOPLIST_KEY_CFBundleDisplayName = Hammock
+CODE_SIGN_ENTITLEMENTS = $(SRCROOT)/../Watch/HammockWatchWidgets/HammockWatchWidgets.entitlements
+LD_RUNPATH_SEARCH_PATHS = $(inherited) @executable_path/Frameworks @executable_path/../../Frameworks
+
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) HAMMOCK_WATCH

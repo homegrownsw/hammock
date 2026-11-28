@@ -248,6 +248,24 @@ extension Push: UNUserNotificationCenterDelegate {
     }
 }
 
+extension Push {
+    /// A notification's action chosen on the Apple Watch, which can't open
+    /// its note: answered here as if chosen on this phone. Why it couldn't
+    /// be, for the watch to say; nil when it was.
+    func answerFromWatch(action: String, sealed: String, text: String, delivered: Date) async -> String? {
+        guard let info = PushKeys.note(["e": sealed]), PushKeys.fresh(info, now: delivered) else {
+            return "That notification has expired."
+        }
+        // Behind the app's own lock (Require Face ID): only on the phone.
+        guard !UserDefaults.standard.bool(forKey: AppLock.key) else { return "Hammock on your iPhone asks for \(AppLock.method) first. Answer it there." }
+        let prompt = AgentPromptNotice.answers(info)
+        let t = Tapped(action: action, join: info["join"] as? String, grant: info["grant"] as? String,
+                       key: info["key"] as? String, pane: info["pane"] as? String, host: info["host"] as? String,
+                       item: prompt?.item, prompt: prompt?.prompt, reply: action == AgentReplyNotice.replyAction ? text : nil)
+        return await handle(t, request: nil)
+    }
+}
+
 /// What a tapped notification asks for.
 private struct Tapped: Sendable {
     let action: String
@@ -267,8 +285,10 @@ private struct Tapped: Sendable {
 }
 
 extension Push {
-    fileprivate func handle(_ t: Tapped, request: UNNotificationRequest) async {
-        guard let session else { return } // set as the app launches, even in the background
+    /// Answers it; why it couldn't (put back on the phone, said on the watch), else nil.
+    @discardableResult
+    fileprivate func handle(_ t: Tapped, request: UNNotificationRequest?) async -> String? {
+        guard let session else { return nil } // set as the app launches, even in the background
         // From a Mac that isn't shown: a tap that opens the app shows it; an
         // answer from the notification (the app stays in the background)
         // goes over a brief connection of its own, the Mac shown kept.
@@ -285,14 +305,14 @@ extension Push {
             if t.grant != nil || t.join != nil { openNeedsYou = true } else { openPane = t.pane }
         }
         guard t.action != UNNotificationDefaultActionIdentifier, t.action != UNNotificationDismissActionIdentifier,
-              t.action != "join.drive", t.action != "key.approve" else { return }
+              t.action != "join.drive", t.action != "key.approve" else { return nil }
         // Behind the app's own lock: answered in Needs You once it's unlocked
         // (the action opened the app, which asks).
         if appLocked {
             if t.grant != nil || t.join != nil || t.prompt != nil { openNeedsYou = true }
             // A reply is typed again there, in its conversation.
             if t.reply != nil { openPane = t.pane }
-            return
+            return nil
         }
         // Answer from the notification: wait (briefly) for the Mac, and what
         // it asks. The app may have been launched in the background for it,
@@ -309,8 +329,8 @@ extension Push {
             // iOS took the notification away as it was answered: put it
             // back, so the answer can be tried again.
             Self.log.error("Couldn't reach the Mac to answer \(t.action, privacy: .public); notification put back")
-            await Self.repost(request)
-            return
+            if let request { await Self.repost(request) }
+            return Self.unreachable
         }
         if let join = t.join, let req = model.joinRequests.first(where: { $0.id == join }) {
             model.respond(to: req, role: t.action == "join.view" ? .viewer : nil)
@@ -327,28 +347,31 @@ extension Push {
             case .refused:
                 // Nothing pressed: it says so, and opens the pane to choose there.
                 Self.log.info("The Mac couldn't answer the prompt from its notification")
-                await Self.repost(request, saying: AgentPromptNotice.couldntAnswer)
-                return
+                if let request { await Self.repost(request, saying: AgentPromptNotice.couldntAnswer) }
+                return AgentPromptNotice.couldntAnswer
             case .unsent:
                 Self.log.error("Couldn't reach the Mac to answer \(t.action, privacy: .public); notification put back")
-                await Self.repost(request)
-                return
+                if let request { await Self.repost(request) }
+                return Self.unreachable
             }
         }
         if let text = t.reply?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty, let pane = t.pane {
             switch await Self.reply(text, to: pane, on: model) {
             case .answered: break
             case .refused:
-                await Self.repost(request, saying: AgentReplyNotice.answerInApp)
-                return
+                if let request { await Self.repost(request, saying: AgentReplyNotice.answerInApp) }
+                return AgentReplyNotice.answerInApp
             case .unsent:
                 Self.log.error("Couldn't send a reply from a notification; notification put back")
-                await Self.repost(request)
-                return
+                if let request { await Self.repost(request) }
+                return Self.unreachable
             }
         }
         try? await Task.sleep(for: .milliseconds(500)) // let the answer go out
+        return nil
     }
+
+    static let unreachable = "Couldn't reach your Mac. Try again."
 
     /// Sends a notification's Reply to the agent in `pane`, unless its
     /// screen shows a question or a permission (typing would answer that).

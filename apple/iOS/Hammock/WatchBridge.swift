@@ -88,6 +88,8 @@ final class WatchBridge: NSObject {
             model.send(pane, Data([0x1B]))
             try? await Task.sleep(for: .milliseconds(300)) // let it go out
             return .done
+        case let .notificationAction(action, sealed, text, delivered):
+            return await Push.shared.answerFromWatch(action: action, sealed: sealed, text: text, delivered: delivered).map(WatchReply.failed) ?? .done
         case let .runSchedule(host, schedule):
             guard let (model, _) = await model(for: host) else { return .failed(unreachable(host)) }
             do {
@@ -118,6 +120,7 @@ final class WatchBridge: NSObject {
                 out.schedules += WatchSnapshots.schedules(model, host: h.id, hostName: Self.name(h))
                 // Usage is the agents' (the same account on each Mac): the shown Mac's, else the first.
                 if out.usage.isEmpty || h.id == session.host?.id { out.usage = WatchSnapshots.usage(model) }
+                if out.quickReplies.isEmpty || h.id == session.host?.id { out.quickReplies = await self.quickReplies(model, host: h.id) }
             }
         }
         out.sessions = WatchSnapshot.ordered(out.sessions)

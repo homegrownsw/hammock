@@ -147,7 +147,11 @@ public enum StatusPalette {
         func parts(_ c: UInt32) -> (CGFloat, CGFloat, CGFloat) {
             (CGFloat((c >> 16) & 0xFF) / 255, CGFloat((c >> 8) & 0xFF) / 255, CGFloat(c & 0xFF) / 255)
         }
-        #if canImport(AppKit)
+        #if os(watchOS)
+        // The Apple Watch (which compiles this file alone) is always dark.
+        let (r, g, b) = parts(dark)
+        return Color(red: r, green: g, blue: b, opacity: darkAlpha)
+        #elseif canImport(AppKit)
         return Color(nsColor: NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
             let (r, g, b) = parts(isDark ? dark : light)

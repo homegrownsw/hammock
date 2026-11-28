@@ -120,10 +120,13 @@ public struct WatchSnapshot: Codable, Sendable, Hashable {
     /// The phone's theme (0xRRGGBB): its accent, and your messages' bubble.
     public var accent: UInt32
     public var bubble: UInt32
+    /// Your quick replies (the Mac shown's), for a notification's Reply.
+    public var quickReplies: [String]
     public var at: Date
 
     public init(sessions: [WatchSession] = [], usage: [WatchUsage] = [], schedules: [WatchSchedule] = [], macs: [String] = [],
-                unreachable: [String] = [], accent: UInt32 = WatchSnapshot.hammockGreen, bubble: UInt32 = WatchSnapshot.hammockBubble, at: Date = .now) {
+                unreachable: [String] = [], accent: UInt32 = WatchSnapshot.hammockGreen, bubble: UInt32 = WatchSnapshot.hammockBubble,
+                quickReplies: [String] = [], at: Date = .now) {
         self.sessions = sessions
         self.usage = usage
         self.schedules = schedules
@@ -131,7 +134,13 @@ public struct WatchSnapshot: Codable, Sendable, Hashable {
         self.unreachable = unreachable
         self.accent = accent
         self.bubble = bubble
+        self.quickReplies = quickReplies
         self.at = at
+    }
+
+    /// The session for a notification (by its Mac and pane), if listed.
+    public func session(host: String, pane: String) -> WatchSession? {
+        sessions.first { $0.host.lowercased() == host.lowercased() && $0.paneID == pane }
     }
 
     /// Hammock's own theme, dark (AppTheme's): until the phone says otherwise.
@@ -262,6 +271,10 @@ public enum WatchRequest: Codable, Sendable, Hashable {
     case interrupt(host: String, pane: String)
     /// Runs a scheduled task now.
     case runSchedule(host: String, schedule: String)
+    /// A notification's action chosen on the watch (Allow, Deny, Reply's
+    /// text): the phone answers it as its own, from its sealed note ("e",
+    /// which only the phone can open) as delivered then.
+    case notificationAction(action: String, sealed: String, text: String, delivered: Date)
 }
 
 /// The phone's answer.

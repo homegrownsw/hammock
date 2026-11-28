@@ -117,8 +117,8 @@ public struct AgentMark: View {
     }
 
     /// The agent's name as people say it: "Claude", "Codex".
-    #if HAMMOCK_WIDGETS
-    /// The widgets have no catalogue (they compile this file alone).
+    #if HAMMOCK_WIDGETS || HAMMOCK_WATCH
+    /// The widgets and the watch have no catalogue (they compile this file alone).
     static func name(of harness: String) -> String {
         ["claude": "Claude", "codex": "Codex"][harness] ?? harness.capitalized
     }

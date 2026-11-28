@@ -26,6 +26,8 @@
         { "path": "HammockMac.xcconfig" },
         { "path": "HammockNotify.xcconfig" },
         { "path": "HammockWidgets.xcconfig" },
+        { "path": "HammockWatch.xcconfig" },
+        { "path": "HammockWatchWidgets.xcconfig" },
         { "path": "Version.xcconfig" },
       ],
     }, {
@@ -71,10 +73,40 @@
         },
       ],
     }, {
+      "kind": "folder",
+      "path": "../Watch/HammockWatch",
+      "target-membership": [
+        "HammockWatch",
+      ],
+    }, {
+      "kind": "folder",
+      "path": "../Watch/HammockWatchWidgets",
+      "target-membership": [
+        "HammockWatchWidgets",
+      ],
+      "membership-exceptions": [
+        {
+          "target": "HammockWatchWidgets",
+          "exclusions": [
+            "Info.plist",
+          ],
+        },
+      ],
+    }, {
+      "kind": "group",
+      "name": "Watch Icon",
+      "path": "Hammock",
+      "children": [
+        { "path": "AppIcon.icon", "target-membership": [ "HammockWatch/resources" ] },
+      ],
+    }, {
       "kind": "group",
       "path": "../Sources/HammockKit",
       "children": [
-        { "path": "AgentMark.swift", "target-membership": [ "HammockWidgets/compile-sources" ] },
+        { "path": "AgentMark.swift", "target-membership": [ "HammockWidgets/compile-sources", "HammockWatch/compile-sources" ] },
+        { "path": "StatusIcon.swift", "target-membership": [ "HammockWatch/compile-sources" ] },
+        { "path": "WorkingDot.swift", "target-membership": [ "HammockWatch/compile-sources" ] },
+        { "path": "WatchWire.swift", "target-membership": [ "HammockWatch/compile-sources", "HammockWatchWidgets/compile-sources" ] },
         { "path": "LiveActivity.swift", "target-membership": [ "HammockNotify/compile-sources", "HammockWidgets/compile-sources" ] },
       ],
     }, {
@@ -177,6 +209,8 @@
         { "path": "<PRODUCTS>/Hammock.app", "id": "AD8A7317A362A462BB2547F8", "type": "wrapper.application", "index": false },
         { "path": "<PRODUCTS>/HammockNotify.appex", "id": "1069666240C416CF23C5C006", "type": "wrapper.app-extension", "index": false, "target-membership": [ { "build-phase": "Hammock/copy/Embed Foundation Extensions", "header-preservation": "remove-on-copy" } ] },
         { "path": "<PRODUCTS>/HammockWidgets.appex", "id": "6196B665DC85DC8048DD66BD", "type": "wrapper.app-extension", "index": false, "target-membership": [ { "build-phase": "Hammock/copy/Embed Foundation Extensions", "header-preservation": "remove-on-copy" } ] },
+        { "path": "<PRODUCTS>/HammockWatch.app", "id": "009E317EB31FC00BEB5AFF5A", "type": "wrapper.application", "index": false, "target-membership": [ { "build-phase": "Hammock/copy/Embed Watch Content", "header-preservation": "remove-on-copy" } ] },
+        { "path": "<PRODUCTS>/HammockWatchWidgets.appex", "id": "6B23D6EAE0E17EE6C06A9FDC", "type": "wrapper.app-extension", "index": false, "target-membership": [ { "build-phase": "HammockWatch/copy/Embed Foundation Extensions", "header-preservation": "remove-on-copy" } ] },
       ],
     },
   ],
@@ -194,6 +228,7 @@
       "dependencies": [
         "HammockNotify",
         "HammockWidgets",
+        "HammockWatch",
       ],
       "build-phases": [
         "compile-sources",
@@ -203,6 +238,11 @@
           "kind": "copy",
           "name": "Embed Foundation Extensions",
           "bundle-base-path": "plugins-directory",
+        }, {
+          "kind": "copy",
+          "name": "Embed Watch Content",
+          "bundle-base-path": "build-products-directory",
+          "relative-path": "$(CONTENTS_FOLDER_PATH)/Watch",
         },
       ],
       "package-product-members": [
@@ -271,6 +311,43 @@
         "SDKROOT": "iphoneos",
         "TARGETED_DEVICE_FAMILY": "1,2",
       },
+    }, {
+      "name": "HammockWatch",
+      "id": "5BCA846F8B4A89B4FD58122C",
+      "product": "id:009E317EB31FC00BEB5AFF5A",
+      "product-type": "application",
+      "legacy-team-id": "2G974K78BH",
+      "specialized-configurations": [
+        { "name": "Debug", "file": "Config/HammockWatch.xcconfig" },
+        { "name": "Release", "file": "Config/HammockWatch.xcconfig" },
+      ],
+      "dependencies": [
+        "HammockWatchWidgets",
+      ],
+      "build-phases": [
+        "compile-sources",
+        "resources",
+        "frameworks",
+        {
+          "kind": "copy",
+          "name": "Embed Foundation Extensions",
+          "bundle-base-path": "plugins-directory",
+        },
+      ],
+    }, {
+      "name": "HammockWatchWidgets",
+      "id": "AAD0E6C4929E19E122EF9FB3",
+      "product": "id:6B23D6EAE0E17EE6C06A9FDC",
+      "product-type": "app-extension",
+      "legacy-team-id": "2G974K78BH",
+      "specialized-configurations": [
+        { "name": "Debug", "file": "Config/HammockWatchWidgets.xcconfig" },
+        { "name": "Release", "file": "Config/HammockWatchWidgets.xcconfig" },
+      ],
+      "build-phases": [
+        "compile-sources",
+        "resources",
+      ],
     }, {
       "name": "HammockMacApp",
       "id": "909B43B781750D57EE519E07",

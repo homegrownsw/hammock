@@ -1,0 +1,27 @@
+// The Apple Watch app's build settings (both configurations). It talks to
+// your Macs only through Hammock on the iPhone (WatchConnectivity: watchOS
+// allows a watch app's own sockets only for audio and calls), so it can't
+// be installed without it. It compiles a few HammockKit files itself
+// (WatchWire, StatusIcon, WorkingDot, AgentMark: the project's file
+// memberships), as HammockKit doesn't build for watchOS.
+
+#include "Version.xcconfig"
+MARKETING_VERSION = $(HAMMOCK_IOS_VERSION)
+
+PRODUCT_BUNDLE_IDENTIFIER = com.homegrownsw.hammock.watchkitapp
+SDKROOT = watchos
+WATCHOS_DEPLOYMENT_TARGET = 26.0
+TARGETED_DEVICE_FAMILY = 4
+SWIFT_VERSION = 5.0
+SKIP_INSTALL = YES
+GENERATE_INFOPLIST_FILE = YES
+INFOPLIST_KEY_CFBundleDisplayName = Hammock
+INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.homegrownsw.hammock
+INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO
+// Hammock's icon (Hammock/AppIcon.icon, the iPhone's: Icon Composer makes the watch's from it).
+ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon
+CODE_SIGN_ENTITLEMENTS = $(SRCROOT)/../Watch/HammockWatch/HammockWatch.entitlements
+LD_RUNPATH_SEARCH_PATHS = $(inherited) @executable_path/Frameworks
+
+// HammockKit's files it compiles leave out what needs the rest of it.
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) HAMMOCK_WATCH
