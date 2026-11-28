@@ -14,19 +14,25 @@ public struct SessionEntry: Identifiable {
 }
 
 /// Agent sessions, most pressing first: waiting for you (or failed),
-/// working, then at rest. Each newest change first.
+/// working, finished and not yet looked at, then at rest. Each newest
+/// change first.
 public struct SessionSections {
     public var needsYou: [SessionEntry] = []
     public var working: [SessionEntry] = []
+    public var finished: [SessionEntry] = []
     public var recent: [SessionEntry] = []
 
-    public init(needsYou: [SessionEntry] = [], working: [SessionEntry] = [], recent: [SessionEntry] = []) {
+    public init(needsYou: [SessionEntry] = [], working: [SessionEntry] = [], finished: [SessionEntry] = [], recent: [SessionEntry] = []) {
         self.needsYou = needsYou
         self.working = working
+        self.finished = finished
         self.recent = recent
     }
 
-    public var isEmpty: Bool { needsYou.isEmpty && working.isEmpty && recent.isEmpty }
+    public var isEmpty: Bool { needsYou.isEmpty && working.isEmpty && finished.isEmpty && recent.isEmpty }
+
+    /// Every section's sessions, in order.
+    public var all: [SessionEntry] { needsYou + working + finished + recent }
 
     /// Recent as shown: the last 48 hours', the rest on asking (`all`), and
     /// all of them when none are that new; and whether there are more to
@@ -40,13 +46,14 @@ public struct SessionSections {
     /// Without these panes' rows at rest (a scheduled run shown on its own).
     public func without(panes: Set<String>) -> SessionSections {
         guard !panes.isEmpty else { return self }
-        return SessionSections(needsYou: needsYou, working: working, recent: recent.filter { !panes.contains($0.pane.id) })
+        return SessionSections(needsYou: needsYou, working: working, finished: finished.filter { !panes.contains($0.pane.id) },
+                               recent: recent.filter { !panes.contains($0.pane.id) })
     }
 }
 
 extension AppModel {
     /// The agent sessions in these Groups' tabs, one per tab, sorted into
-    /// Needs You, Working and Recent.
+    /// Needs You, Working, Finished (not yet looked at) and Recent.
     public func sessionSections(in groups: [WorkspaceGroup]) -> SessionSections {
         var out = SessionSections()
         let rank: [AgentState: Int] = [.needsInput: 0, .errored: 1, .working: 2, .starting: 2, .idle: 3]
@@ -58,12 +65,14 @@ extension AppModel {
                 switch p.agent.shownState {
                 case .needsInput, .errored: out.needsYou.append(row)
                 case .working, .starting: out.working.append(row)
+                // Waiting out a usage limit is at rest, seen or not.
+                case .idle where !p.agent.seen && !p.agent.waitingOnLimit: out.finished.append(row)
                 default: out.recent.append(row)
                 }
             }
         }
         // Newest change first.
-        for k in [\SessionSections.needsYou, \SessionSections.working, \SessionSections.recent] {
+        for k in [\SessionSections.needsYou, \SessionSections.working, \SessionSections.finished, \SessionSections.recent] {
             out[keyPath: k].sort { $0.pane.agent.stateSinceUnixMs > $1.pane.agent.stateSinceUnixMs }
         }
         return out

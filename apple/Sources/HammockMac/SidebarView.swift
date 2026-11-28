@@ -528,7 +528,15 @@ struct SidebarView: View {
         // A new Group (⌘N), or a tab picked from the keyboard or a
         // notification, may be scrolled out of sight: bring it into view.
         .onChange(of: model.selectedTabID ?? model.selectedGroupID.map { "group:" + $0 }) { _, id in
-            if let id { reveal(id, proxy) }
+            guard let id else { return }
+            // Something Sessions doesn't list (a new tab or Group, a terminal
+            // picked with ⌘1…9): back to Groups, to show it.
+            if SidebarModeState.shared.showsSessions {
+                if !model.sessionSections(in: model.shownGroups).all.contains(where: { $0.tab.id == id }) {
+                    SidebarModeState.shared.show(.groups)
+                }
+            }
+            reveal(id, proxy)
         }
         }
     }
@@ -1152,23 +1160,27 @@ struct HostFooter: View {
     let model: AppModel
 
     var body: some View {
-        // Narrower, the chosen computer drops its name, then the switch its words.
+        // Narrower, the chosen computer drops its name, then the switch its
+        // words; then the computers fold into one pop-up button, with the
+        // words back if there's room for them beside it.
         ViewThatFits(in: .horizontal) {
             row(names: true)
             row(names: false)
             row(names: false, icons: true)
+            row(names: false, collapsed: true)
+            row(names: false, icons: true, collapsed: true)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
     }
 
-    private func row(names: Bool, icons: Bool = false) -> some View {
+    private func row(names: Bool, icons: Bool = false, collapsed: Bool = false) -> some View {
         HStack(spacing: 6) {
             if SidebarModeState.shared.applies {
                 SidebarModePicker(icons: icons)
             }
             Spacer(minLength: 0)
-            ComputerSwitcher(model: model, names: names)
+            ComputerSwitcher(model: model, names: names, collapsed: collapsed)
         }
     }
 }
