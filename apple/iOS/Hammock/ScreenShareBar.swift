@@ -49,6 +49,7 @@ final class ScreenShare {
         if self.model !== model { state.end() }
         self.model = model
         sample = nil
+        Self.dropKeyboard()
         let was = state.session
         state.open(computerID: request.computerID, name: request.name)
         if state.session != was {
@@ -65,6 +66,7 @@ final class ScreenShare {
 
     func expand() {
         guard state.isMinimised, sample == nil else { return }
+        Self.dropKeyboard()
         withAnimation(.snappy(duration: 0.3)) { state.expand() }
         Haptics.screenShare()
     }
@@ -76,6 +78,13 @@ final class ScreenShare {
         thumbnail = nil
         sample = nil
         live = false
+    }
+
+    /// The screen opening over the app: whatever under it had the keyboard
+    /// (an agent's message box) lets go, or what's typed would go there,
+    /// behind the screen, rather than to the Mac.
+    private static func dropKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
     /// The computer shown changed: its screen goes with it.

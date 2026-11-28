@@ -98,6 +98,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
@@ -257,6 +258,11 @@ fun ScreenViewer(model: AppModel, share: ScreenShare) {
         base?.setMaxFPS(ScreenShareState.baseFPS(minimised))
         if (minimised) keyboard = false
     }
+    // Opened over the app: whatever under it had the keyboard (an agent's
+    // message box) lets go, or what's typed would go there, behind the
+    // screen, rather than to the Mac.
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(minimised) { if (!minimised) focusManager.clearFocus(force = true) }
     LaunchedEffect(state) { share.live = state == VideoStream.State.Playing }
     // Where it was zoomed to, kept while minimised (a new display or session starts afresh).
     val viewState = remember(display, session) { ScreenViewState() }
