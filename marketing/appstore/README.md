@@ -17,7 +17,9 @@ marketing/
     app-privacy.md            the App Privacy label, entered by hand (deliver can't upload it), and why
     whats-new/                GENERATED, gitignored
   fastlane/  Appfile Fastfile how it's pushed
-  scripts/                    appstore-fastlane (the key), appstore-pull, appstore-whats-new, check-metadata.ts
+  scripts/                    appstore-fastlane (the key), appstore-pull, appstore-whats-new, check-metadata.ts,
+                              appstore-review.ts
+  appstore-review.html        GENERATED, gitignored: the review page ("Reviewing it")
   Gemfile  Gemfile.lock       Fastlane, pinned (bundler, into marketing/vendor/)
   package.json                for the Node scripts
 ```
@@ -40,6 +42,7 @@ just appstore-push             # upload the listing text, screenshots, age ratin
 just appstore-push-testflight  # only TestFlight's test information
 just appstore-pull             # overwrite metadata/ with what App Store Connect holds, then `git diff`
 just appstore-whats-new 0.3.0  # What's New for a version, from its release notes (--pending for the one being built)
+just appstore-review           # one page of everything above and every asset below, flagging what's missing or stale
 ```
 
 The loop is **edit → `appstore-check` → `appstore-push`**, then submit the version for review in App Store Connect
@@ -187,3 +190,22 @@ placement removed, so a failed upload leaves App Store Connect as it was. Apple 
 be placed, which can take minutes (`HMK_APPSTORE_ASSET_TIMEOUT`, seconds, default 1200); one still processing at
 the timeout stays in the library for the next push. The preview reports what each placement holds against this
 tree. `HMK_APPSTORE_PREVIEW=0` / `HMK_APPSTORE_CREATIVE=0` leave a kind as App Store Connect has it.
+
+## Reviewing it
+
+```bash
+just appstore-review           # marketing/appstore-review.html
+just appstore-review --open    # …and open it (a Hammock browser tab, from a pane)
+```
+
+`scripts/appstore-review.ts` writes one page from the files on disk: each locale's listing with its character
+counts against the limits, What's New (for the project's iPhone version, pending notes included), App Review's
+notes, TestFlight's text, the categories, the age rating and the privacy answers, then the screenshots and
+marketing images by device and appearance, both videos with the poster frame and the edit, and the header with its
+safe area. It flags what the push would refuse (missing images, an old capture, videos cut to another
+`preview.json`, the wrong size) and what's only stale: screenshots taken before the app changed, images older than
+`marketing.json` or their screenshot. Each flag names the command that fixes it. The generated assets are
+gitignored, so a new worktree's page shows them missing until they're made there.
+
+Hammock's browser panes can't play H.264, so the page also offers a VP9 copy of each video, made once per video
+into `marketing/build/review/`.

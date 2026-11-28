@@ -50,3 +50,5 @@ DerivedData/
 /marketing/appstore/marketing/
 /marketing/appstore/previews/
 /marketing/appstore/creative/
+# GENERATED: the review page (just appstore-review).
+/marketing/appstore-review.html

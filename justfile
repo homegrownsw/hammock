@@ -324,6 +324,11 @@ github-about:
 github-about-pull:
     marketing/scripts/github-about pull
 
+# One page for reviewing the whole App Store listing, text and assets, flagging what's missing or stale:
+# marketing/appstore-review.html (gitignored). --open opens it (a Hammock browser tab, from a pane).
+appstore-review *args:
+    node --disable-warning=ExperimentalWarning marketing/scripts/appstore-review.ts {{args}}
+
 # Take the App Store screenshots from the demo in the Simulator: [SCENE] [--light|--dark] [--device iphone|ipad|duo].
 appstore-screenshots *args:
     marketing/scripts/appstore-screenshots {{args}}
