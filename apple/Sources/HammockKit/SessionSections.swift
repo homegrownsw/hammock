@@ -28,6 +28,15 @@ public struct SessionSections {
 
     public var isEmpty: Bool { needsYou.isEmpty && working.isEmpty && recent.isEmpty }
 
+    /// Recent as shown: the last 48 hours', the rest on asking (`all`), and
+    /// all of them when none are that new; and whether there are more to
+    /// ask for (Show More, or Show Less).
+    public func shownRecent(all: Bool, now: Date) -> (rows: [SessionEntry], more: Bool) {
+        let cutoff = Int64((now.timeIntervalSince1970 - 48 * 3600) * 1000)
+        let fresh = recent.filter { $0.pane.agent.stateSinceUnixMs >= cutoff }
+        return (all || fresh.isEmpty ? recent : fresh, !fresh.isEmpty && fresh.count < recent.count)
+    }
+
     /// Without these panes' rows at rest (a scheduled run shown on its own).
     public func without(panes: Set<String>) -> SessionSections {
         guard !panes.isEmpty else { return self }

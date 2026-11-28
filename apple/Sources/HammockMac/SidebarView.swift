@@ -256,6 +256,9 @@ struct SidebarView: View {
     /// The folder drag shown: the one under way, else HMK_DEBUG_FOLDER_DROP's
     /// (`group:<n>`, the nth shown Group lit; `line:<n>`, the line before it).
     private var shownFolderDrop: FolderDrop.Target? {
+        // Sessions has no Groups to drop between or onto: folders dropped
+        // there make Groups at the end, with no line to show.
+        if SidebarModeState.shared.showsSessions { return nil }
         if let folderDrop { return folderDrop }
         guard let v = ProcessInfo.processInfo.environment["HMK_DEBUG_FOLDER_DROP"] else { return nil }
         let parts = v.split(separator: ":")
@@ -459,7 +462,9 @@ struct SidebarView: View {
             }
         }
         .onDrop(of: [.fileURL], delegate: SidebarFolderDrop(
-            locate: { p in FolderDrop.target(y: p.y + listFrame.minY, blocks: dropBlocks) },
+            locate: { p in
+                SidebarModeState.shared.showsSessions ? .insert(shownGroups.count) : FolderDrop.target(y: p.y + listFrame.minY, blocks: dropBlocks)
+            },
             show: { t in if t != folderDrop { withAnimation(.snappy(duration: 0.15)) { folderDrop = t } } },
             perform: { folders, target in FolderDropUI.shared.drop(folders, on: target, shown: shownGroups, model: model) }
         ))
@@ -535,6 +540,9 @@ struct SidebarView: View {
     /// has the row (a new tab is selected as it's inserted), and again once
     /// the insertion has settled.
     private func reveal(_ id: String, _ proxy: ScrollViewProxy) {
+        // Sessions' rows aren't these: a tab chosen there is already in sight,
+        // and one chosen elsewhere may have no session to show.
+        guard !SidebarModeState.shared.showsSessions else { return }
         func go(_ animated: Bool) {
             let shown = rows.map(\.id)
             let target = shown.contains(id) ? id : model.groups.first(where: { $0.tabIds.contains(id) }).map { "group:" + $0.id }
@@ -1144,18 +1152,20 @@ struct HostFooter: View {
     let model: AppModel
 
     var body: some View {
+        // Narrower, the chosen computer drops its name, then the switch its words.
         ViewThatFits(in: .horizontal) {
             row(names: true)
             row(names: false)
+            row(names: false, icons: true)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
     }
 
-    private func row(names: Bool) -> some View {
+    private func row(names: Bool, icons: Bool = false) -> some View {
         HStack(spacing: 6) {
             if SidebarModeState.shared.applies {
-                SidebarModePicker()
+                SidebarModePicker(icons: icons)
             }
             Spacer(minLength: 0)
             ComputerSwitcher(model: model, names: names)

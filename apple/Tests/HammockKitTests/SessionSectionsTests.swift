@@ -55,6 +55,35 @@ import Testing
         #expect(s.recent.map(\.tab.id) == ["tb_new"])
     }
 
+    @Test func startingIsWorkingAndExitedIsGone() {
+        let m = model()
+        m.apply(.with {
+            $0.panes = [
+                .with { $0.id = "pn_work"; $0.tabID = "tb_work"; $0.agent = agent(.starting, since: 75) },
+                .with { $0.id = "pn_new"; $0.tabID = "tb_new"; $0.exited = true; $0.agent = agent(.idle, since: 90) },
+            ]
+        })
+        let s = m.sessionSections(in: m.groups)
+        #expect(s.working.map(\.pane.id) == ["pn_work"])
+        #expect(!s.recent.contains { $0.pane.id == "pn_new" })
+    }
+
+    @Test func recentShowsTheLast48HoursThenMore() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let ms = { (hoursAgo: Double) in Int64((now.timeIntervalSince1970 - hoursAgo * 3600) * 1000) }
+        let pane = { (id: String, h: Double) -> SessionEntry in
+            SessionEntry(tab: .with { $0.id = "tb_" + id }, pane: .with { $0.id = "pn_" + id; $0.agent = agent(.idle, since: ms(h)) })
+        }
+        let s = SessionSections(recent: [pane("a", 1), pane("b", 47), pane("c", 49)])
+        #expect(s.shownRecent(all: false, now: now).rows.map(\.pane.id) == ["pn_a", "pn_b"])
+        #expect(s.shownRecent(all: false, now: now).more)
+        #expect(s.shownRecent(all: true, now: now).rows.count == 3)
+        // None that new: all of them, nothing more to ask for.
+        let old = SessionSections(recent: [pane("c", 49), pane("d", 72)])
+        #expect(old.shownRecent(all: false, now: now).rows.count == 2)
+        #expect(!old.shownRecent(all: false, now: now).more)
+    }
+
     @Test func withoutDropsOnlyRecentRows() {
         let m = model()
         let s = m.sessionSections(in: m.groups).without(panes: ["pn_new", "pn_ask"])
