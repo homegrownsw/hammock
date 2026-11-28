@@ -680,6 +680,18 @@ func TestAgentSchedulesAsk(t *testing.T) {
 		!strings.Contains(gr.Headline, longTools[len(longTools)-1]) {
 		t.Fatalf("grant: %v", gr)
 	}
+	// The app shows it short, with its parts beneath: each whole.
+	if !strings.HasSuffix(gr.Title, "wants to add the automation “Briefing”") {
+		t.Fatalf("title: %q", gr.Title)
+	}
+	parts := map[string]*pb.GrantDetail{}
+	for _, p := range gr.Details {
+		parts[p.Label] = p
+	}
+	if parts["When"].GetText() != "Weekdays at 08:30" || parts["Prompt"].GetText() != "/morning-briefing" || parts["Runs"].GetText() != "Claude Code" ||
+		!parts["Allowed tools"].GetCode() || strings.Count(parts["Allowed tools"].GetText(), "\n") != len(longTools)-1 {
+		t.Fatalf("details: %v", gr.Details)
+	}
 	d.mu.Lock()
 	n := len(d.sched.list)
 	d.mu.Unlock()
@@ -961,5 +973,11 @@ func TestZoneFromLink(t *testing.T) {
 		if got := zoneFromLink(link).String(); got != want {
 			t.Errorf("%s: %s, want %s", link, got, want)
 		}
+	}
+}
+
+func TestShownLinesKeepsLinesButNotControls(t *testing.T) {
+	if got := shownLines("\n1. Run it\r\n\t2. Then‮ stop\x1b[0m\n\n"); got != "1. Run it\n 2. Then stop[0m" {
+		t.Fatalf("%q", got)
 	}
 }

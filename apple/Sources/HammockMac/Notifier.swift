@@ -246,7 +246,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         } else if let tab = model.panes[grant.requesterPaneID].flatMap({ model.tab(of: $0) }) {
             content.subtitle = model.title(of: tab)
         }
-        content.body = grant.headlineText
+        content.body = grant.titleText
         content.userInfo = ["paneID": grant.requesterPaneID, Self.live: true]
         // With its agent's other notifications (Hammock's own requests together).
         content.threadIdentifier = grant.requesterPaneID.isEmpty ? "permissions" : grant.requesterPaneID

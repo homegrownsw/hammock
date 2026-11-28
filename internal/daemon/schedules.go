@@ -1136,6 +1136,60 @@ func (d *Daemon) scheduleSummary(s *pb.Schedule) string {
 	return out
 }
 
+// scheduleTitle names a schedule in a grant's title: “Morning briefing”.
+func scheduleTitle(s *pb.Schedule) string {
+	return "“" + shownText(s.Name) + "”"
+}
+
+// scheduleDetails is what scheduleSummary says, in parts, for a grant to
+// show one beneath another: each whole, the prompt with its lines.
+func (d *Daemon) scheduleDetails(s *pb.Schedule) []*pb.GrantDetail {
+	var out []*pb.GrantDetail
+	add := func(label, text string, code bool) {
+		if text != "" {
+			out = append(out, &pb.GrantDetail{Label: label, Text: text, Code: code})
+		}
+	}
+	what := "A command"
+	if a := agents.Get(s.Kind); a != nil {
+		what = a.Name
+	}
+	when := scheduleTimes(s)
+	if len(s.Events) > 0 {
+		on := eventsWords(s, d.trigName)
+		if when == "" {
+			when = "When " + on
+		} else {
+			when += ", and when " + on
+		}
+	}
+	add("Runs", what, false)
+	add("When", capitalize(cmpOr(when, "never")), false)
+	home, _ := os.UserHomeDir()
+	dir := s.Cwd
+	if home != "" && strings.HasPrefix(dir, home) {
+		dir = "~" + strings.TrimPrefix(dir, home)
+	}
+	add("In", dir, false)
+	if s.Kind == "codex" {
+		add("Codex", fmt.Sprintf("Sandbox: %s · Approval: %s", cmpOr(s.CodexSandbox, "your Codex setting"), cmpOr(s.CodexApproval, "your Codex setting")), false)
+	}
+	var tools []string
+	for _, t := range s.AllowedTools {
+		tools = append(tools, shownText(t))
+	}
+	add("Allowed tools", strings.Join(tools, "\n"), true)
+	switch s.Session {
+	case pb.Schedule_SESSION_OWN:
+		add("Session", "Each run carries on its own session", false)
+	case pb.Schedule_SESSION_PICKED:
+		add("Session", "Each run is sent into your session "+cmpOr(shownText(s.SessionName), s.SessionId), false)
+	}
+	add("Note", shownText(s.SessionWarning), false)
+	add("Prompt", shownLines(s.Prompt), false)
+	return out
+}
+
 // scheduleWhen says when a schedule runs, in words.
 func scheduleWhen(s *pb.Schedule, names schedtrig.Names) string {
 	when := scheduleTimes(s)
@@ -1586,6 +1640,25 @@ func shownText(s string) string {
 		}
 		return r
 	}, s)
+}
+
+// shownLines is s as the person is shown it in full: its lines kept (and
+// trimmed of blank ones at either end), tabs as spaces, no other control
+// or reordering characters.
+func shownLines(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.Map(func(r rune) rune {
+		switch {
+		case r == '\n' || r == 0x2028 || r == 0x2029 || r == '\r':
+			return '\n'
+		case r == '\t':
+			return ' '
+		case r < 0x20 || (r >= 0x7f && r <= 0x9f) || bidiControl(r) || directionMark(r):
+			return -1
+		}
+		return r
+	}, s)
+	return strings.Trim(s, "\n")
 }
 
 // saveScheduleMakers keeps sched.madeBy. Callers hold d.mu.

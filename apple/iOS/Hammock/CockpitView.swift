@@ -807,12 +807,15 @@ struct GrantRow: View {
             // The palette on the icon only: on the Label it made the text
             // white too, invisible on the card.
             Label {
-                Text(grant.headlineText).font(.headline)
+                Text(grant.titleText).font(.headline)
                     .lineLimit(grant.showsWholeHeadline ? nil : 4)
             } icon: {
                 Image(systemName: "hand.raised.circle.fill")
                     .symbolRenderingMode(.palette)
                     .foregroundStyle(.white, .orange)
+            }
+            if grant.hasDetails {
+                GrantDetailsView(grant.details, compact: true, font: .subheadline, codeFont: .system(.caption, design: .monospaced))
             }
             if let origin = grant.originText {
                 Text(origin)

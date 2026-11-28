@@ -1501,12 +1501,7 @@ public struct PromptCardSample: View {
     public init(model: AppModel, kind: String) {
         self.model = model
         session = AgentSession(paneID: "pn_debug", model: model)
-        grant = kind != "grant" ? nil : .with {
-            $0.id = "gr_debug"; $0.requesterPaneID = "pn_debug"; $0.action = "schedule"
-            $0.headline = "Claude in Web ▸ api wants to add the automation “Nightly dependency check”: every day at 02:00, run Claude in ~/Developer/app with “Check for outdated dependencies, open a PR updating any with security fixes, and summarise the rest.”"
-            $0.description_p = "So the dependency updates happen without you having to ask each morning."
-            $0.createdUnixMs = Int64(Date().timeIntervalSince1970 * 1000) - 40_000
-        }
+        grant = kind != "grant" ? nil : .debugAutomation(pane: "pn_debug")
         extras = kind == "tasks"
         typing = kind == "other" ? "Keep the old API working for a release, behind a flag, and say so in the release notes" : nil
         var v = Hammock_V1_AgentView()

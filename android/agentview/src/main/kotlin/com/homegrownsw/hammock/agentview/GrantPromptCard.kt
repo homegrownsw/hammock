@@ -51,7 +51,8 @@ import com.homegrownsw.hammock.client.AppModel
 import com.homegrownsw.hammock.client.Link
 import com.homegrownsw.hammock.client.agentNote
 import com.homegrownsw.hammock.client.canAllowAlways
-import com.homegrownsw.hammock.client.headlineText
+import com.homegrownsw.hammock.client.hasDetails
+import com.homegrownsw.hammock.client.titleText
 import com.homegrownsw.hammock.client.originText
 import hammock.v1.Hammock.GrantRequest
 import hammock.v1.Hammock.RespondGrant
@@ -86,7 +87,8 @@ internal fun GrantPromptCard(model: AppModel, grant: GrantRequest, queued: Int, 
                 if (queued > 0) Text("· $queued more", style = MaterialTheme.typography.labelMedium, color = c.tertiary)
                 Spacer(Modifier.weight(1f))
             }
-            SelectionContainer { Text(grant.headlineText, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold) }
+            SelectionContainer { Text(grant.titleText, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold) }
+            if (grant.hasDetails) GrantDetails(grant.detailsList)
             grant.originText?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = c.secondary) }
             grant.agentNote?.let { note ->
                 // The agent's own words, marked as such (Hammock's are above).

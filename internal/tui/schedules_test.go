@@ -315,3 +315,31 @@ func TestScheduleTriggersWords(t *testing.T) {
 		}
 	}
 }
+
+// An automation's request: its title short, its parts beneath, labelled.
+func TestGrantMenuShowsAnAutomationsParts(t *testing.T) {
+	a := scheduleApp()
+	a.grants = []*pb.GrantRequest{{Id: "gr1", Action: "schedule", Headline: "the whole thing on one line",
+		Title: "Claude in Work ▸ Assistant wants to add the automation “Briefing”",
+		Details: []*pb.GrantDetail{
+			{Label: "When", Text: "Weekdays at 08:30"},
+			{Label: "Allowed tools", Text: "Read\nEdit", Code: true},
+			{Label: "Prompt", Text: "1. Check mail\n2. Write it up"},
+		}}}
+	a.grantMenu("gr1", 0, 0)
+	m, ok := a.overlay.(*menu)
+	if !ok {
+		t.Fatal("no menu")
+	}
+	var text []string
+	for _, it := range m.items {
+		if it.disabled {
+			text = append(text, it.label)
+		}
+	}
+	got := strings.Join(text, "|")
+	want := "Claude in Work ▸ Assistant wants to add the automation|“Briefing”|When: Weekdays at 08:30|Allowed tools: Read, Edit|Prompt:|  1. Check mail|  2. Write it up"
+	if !strings.HasPrefix(got, want) || strings.Contains(got, "one line") {
+		t.Fatalf("%q", got)
+	}
+}

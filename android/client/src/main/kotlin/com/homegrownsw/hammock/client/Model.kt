@@ -146,6 +146,10 @@ val Group.canAddTabs: Boolean get() = canDrive && !offline
 val Group.isOnLinkedComputer: Boolean get() = isRemote && myRole == Role.ROLE_OWNER
 
 val GrantRequest.headlineText: String get() = headline.ifEmpty { "An agent wants to $description" }
+/** Whether its parts come apart (an automation's): [titleText] short, `detailsList` beneath. */
+val GrantRequest.hasDetails: Boolean get() = title.isNotEmpty() && detailsCount > 0
+/** What's asked: short when its parts are shown beneath it ([hasDetails]), else all of the headline. */
+val GrantRequest.titleText: String get() = if (hasDetails) title else headlineText
 val GrantRequest.agentNote: String? get() = if (headline.isEmpty() || description.isEmpty()) null else description
 val GrantRequest.originText: String? get() = if (person && origin.isNotEmpty()) origin else null
 val GrantRequest.canAllowAlways: Boolean get() = !person

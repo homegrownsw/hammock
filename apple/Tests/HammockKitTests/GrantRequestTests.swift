@@ -19,4 +19,21 @@ final class GrantRequestTests: XCTestCase {
         XCTAssertTrue(g.showsWholeHeadline)
         XCTAssertNil(g.agentNote)
     }
+
+    func testAnAutomationShowsItsTitleAndParts() {
+        let g = Hammock_V1_GrantRequest.with {
+            $0.headline = "Claude in Web ▸ api wants to add the automation “Nightly”: Claude Code, every day at 02:00, in ~/app: check"
+            $0.title = "Claude in Web ▸ api wants to add the automation “Nightly”"
+            $0.details = [.with { $0.label = "When"; $0.text = "Every day at 02:00" }]
+            $0.action = "schedule"
+        }
+        XCTAssertTrue(g.hasDetails)
+        XCTAssertEqual(g.titleText, g.title)
+        XCTAssertFalse(g.showsWholeHeadline)
+        // From an older daemon: all of it, in one line.
+        let old = Hammock_V1_GrantRequest.with { $0.headline = "x wants to add the automation “Nightly”: …"; $0.action = "schedule" }
+        XCTAssertFalse(old.hasDetails)
+        XCTAssertEqual(old.titleText, old.headline)
+        XCTAssertTrue(old.showsWholeHeadline)
+    }
 }

@@ -42,10 +42,13 @@ struct GrantPromptCard: View {
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
-            Text(grant.headlineText)
+            Text(grant.titleText)
                 .font(fonts.body(weight: .semibold))
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
+            if grant.hasDetails {
+                GrantDetailsView(grant.details, font: fonts.body(0.92), codeFont: fonts.code(0.85))
+            }
             if let origin = grant.originText {
                 Text(origin)
                     .font(fonts.body(0.92))

@@ -876,6 +876,22 @@ message GrantRequest {
   // 10.0.0.2, it says", or "a program outside Hammock". Show it beneath
   // the headline.
   string origin = 9;
+  // A request with more to it than a sentence (an automation's): what's
+  // asked, short ("Claude in Web ▸ api wants to add the automation
+  // “Nightly check”"), and its parts beneath, each whole. Show these in
+  // place of headline when details is set; headline still says all of it
+  // in one line, for older clients.
+  string title = 10;
+  repeated GrantDetail details = 11;
+}
+
+// One part of what a grant would allow ("When": "weekdays at 08:30").
+message GrantDetail {
+  string label = 1;
+  // Whole, newlines kept (a prompt's), control characters removed.
+  string text = 2;
+  // Names to show in a fixed-width font (allowed tools).
+  bool code = 3;
 }
 
 // Sent by the MCP server; the reply (GrantDecision) arrives once a user

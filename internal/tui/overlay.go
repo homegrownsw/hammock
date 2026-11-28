@@ -536,6 +536,7 @@ func (a *App) grantMenu(id string, x, y int) {
 				for _, line := range wrapWords(grantText(g), 60, 1<<20) { // all of it: the menu scrolls
 					about = append(about, menuItem{label: line, disabled: true})
 				}
+				about = append(about, grantDetailItems(g)...)
 			} else {
 				about = append(about, menuItem{label: truncate(grantText(g), 60), disabled: true})
 			}
@@ -1484,4 +1485,31 @@ func (a *App) openAcknowledgements() {
 	}
 	lines = append(lines, "", "Each one's licence: hmk acknowledgements NAME (in a shell).")
 	a.openDialog(&dialog{title: "Acknowledgements", okLabel: "Done", lines: lines})
+}
+
+// grantDetailItems are a request's parts (an automation's), for its menu:
+// each labelled and whole, wrapped, the prompt's lines kept.
+func grantDetailItems(g *pb.GrantRequest) []menuItem {
+	if g.Title == "" || len(g.Details) == 0 {
+		return nil
+	}
+	out := []menuItem{{sep: true}}
+	for _, d := range g.Details {
+		text := d.Text
+		if d.Code {
+			text = strings.ReplaceAll(text, "\n", ", ")
+		}
+		lines := strings.Split(text, "\n")
+		if len(lines) == 1 && len([]rune(d.Label+": "+text)) <= 60 {
+			out = append(out, menuItem{label: d.Label + ": " + text, disabled: true})
+			continue
+		}
+		out = append(out, menuItem{label: d.Label + ":", disabled: true})
+		for _, l := range lines {
+			for _, w := range wrapWords(l, 58, 1<<20) {
+				out = append(out, menuItem{label: "  " + w, disabled: true})
+			}
+		}
+	}
+	return out
 }

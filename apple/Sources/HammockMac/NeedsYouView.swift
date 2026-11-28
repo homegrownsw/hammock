@@ -299,6 +299,7 @@ struct GrantCard: View {
     let grant: GrantRequest
     @State private var exit = CardExit.fade
     @State private var hovered = false
+    @State private var showDetails = false
 
     /// The pane that asked (an agent's, or the shell hmk ran in), if it's here.
     private var pane: Pane? { model.panes[grant.requesterPaneID] }
@@ -313,15 +314,41 @@ struct GrantCard: View {
                     .accessibilityLabel("Permission request")
                 VStack(alignment: .leading, spacing: 3) {
                     // Hammock's words, then the agent's own, marked as such.
-                    Text(grant.headlineText).fontWeight(.semibold)
-                        .lineLimit(grant.showsWholeHeadline ? nil : 4) // a schedule: all of what you'd allow
+                    Text(grant.titleText).fontWeight(.semibold)
+                        .lineLimit(grant.showsWholeHeadline ? nil : 4) // what only you may do: all of it
+                    if let summary = grant.detailsSummary {
+                        // The rest (its tools, its prompt, the agent's note) in Details, and in the pane that asked.
+                        Text(summary)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                        Button("Details") { showDetails = true }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.tint)
+                            .font(.callout)
+                            .popover(isPresented: $showDetails, arrowEdge: .trailing) {
+                                ScrollView {
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        Text(grant.titleText).font(.headline).fixedSize(horizontal: false, vertical: true)
+                                        GrantDetailsView(grant.details)
+                                        if let note = grant.agentNote {
+                                            Text("The agent says: “\(note)”").foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                                        }
+                                    }
+                                    .padding(16)
+                                }
+                                .frame(width: 440)
+                                .frame(maxHeight: 560)
+                                .fixedSize(horizontal: false, vertical: true)
+                            }
+                    }
                     if let origin = grant.originText {
                         Text(origin)
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .lineLimit(3)
                     }
-                    if let note = grant.agentNote {
+                    if !grant.hasDetails, let note = grant.agentNote {
                         Text("The agent says: “\(note)”")
                             .font(.callout)
                             .foregroundStyle(.secondary)

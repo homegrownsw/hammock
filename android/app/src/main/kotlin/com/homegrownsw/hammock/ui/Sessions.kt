@@ -88,7 +88,9 @@ import com.homegrownsw.hammock.client.canAddTabs
 import com.homegrownsw.hammock.client.canDrive
 import com.homegrownsw.hammock.client.displayName
 import com.homegrownsw.hammock.client.elapsedString
-import com.homegrownsw.hammock.client.headlineText
+import com.homegrownsw.hammock.client.hasDetails
+import com.homegrownsw.hammock.client.titleText
+import com.homegrownsw.hammock.agentview.GrantDetails
 import com.homegrownsw.hammock.client.label
 import com.homegrownsw.hammock.client.originText
 import com.homegrownsw.hammock.client.shownState
@@ -541,8 +543,9 @@ fun GrantCard(model: AppModel, grant: Hammock.GrantRequest, open: (() -> Unit)? 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     StatusIcon(AgentState.AGENT_STATE_NEEDS_INPUT, size = 22.dp)
-                    Text(grant.headlineText, style = MaterialTheme.typography.titleMedium, maxLines = if (grant.person || grant.action == "schedule") 20 else 4)
+                    Text(grant.titleText, style = MaterialTheme.typography.titleMedium, maxLines = if (grant.person || (grant.action == "schedule" && !grant.hasDetails)) 20 else 4)
                 }
+                if (grant.hasDetails) GrantDetails(grant.detailsList, compact = true)
                 grant.originText?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3) }
                 grant.agentNote?.let { Text("The agent says: “$it”", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3) }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

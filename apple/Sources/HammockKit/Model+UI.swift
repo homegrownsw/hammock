@@ -115,6 +115,23 @@ extension Hammock_V1_GrantRequest {
         headline.isEmpty ? "An agent wants to \(description_p)" : headline
     }
 
+    /// What's asked, short, when its parts come apart (an automation's:
+    /// show `details` beneath it); otherwise all of the headline.
+    public var titleText: String {
+        details.isEmpty || title.isEmpty ? headlineText : title
+    }
+
+    /// Whether its parts are shown beneath titleText (GrantDetailsView).
+    public var hasDetails: Bool { !details.isEmpty && !title.isEmpty }
+
+    /// Its short parts in one line, for a card with no room for the rest
+    /// ("Claude Code · Every day at 02:00 · ~/Developer/app"); nil without.
+    public var detailsSummary: String? {
+        guard hasDetails else { return nil }
+        let short = details.filter { !$0.code && $0.label != "Prompt" && !$0.text.contains("\n") }.map(\.text)
+        return short.isEmpty ? nil : short.joined(separator: " · ")
+    }
+
     /// The agent's own words about it, to show quoted beneath the headline
     /// (nil when there are none, or they're all an older daemon sent).
     public var agentNote: String? {
@@ -134,7 +151,7 @@ extension Hammock_V1_GrantRequest {
 
     /// Whether to show all of the headline: a schedule (all of what you'd
     /// allow), and what only you may do.
-    public var showsWholeHeadline: Bool { action == "schedule" || person }
+    public var showsWholeHeadline: Bool { (action == "schedule" && !hasDetails) || person }
 }
 
 /// A user key's short fingerprint, as a join card shows it: the user id's

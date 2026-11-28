@@ -100,6 +100,7 @@ enum DebugSnapshot {
                         $0.question = i % 3 == 1
                         $0.summary = i >= n ? "Claude finished" : i % 3 == 2 ? "Claude hit an error" : i % 3 == 1 ? "Claude asks: Which branch?" : "Bash: npm test"
                     } }
+                    if n > 0 { $0.grants = [.debugAutomation(pane: "pn_\(total - 1)")] } // an automation asked for, under the agents
                 })
                 let size = NSSize(width: 272, height: 900) // the sidebar's ideal width
                 let host = NSHostingView(rootView: VStack { NeedsYouView(model: model); Spacer(minLength: 0) }

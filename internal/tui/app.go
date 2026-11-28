@@ -1232,8 +1232,11 @@ func (a *App) paneCount(tabID string) int {
 }
 
 // grantText is what a permission request asks, in Hammock's words (an older
-// daemon's: the agent's).
+// daemon's: the agent's): an automation's short, its parts in grantDetails.
 func grantText(g *pb.GrantRequest) string {
+	if g.Title != "" && len(g.Details) > 0 {
+		return g.Title
+	}
 	if g.Headline != "" {
 		return g.Headline
 	}

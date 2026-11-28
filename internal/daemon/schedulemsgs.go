@@ -143,7 +143,8 @@ func (d *Daemon) handleSchedule(c *conn, msg *pb.ClientMessage) (*pb.ServerMessa
 				who += sandboxedWho
 			}
 			headline := who + " wants to " + fmt.Sprintf(verb, d.scheduleSummary(s))
-			return nil, d.askScheduleGrant(c, msg.Id, headline, "", func() (*pb.ServerMessage, error) {
+			title := who + " wants to " + fmt.Sprintf(verb, scheduleTitle(s))
+			return nil, d.askScheduleGrant(c, msg.Id, headline, title, d.scheduleDetails(s), "", func() (*pb.ServerMessage, error) {
 				s, err := find(id)
 				if err != nil {
 					return nil, err
@@ -183,10 +184,13 @@ func (d *Daemon) runEarly(s *pb.Schedule) (*pb.ServerMessage, error) {
 func (d *Daemon) askSchedule(c *conn, replyTo uint64, in *pb.Schedule, del bool, why string) error {
 	self := c.caller.pane
 	who := d.agentWho(self)
-	var headline string
+	var headline, title string
+	var details []*pb.GrantDetail
 	switch {
 	case del:
 		headline = who + " wants to delete the automation " + d.scheduleSummary(in)
+		title = who + " wants to delete the automation " + scheduleTitle(in)
+		details = d.scheduleDetails(in)
 	default:
 		s, err := d.cleanSchedule(in) // a mistake is said now, not after you've allowed it
 		if err != nil {
@@ -199,18 +203,20 @@ func (d *Daemon) askSchedule(c *conn, replyTo uint64, in *pb.Schedule, del bool,
 		if s.Id != "" && d.sched.list[s.Id] == nil {
 			return fmt.Errorf("no such schedule %q", s.Id)
 		}
-		verb := "add the automation"
+		verb, short := "add the automation", "add the automation"
 		if s.Id != "" {
-			verb = "change the automation to"
+			verb, short = "change the automation to", "change the automation"
 		}
 		if c.caller.sandboxed {
 			who += sandboxedWho
 		}
 		headline = who + " wants to " + verb + " " + d.scheduleSummary(s)
+		title = who + " wants to " + short + " " + scheduleTitle(s)
+		details = d.scheduleDetails(s)
 
 	}
 	in = proto.CloneOf(in)
-	return d.askScheduleGrant(c, replyTo, headline, why, func() (*pb.ServerMessage, error) {
+	return d.askScheduleGrant(c, replyTo, headline, title, details, why, func() (*pb.ServerMessage, error) {
 		if del {
 			if err := d.deleteSchedule(in.Id); err != nil {
 				return nil, err
@@ -234,12 +240,12 @@ func (d *Daemon) askSchedule(c *conn, replyTo uint64, in *pb.Schedule, del bool,
 // askScheduleGrant asks you (a grant in Needs You) whether an agent may do
 // something to a schedule, headline saying what; on Allow it's done and
 // the agent told. Callers hold d.mu.
-func (d *Daemon) askScheduleGrant(c *conn, replyTo uint64, headline, why string, do func() (*pb.ServerMessage, error)) error {
+func (d *Daemon) askScheduleGrant(c *conn, replyTo uint64, headline, title string, details []*pb.GrantDetail, why string, do func() (*pb.ServerMessage, error)) error {
 	self := c.caller.pane
 	d.openGrant(&pendingGrant{
 		req: &pb.GrantRequest{
 			Id: newID("gr"), RequesterPaneId: self, TargetPaneId: self, Action: "schedule",
-			Headline: headline, Description: agentNote(why), CreatedUnixMs: time.Now().UnixMilli(),
+			Headline: headline, Title: title, Details: details, Description: agentNote(why), CreatedUnixMs: time.Now().UnixMilli(),
 		},
 		done: func(allowed bool) {
 			if !allowed {

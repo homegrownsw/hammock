@@ -3774,6 +3774,34 @@ public nonisolated struct Hammock_V1_GrantRequest: Sendable {
   /// the headline.
   public var origin: String = String()
 
+  /// A request with more to it than a sentence (an automation's): what's
+  /// asked, short ("Claude in Web ▸ api wants to add the automation
+  /// “Nightly check”"), and its parts beneath, each whole. Show these in
+  /// place of headline when details is set; headline still says all of it
+  /// in one line, for older clients.
+  public var title: String = String()
+
+  public var details: [Hammock_V1_GrantDetail] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// One part of what a grant would allow ("When": "weekdays at 08:30").
+public nonisolated struct Hammock_V1_GrantDetail: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var label: String = String()
+
+  /// Whole, newlines kept (a prompt's), control characters removed.
+  public var text: String = String()
+
+  /// Names to show in a fixed-width font (allowed tools).
+  public var code: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -19452,7 +19480,7 @@ nonisolated extension Hammock_V1_SetColors: SwiftProtobuf.Message, SwiftProtobuf
 
 nonisolated extension Hammock_V1_GrantRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".GrantRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}requester_pane_id\0\u{3}target_pane_id\0\u{1}action\0\u{1}description\0\u{3}created_unix_ms\0\u{1}headline\0\u{1}person\0\u{1}origin\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}requester_pane_id\0\u{3}target_pane_id\0\u{1}action\0\u{1}description\0\u{3}created_unix_ms\0\u{1}headline\0\u{1}person\0\u{1}origin\0\u{1}title\0\u{1}details\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -19469,6 +19497,8 @@ nonisolated extension Hammock_V1_GrantRequest: SwiftProtobuf.Message, SwiftProto
       case 7: try { try decoder.decodeSingularStringField(value: &self.headline) }()
       case 8: try { try decoder.decodeSingularBoolField(value: &self.person) }()
       case 9: try { try decoder.decodeSingularStringField(value: &self.origin) }()
+      case 10: try { try decoder.decodeSingularStringField(value: &self.title) }()
+      case 11: try { try decoder.decodeRepeatedMessageField(value: &self.details) }()
       default: break
       }
     }
@@ -19502,6 +19532,12 @@ nonisolated extension Hammock_V1_GrantRequest: SwiftProtobuf.Message, SwiftProto
     if !self.origin.isEmpty {
       try visitor.visitSingularStringField(value: self.origin, fieldNumber: 9)
     }
+    if !self.title.isEmpty {
+      try visitor.visitSingularStringField(value: self.title, fieldNumber: 10)
+    }
+    if !self.details.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.details, fieldNumber: 11)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -19515,6 +19551,48 @@ nonisolated extension Hammock_V1_GrantRequest: SwiftProtobuf.Message, SwiftProto
     if lhs.headline != rhs.headline {return false}
     if lhs.person != rhs.person {return false}
     if lhs.origin != rhs.origin {return false}
+    if lhs.title != rhs.title {return false}
+    if lhs.details != rhs.details {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_GrantDetail: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".GrantDetail"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}label\0\u{1}text\0\u{1}code\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.label) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.text) }()
+      case 3: try { try decoder.decodeSingularBoolField(value: &self.code) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.label.isEmpty {
+      try visitor.visitSingularStringField(value: self.label, fieldNumber: 1)
+    }
+    if !self.text.isEmpty {
+      try visitor.visitSingularStringField(value: self.text, fieldNumber: 2)
+    }
+    if self.code != false {
+      try visitor.visitSingularBoolField(value: self.code, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_GrantDetail, rhs: Hammock_V1_GrantDetail) -> Bool {
+    if lhs.label != rhs.label {return false}
+    if lhs.text != rhs.text {return false}
+    if lhs.code != rhs.code {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

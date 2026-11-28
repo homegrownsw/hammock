@@ -94,8 +94,9 @@ func (d *Daemon) openGrant(g *pendingGrant) {
 	if g.person {
 		title, sub = "Hammock", g.req.Origin
 	}
-	// Hammock's words only: the agent's own can say anything.
-	d.push("needs_input", id, pushNote{Title: title, Subtitle: sub, Body: g.req.Headline, Category: "grant", Kind: "grant", Grant: id, Pane: g.req.RequesterPaneId},
+	// Hammock's words only: the agent's own can say anything. An automation's title, short:
+	// its parts are for the app.
+	d.push("needs_input", id, pushNote{Title: title, Subtitle: sub, Body: cmpOr(g.req.Title, g.req.Headline), Category: "grant", Kind: "grant", Grant: id, Pane: g.req.RequesterPaneId},
 		func() bool { return d.grants[id] != nil })
 }
 
