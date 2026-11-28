@@ -525,8 +525,9 @@ struct RootView: View {
                         return s
                     }
                 }
-                // The watch's complications and list follow the sessions.
-                .onChange(of: WatchSnapshots.sessions(model, host: session.host?.id ?? "", hostName: ""), initial: true) { _, _ in
+                // The watch's complications and list follow the agents' states
+                // (with Hammock on a paired watch only).
+                .onChange(of: WatchBridge.shared.watchAppInstalled ? WatchSnapshots.signature(model) : [], initial: true) { _, _ in
                     guard model.connected, !session.isDemo else { return }
                     WatchBridge.shared.shownMacChanged()
                 }

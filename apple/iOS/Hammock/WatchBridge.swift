@@ -28,6 +28,7 @@ final class WatchBridge: NSObject {
     /// Each Mac's quick replies, as it last said.
     @ObservationIgnored private var quickReplies: [String: [String]] = [:]
     @ObservationIgnored private var sweeping = false
+    @ObservationIgnored private var publishPending = false
 
     func start() {
         guard WCSession.isSupported() else { return }
@@ -59,7 +60,7 @@ final class WatchBridge: NSObject {
             }
             let replies = await quickReplies(model, host: host)
             let header = WatchSnapshots.session(model, pane: pane, host: host, hostName: Self.name(h))
-            return .conversation(WatchSnapshots.conversation(s, session: header, limit: limit, quickReplies: replies))
+            return .conversation(Self.fitted(WatchSnapshots.conversation(s, session: header, limit: limit, quickReplies: replies)))
         case let .image(host, pane, ref):
             guard let (model, _) = await model(for: host) else { return .failed(unreachable(host)) }
             let s = watch(model, host: host, pane: pane)
@@ -73,6 +74,7 @@ final class WatchBridge: NSObject {
             return .done
         case let .answer(host, pane, promptID, option, ticking, text):
             guard let (model, _) = await model(for: host) else { return .failed(unreachable(host)) }
+            guard model.connected else { return .failed(unreachable(host)) }
             let s = watch(model, host: host, pane: pane)
             // The prompt it's for, on screen (it arrives with the conversation).
             for _ in 0..<25 where s.prompt.promptID != promptID { try? await Task.sleep(for: .milliseconds(200)) }
@@ -106,6 +108,8 @@ final class WatchBridge: NSObject {
     func snapshot() async -> WatchSnapshot {
         guard let session else { return WatchSnapshot() }
         let hosts = session.isDemo ? session.host.map { [$0] } ?? [] : session.hosts.filter { $0.deviceID != nil }
+        // Asked afresh each time: they may have been edited on the Mac.
+        quickReplies = [:]
         var out = WatchSnapshot(macs: hosts.map(Self.name))
         await withTaskGroup(of: (StoredHost, AppModel?).self) { group in
             for h in hosts {
@@ -146,9 +150,20 @@ final class WatchBridge: NSObject {
         }
     }
 
-    /// The shown Mac's sessions changed (RootView): the watch's
-    /// complications follow, with the other Macs' as last seen.
+    /// The shown Mac's agents changed state (RootView): the watch's
+    /// complications follow, with the other Macs' as last seen. A couple
+    /// of seconds on, once for a burst of changes.
     func shownMacChanged() {
+        guard watchAppInstalled, !publishPending else { return }
+        publishPending = true
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            publishPending = false
+            publishShownMac()
+        }
+    }
+
+    private func publishShownMac() {
         guard let session, let model = session.model, let h = session.host, model.hasFullState,
               WCSession.default.activationState == .activated, WCSession.default.isWatchAppInstalled else { return }
         var s = (WCSession.default.applicationContext[WatchWire.snapshotKey] as? Data).flatMap { try? WatchWire.decode(WatchSnapshot.self, from: $0) }
@@ -191,9 +206,12 @@ final class WatchBridge: NSObject {
 
     private func watch(_ model: AppModel, host: String, pane: String) -> AgentSession {
         let key = host + "/" + pane
-        if let w = watched[key], w.model === model {
-            watched[key]?.used = .now
-            return w.session
+        if let w = watched[key] {
+            if w.model === model {
+                watched[key]?.used = .now
+                return w.session
+            }
+            w.model.releaseAgent(w.pane) // the Mac shown changed since
         }
         let s = model.acquireAgent(pane)
         watched[key] = (s, model, pane, .now)
@@ -202,7 +220,8 @@ final class WatchBridge: NSObject {
 
     private func quickReplies(_ model: AppModel, host: String) async -> [String] {
         if let q = quickReplies[host] { return q }
-        let q = (try? await model.quickReplies()) ?? []
+        // Not kept when it fails: asked again next time.
+        guard let q = try? await model.quickReplies() else { return [] }
         quickReplies[host] = q
         return q
     }
@@ -233,6 +252,22 @@ final class WatchBridge: NSObject {
     func forgetQuickReplies() { quickReplies = [:] }
 
     // MARK: Helpers
+
+    /// The most a reply may hold: WatchConnectivity refuses a message over
+    /// about 64 KB (and a binary plist keeps text with any non-ASCII in it
+    /// as UTF-16, two bytes a character).
+    static let replyBytes = 56 * 1024
+
+    /// A conversation cut to fit one message: its oldest blocks go (and
+    /// it says there are more) until it does.
+    static func fitted(_ c: WatchConversation) -> WatchConversation {
+        var c = c
+        while c.blocks.count > 1, let data = try? WatchWire.encode(WatchReply.conversation(c)), data.count > replyBytes {
+            c.blocks.removeFirst(max(1, c.blocks.count / 8))
+            c.hasMore = true
+        }
+        return c
+    }
 
     private func unreachable(_ host: String) -> String {
         "Couldn't reach \(session?.hosts.first { $0.id == host }.map(Self.name) ?? "your Mac")."

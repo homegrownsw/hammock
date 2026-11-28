@@ -79,17 +79,24 @@ enum AgentNotices {
     static let allowAction = "agentprompt.allow"
     static let denyAction = "agentprompt.deny"
 
+    /// Each opens the watch app (foreground), so the phone is reachable to answer it.
     static func register() {
-        let reply = UNTextInputNotificationAction(identifier: replyAction, title: "Reply", options: [],
+        let reply = UNTextInputNotificationAction(identifier: replyAction, title: "Reply", options: .foreground,
                                                   textInputButtonTitle: "Send", textInputPlaceholder: "Message")
-        let allow = UNNotificationAction(identifier: allowAction, title: "Allow", options: [])
-        let deny = UNNotificationAction(identifier: denyAction, title: "Deny", options: .destructive)
-        let grantAllow = UNNotificationAction(identifier: "grant.allow", title: "Allow", options: [])
-        let grantDeny = UNNotificationAction(identifier: "grant.deny", title: "Deny", options: .destructive)
+        let allow = UNNotificationAction(identifier: allowAction, title: "Allow", options: .foreground)
+        let deny = UNNotificationAction(identifier: denyAction, title: "Deny", options: [.foreground, .destructive])
+        let grantAllow = UNNotificationAction(identifier: "grant.allow", title: "Allow", options: .foreground)
+        let grantDeny = UNNotificationAction(identifier: "grant.deny", title: "Deny", options: [.foreground, .destructive])
+        // A join's Let Drive… and the Hammock Key's Approve… need the phone (its card, Face ID): not here.
+        let joinView = UNNotificationAction(identifier: "join.view", title: "Let View", options: .foreground)
+        let joinDecline = UNNotificationAction(identifier: "join.decline", title: "Decline", options: [.foreground, .destructive])
+        let keyDeny = UNNotificationAction(identifier: "key.deny", title: "Don't Allow", options: [.foreground, .destructive])
         UNUserNotificationCenter.current().setNotificationCategories([
             UNNotificationCategory(identifier: replyCategory, actions: [reply], intentIdentifiers: []),
             UNNotificationCategory(identifier: promptCategory, actions: [allow, deny], intentIdentifiers: []),
             UNNotificationCategory(identifier: "grant", actions: [grantAllow, grantDeny], intentIdentifiers: []),
+            UNNotificationCategory(identifier: "join", actions: [joinView, joinDecline], intentIdentifiers: []),
+            UNNotificationCategory(identifier: "hammockkey", actions: [keyDeny], intentIdentifiers: []),
         ])
     }
 

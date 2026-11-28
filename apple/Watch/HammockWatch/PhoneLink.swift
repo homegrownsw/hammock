@@ -59,10 +59,16 @@ final class PhoneLink: NSObject {
         let s = WCSession.default
         for _ in 0..<20 where s.activationState != .activated { try? await Task.sleep(for: .milliseconds(100)) }
         guard s.activationState == .activated else { throw LinkError.noPhone }
-        guard s.isReachable else { throw LinkError.unreachable }
+        // Not checked first with isReachable: in the background (a
+        // notification's button) it can say no while a message still goes.
         let data = try WatchWire.encode(request)
-        let reply: Data = try await withCheckedThrowingContinuation { cont in
-            s.sendMessageData(data, replyHandler: { cont.resume(returning: $0) }, errorHandler: { cont.resume(throwing: $0) })
+        let reply: Data
+        do {
+            reply = try await withCheckedThrowingContinuation { cont in
+                s.sendMessageData(data, replyHandler: { cont.resume(returning: $0) }, errorHandler: { cont.resume(throwing: $0) })
+            }
+        } catch let e as WCError where e.code == .notReachable || e.code == .messageReplyTimedOut {
+            throw LinkError.unreachable
         }
         let r = try WatchWire.decode(WatchReply.self, from: reply)
         if case let .failed(why) = r { throw LinkError.failed(why) }

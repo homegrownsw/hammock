@@ -26,6 +26,14 @@ public enum WatchSnapshots {
         return out
     }
 
+    /// What the watch's complications change with: each agent pane's state
+    /// (not its progress or summary, which change all the time).
+    public static func signature(_ model: AppModel) -> [String] {
+        model.panes.values.filter { $0.hasAgent && !$0.exited }
+            .map { "\($0.id):\($0.agent.shownState.rawValue):\($0.agent.seen)" }
+            .sorted()
+    }
+
     /// One pane's agent as a session (a conversation's header).
     public static func session(_ model: AppModel, pane: String, host: String, hostName: String) -> WatchSession? {
         guard let p = model.panes[pane], p.hasAgent else { return nil }

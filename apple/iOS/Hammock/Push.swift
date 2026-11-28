@@ -356,6 +356,10 @@ extension Push {
             }
         }
         if let text = t.reply?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty, let pane = t.pane {
+            guard model.panes[pane] != nil else {
+                if let request { await Self.repost(request, saying: AgentReplyNotice.paneClosed) }
+                return AgentReplyNotice.paneClosed
+            }
             switch await Self.reply(text, to: pane, on: model) {
             case .answered: break
             case .refused:

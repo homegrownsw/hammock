@@ -50,7 +50,8 @@ struct PromptView: View {
     @ViewBuilder
     private func optionRow(_ n: Int, _ option: String) -> some View {
         let description = prompt.descriptions.indices.contains(n - 1) ? prompt.descriptions[n - 1] : ""
-        let checkbox = prompt.multiSelect && n <= max(prompt.checkboxes, prompt.multiSelect ? prompt.options.count : 0)
+        // Options 1 to checkboxes tick (none said: all); those after ("Chat about this") answer at once.
+        let checkbox = prompt.multiSelect && (prompt.checkboxes == 0 || n <= prompt.checkboxes)
         if n == prompt.other {
             // Typed (or said) into the option that takes text.
             TextFieldLink(prompt: Text(option)) {

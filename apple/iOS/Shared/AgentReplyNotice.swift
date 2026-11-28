@@ -11,6 +11,8 @@ enum AgentReplyNotice {
     /// Said when the reply couldn't go because a question or permission
     /// is on its screen: typing there would answer it.
     static let answerInApp = "Couldn't send: it's asking something. Open it to answer."
+    /// Said when its pane has closed since.
+    static let paneClosed = "Couldn't send: that agent's pane has closed."
 
     /// The notes that get Reply: an agent's (not another program's)
     /// needs-input or finished note about a pane, with no actions of its own.
