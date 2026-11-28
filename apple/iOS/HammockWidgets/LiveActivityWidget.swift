@@ -10,7 +10,7 @@ import WidgetKit
 struct HammockLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: HammockActivityAttributes.self) { context in
-            LockScreenLive(content: context.state, host: context.attributes.host, stale: context.isStale)
+            LiveByFamily(content: context.state, host: context.attributes.host, stale: context.isStale)
                 .widgetURL(link(context.state, host: context.attributes.host))
         } dynamicIsland: { context in
             let c = context.state
@@ -70,11 +70,62 @@ struct HammockLiveActivity: Widget {
             .widgetURL(link(c, host: host))
             .keylineTint(tint)
         }
+        // The Apple Watch's Smart Stack (and CarPlay) get one laid out for them.
+        .supplementalActivityFamilies([.small])
     }
 
     private func link(_ c: LiveContent, host: String) -> URL {
         if let pane = c.pane, !pane.isEmpty { return HammockURL.pane(host: host, pane: pane) }
         return HammockURL.needsYou(host: host)
+    }
+}
+
+/// The Lock Screen's, or the Apple Watch Smart Stack's (the small family).
+struct LiveByFamily: View {
+    let content: LiveContent
+    let host: String
+    let stale: Bool
+    @Environment(\.activityFamily) private var family
+
+    var body: some View {
+        if family == .small {
+            SmallLive(content: content)
+        } else {
+            LockScreenLive(content: content, host: host, stale: stale)
+        }
+    }
+}
+
+/// The Smart Stack's, on an Apple Watch: the agent and its state, its tab,
+/// how long, what it's doing or asks, and how many others. Always dark.
+struct SmallLive: View {
+    let content: LiveContent
+
+    var body: some View {
+        let c = content
+        let tint = accent(c, dark: true)
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                AgentTile(content: c, tint: tint, ink: ink(c, dark: true), size: 24)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text((c.tab ?? "").isEmpty ? c.agent : c.tab ?? "").font(.headline).lineLimit(1)
+                    HStack(spacing: 3) {
+                        StateMark(content: c, tint: tint)
+                        Elapsed(content: c).monospacedDigit()
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(tint)
+                }
+            }
+            if let doing = c.doing, !doing.isEmpty {
+                Text(doing).font(.caption).lineLimit(2)
+            }
+            if let more = c.more, !more.isEmpty {
+                Text(more).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .activityBackgroundTint(backdrop(c, dark: true))
     }
 }
 
