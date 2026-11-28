@@ -150,6 +150,8 @@ final class TabPreview {
     func entered(_ v: TabPreviewAnchorView) {
         under = v
         guard AppConfig.shared.tabPreview, !pinned, dismissed !== v else { return }
+        // Not while the sidebar turns between Groups and Sessions.
+        guard !SidebarModeState.shared.moving else { return }
         // Not mid drag, nor as a scroll carries tabs under the pointer.
         guard NSEvent.pressedMouseButtons == 0, ContinuousClock.now - scrolledAt > .milliseconds(300) else { return }
         if v === anchor {
@@ -259,7 +261,7 @@ final class TabPreview {
     }
 
     private func show(_ v: TabPreviewAnchorView) {
-        guard let window = v.window, let model = v.model, model.tabs[v.tabID] != nil else { return }
+        guard let window = v.window, let model = v.model, model.tabs[v.tabID] != nil, !SidebarModeState.shared.moving else { return }
         let panel = self.panel ?? TabPreviewPanel()
         self.panel = panel
         closing?.cancel()

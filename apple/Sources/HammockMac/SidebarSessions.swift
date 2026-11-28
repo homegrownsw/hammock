@@ -28,17 +28,218 @@ final class SidebarModeState {
     var applies: Bool { SidebarLayout.current != .horizontal && Prefs.shared.bool(SessionsSwitch.pref) }
     var showsSessions: Bool { applies && mode == .sessions }
 
-    /// Shows Groups or Sessions, and the sidebar if it's hidden.
+    /// Where the sidebar's two pages sit: 0 Groups, 1 Sessions, between
+    /// them while sliding or swiped (a little past either end, stretching).
+    /// Each page is its own List, so each keeps where it was scrolled to.
+    var position: CGFloat = 0
+    /// The pages' width: how far a swipe has to go.
+    var width: CGFloat = 0
+
+    init() { position = Self.page(mode) }
+
+    private static func page(_ m: SidebarMode) -> CGFloat { m == .sessions ? 1 : 0 }
+
+    /// Shows Groups or Sessions, sliding to it, and the sidebar if it's hidden.
     func show(_ m: SidebarMode) {
         UserDefaults.standard.set(false, forKey: SidebarHiding.key)
-        withAnimation(.snappy(duration: 0.2)) { mode = m }
+        settle(on: m)
+    }
+
+    /// Between pages: swiped, or sliding to one. Tab previews wait.
+    private(set) var moving = false
+    private var settling = 0
+
+    private func settle(on m: SidebarMode, duration: Double = 0.3) {
+        let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        guard !reduce, Self.page(m) != position || m != mode else {
+            mode = m
+            position = Self.page(m)
+            moving = false
+            return
+        }
+        startMoving()
+        settling += 1
+        let n = settling
+        withAnimation(.snappy(duration: duration)) {
+            mode = m
+            position = Self.page(m)
+        } completion: { [weak self] in
+            // Only the last slide's end, if another began meanwhile.
+            guard let self, self.settling == n else { return }
+            self.moving = false
+        }
+    }
+
+    private func startMoving() {
+        moving = true
+        TabPreview.shared.hide(force: true)
+    }
+
+    // A two-finger swipe across the sidebar (SidebarSwipe): AppKit's swipe
+    // tracking, as Safari's back and forward, says how far it's gone and,
+    // let go, which way it turns; our spring finishes it.
+    private var swipeStart: CGFloat = 0
+    private var swipeCommits = false
+
+    /// The page a swipe from here would turn to: the other one.
+    var swipeTarget: SidebarMode { mode == .groups ? .sessions : .groups }
+
+    func beginSwipe() {
+        swipeStart = Self.page(mode)
+        swipeCommits = false
+        startMoving()
+    }
+
+    /// `amount`: AppKit's gesture amount, positive with the fingers moving
+    /// right (towards Groups), 1 a whole page.
+    func swipe(amount: CGFloat) {
+        position = swipeStart - amount
+        // A tap of the trackpad as it passes halfway, where letting go turns
+        // the page.
+        let commits = abs(amount) > 0.5
+        if commits != swipeCommits {
+            swipeCommits = commits
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        }
+    }
+
+    /// The swipe's over: on to the other page (`turned`) or back, springing
+    /// there (`animated`) or already there.
+    func endSwipe(turned: Bool, animated: Bool) {
+        let to = turned ? swipeTarget : mode
+        guard animated else { mode = to; position = Self.page(to); moving = false; return }
+        // Quicker than the switch's slide: the page is already moving.
+        settle(on: to, duration: 0.22)
     }
 }
 
-/// Groups | Sessions, at the left of the sidebar's footer: in words, or
-/// (`icons`, a narrow sidebar) their symbols.
+/// Two-finger swipes left and right over the sidebar turn its page between
+/// Groups and Sessions (when System Settings' Swipe between pages is on);
+/// vertical ones still scroll. Watches the window's scroll events: a
+/// gesture's first ones are held back from the List until it's clear which
+/// way it goes, then a sideways one is AppKit's swipe tracking's.
+@MainActor
+final class SidebarSwipe {
+    /// The sidebar's window, and its pages' frame in it (SwiftUI's global
+    /// space: from the top left).
+    var window: () -> NSWindow? = { nil }
+    var frame: CGRect = .zero
+
+    private func isOver(_ e: NSEvent) -> Bool {
+        guard let w = window(), e.window === w, let content = w.contentView else { return false }
+        let p = e.locationInWindow
+        return frame.contains(CGPoint(x: p.x, y: content.bounds.height - p.y))
+    }
+    private var monitor: Any?
+    /// nil: undecided; then sideways (ours) or not.
+    private var sideways: Bool?
+    private var dx: CGFloat = 0, dy: CGFloat = 0
+    /// The gesture's first events, until it's clear which way it goes.
+    private var held: [NSEvent] = []
+    /// AppKit's swipe tracking is running (it takes the gesture's events).
+    private var tracking = false
+
+    func start() {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] e in
+            self?.handle(e) ?? e
+        }
+    }
+
+    func stop() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+    }
+
+    private func handle(_ e: NSEvent) -> NSEvent? {
+        // A mouse's wheel (no phases), or momentum: not a swipe.
+        guard !e.phase.isEmpty, !e.phase.contains(.mayBegin) else { return e }
+        if e.phase.contains(.began) {
+            held = []
+            dx = 0; dy = 0
+            sideways = !tracking && SidebarModeState.shared.applies && NSEvent.isSwipeTrackingFromScrollEventsEnabled && isOver(e) ? nil : false
+        }
+        guard sideways == nil else { return e }
+        if e.phase.contains(.ended) || e.phase.contains(.cancelled) {
+            sideways = false
+            release()
+            return e
+        }
+        // Held back from the List until it's clear which way it goes.
+        held.append(e)
+        dx += e.scrollingDeltaX; dy += e.scrollingDeltaY
+        guard max(abs(dx), abs(dy)) > 6 else { return nil }
+        guard abs(dx) > abs(dy) * 1.5 else {
+            sideways = false
+            held.removeLast()
+            release()
+            return e
+        }
+        sideways = true
+        held = []
+        track(e)
+        return nil
+    }
+
+    private func track(_ e: NSEvent) {
+        let state = SidebarModeState.shared
+        state.beginSwipe()
+        tracking = true
+        // Only towards the other page; past it, or back past this one, it
+        // stretches.
+        let toSessions = state.swipeTarget == .sessions
+        // Where the fingers let go: AppKit's next amount says which way its
+        // spring goes, and ours (quicker) takes it from there.
+        var released: CGFloat?
+        var done = false
+        e.trackSwipeEvent(options: [.lockDirection], dampenAmountThresholdMin: toSessions ? -1 : 0, max: toSessions ? 0 : 1) { [weak self] amount, phase, complete, stop in
+            MainActor.assumeIsolated {
+                guard !done else { return }
+                if let released {
+                    stop.pointee = true
+                    done = true
+                    state.endSwipe(turned: abs(amount) > abs(released) || abs(amount) > 0.99, animated: true)
+                    self?.tracking = false
+                    return
+                }
+                state.swipe(amount: amount)
+                if phase == .ended || phase == .cancelled { released = amount }
+                if complete {
+                    done = true
+                    state.endSwipe(turned: abs(amount) > 0.5, animated: false)
+                    self?.tracking = false
+                }
+            }
+        }
+    }
+
+    /// Not a swipe after all: the events held back go to the List, in order.
+    private func release() {
+        let events = held
+        held = []
+        for ev in events { ev.window?.sendEvent(ev) }
+    }
+}
+
+/// One of the sidebar's two pages (0 Groups, 1 Sessions), placed by where
+/// they sit: the one off to the side neither drawn nor clickable.
+struct SidebarPage: ViewModifier {
+    let index: CGFloat
+
+    func body(content: Content) -> some View {
+        let s = SidebarModeState.shared
+        let at = s.applies ? s.position : 0
+        let current = s.applies ? (s.mode == .sessions ? 1 : 0) == index : index == 0
+        content
+            .offset(x: (index - at) * s.width)
+            .opacity(abs(index - at) < 1 ? 1 : 0)
+            .allowsHitTesting(current)
+            .accessibilityHidden(!current)
+    }
+}
+
+/// Groups | Sessions, at the left of the sidebar's footer, as their symbols.
 struct SidebarModePicker: View {
-    var icons = false
     private var state: SidebarModeState { .shared }
 
     var body: some View {
@@ -55,12 +256,8 @@ struct SidebarModePicker: View {
         .help("\(Keys.hint("Groups", "show_groups")) or \(Keys.hint("Sessions", "show_sessions"))")
     }
 
-    @ViewBuilder private func segment(_ title: String, _ symbol: String) -> some View {
-        if icons {
-            Image(systemName: symbol).accessibilityLabel(title)
-        } else {
-            Text(title)
-        }
+    private func segment(_ title: String, _ symbol: String) -> some View {
+        Image(systemName: symbol).accessibilityLabel(title)
     }
 }
 
@@ -115,7 +312,8 @@ struct SidebarSessionsList: View {
                 Button(showingAllRecent ? "Show Less" : "Show More…") {
                     withAnimation(.snappy(duration: 0.25)) { showingAllRecent.toggle() }
                 }
-                .buttonStyle(.link)
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.themeAccent)
                 .font(.callout)
                 .padding(.leading, 10)
                 .padding(.vertical, 4)

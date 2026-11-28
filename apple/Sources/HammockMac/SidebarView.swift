@@ -82,6 +82,7 @@ struct SidebarView: View {
     @State private var folderDrop: FolderDrop.Target?
     @State private var tracker = SidebarDragTracker()
     @State private var scroller = SidebarScroller()
+    @State private var swipe = SidebarSwipe()
     /// The bottom bar's height: the List scrolls under it.
     @State private var barHeight: CGFloat = 0
     private var layout: SidebarLayout { .current }
@@ -418,17 +419,16 @@ struct SidebarView: View {
         // moved its selection when collapsing a Group took rows away, and
         // selectable rows wouldn't drag.
         ScrollViewReader { proxy in
+        // Two pages, Groups and Sessions, side by side (SidebarPage), each
+        // its own List keeping its own scroll.
+        ZStack {
         List {
-            if SidebarModeState.shared.showsSessions {
-                SidebarSessionsList(model: model)
-            } else {
-                ForEach(rows) { row in
-                    switch row {
-                    case .header(let group, let isCollapsed, let tabsShown):
-                        headerRow(group, collapsed: isCollapsed, tabsShown: tabsShown)
-                    case .tab(let tab, let group, let last, _):
-                        tabRow(tab, group: group, last: last)
-                    }
+            ForEach(rows) { row in
+                switch row {
+                case .header(let group, let isCollapsed, let tabsShown):
+                    headerRow(group, collapsed: isCollapsed, tabsShown: tabsShown)
+                case .tab(let tab, let group, let last, _):
+                    tabRow(tab, group: group, last: last)
                 }
             }
         }
@@ -503,6 +503,33 @@ struct SidebarView: View {
         // selection would flash blue (focused) then grey. So the list never
         // takes keyboard focus; clicks still select.
         .background(SidebarRefusesFocus(scroller: scroller))
+        .modifier(SidebarPage(index: 0))
+        if SidebarModeState.shared.applies {
+            List {
+                SidebarSessionsList(model: model)
+            }
+            .listStyle(.sidebar)
+            .environment(\.sidebarRowSize, .small)
+            .environment(\.sidebarCompact, layout == .compact)
+            .background(SidebarRefusesFocus(scroller: nil))
+            // Folders dropped here: new Groups, after the others.
+            .onDrop(of: [.fileURL], delegate: SidebarFolderDrop(
+                locate: { _ in .insert(shownGroups.count) },
+                show: { _ in },
+                perform: { folders, target in FolderDropUI.shared.drop(folders, on: target, shown: shownGroups, model: model) }
+            ))
+            .modifier(SidebarPage(index: 1))
+        }
+        }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
+            swipe.frame = $0
+            SidebarModeState.shared.width = $0.width
+        }
+        .onAppear {
+            swipe.window = { [weak scroller] in scroller?.table?.window }
+            swipe.start()
+        }
+        .onDisappear { swipe.stop() }
         .scrollEdgeEffectStyle(.hard, for: .bottom)
         // A bar (macOS 26): the list scrolling beneath it fades under, not shows through.
         .safeAreaBar(edge: .bottom, spacing: 0) {
@@ -1165,15 +1192,12 @@ struct HostFooter: View {
                 // Nothing else in the footer: this Mac across it, in words.
                 ComputerSwitcher(model: model, wide: true)
             } else {
-                // Narrower, the chosen computer drops its name, then the
-                // switch its words; then the computers fold into one pop-up
-                // button, with the words back if there's room beside it.
+                // Narrower, the chosen computer drops its name; then the
+                // computers fold into one pop-up button.
                 ViewThatFits(in: .horizontal) {
                     row(names: true)
                     row(names: false)
-                    row(names: false, icons: true)
                     row(names: false, collapsed: true)
-                    row(names: false, icons: true, collapsed: true)
                 }
             }
         }
@@ -1181,10 +1205,10 @@ struct HostFooter: View {
         .padding(.vertical, 8)
     }
 
-    private func row(names: Bool, icons: Bool = false, collapsed: Bool = false) -> some View {
+    private func row(names: Bool, collapsed: Bool = false) -> some View {
         HStack(spacing: 6) {
             if SidebarModeState.shared.applies {
-                SidebarModePicker(icons: icons)
+                SidebarModePicker()
             }
             Spacer(minLength: 0)
             ComputerSwitcher(model: model, names: names, collapsed: collapsed)
@@ -1236,6 +1260,13 @@ struct SidebarRefusesFocus: NSViewRepresentable {
 
     final class Probe: NSView {
         weak var scroller: SidebarScroller?
+        /// Found its List's table: before the window's laid out, it can't.
+        private var matched = false
+
+        override func setFrameSize(_ newSize: NSSize) {
+            super.setFrameSize(newSize)
+            if !matched, window != nil, newSize.width > 0 { DispatchQueue.main.async { [weak self] in self?.apply() } }
+        }
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
@@ -1247,9 +1278,18 @@ struct SidebarRefusesFocus: NSViewRepresentable {
             var v: NSView? = self
             while let s = v?.superview, !(s is NSScrollView) { v = s }
             let root = v?.superview?.superview ?? window?.contentView
+            // The sidebar has two Lists (Groups and Sessions): this one's is
+            // the table where this view is.
+            let mine = convert(bounds, to: nil)
             func walk(_ view: NSView) {
                 if let t = view as? NSTableView {
-                    scroller?.table = t
+                    if let scroll = t.enclosingScrollView, scroll.convert(scroll.bounds, to: nil).contains(CGPoint(x: mine.midX, y: mine.midY)) {
+                        scroller?.table = t
+                        // Swiped sideways, the sidebar turns its page
+                        // (SidebarSwipe): the List mustn't stretch.
+                        scroll.horizontalScrollElasticity = .none
+                        matched = true
+                    }
                     t.refusesFirstResponder = true
                     t.selectionHighlightStyle = .none // tabs draw their own (see tabPill)
                     SidebarRefusesFocus.dropContextMenuRing(type(of: t))
