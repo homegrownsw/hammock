@@ -138,7 +138,11 @@ final class Push: NSObject {
         // An agent's permission prompt: answered as Needs You's Allow and Deny.
         let promptAllow = UNNotificationAction(identifier: AgentPromptNotice.allowAction, title: "Allow", options: lock)
         let promptDeny = UNNotificationAction(identifier: AgentPromptNotice.denyAction, title: "Deny", options: lock.union(.destructive))
+        // A message to an agent that finished or waits on you.
+        let reply = UNTextInputNotificationAction(identifier: AgentReplyNotice.replyAction, title: "Reply", options: lock,
+                                                  textInputButtonTitle: "Send", textInputPlaceholder: "Message")
         UNUserNotificationCenter.current().setNotificationCategories([
+            UNNotificationCategory(identifier: AgentReplyNotice.category, actions: [reply], intentIdentifiers: []),
             UNNotificationCategory(identifier: "join", actions: [drive, view, decline], intentIdentifiers: []),
             UNNotificationCategory(identifier: "grant", actions: [allow, deny], intentIdentifiers: []),
             UNNotificationCategory(identifier: "hammockkey", actions: [keyApprove, keyDeny], intentIdentifiers: []),
@@ -232,9 +236,10 @@ extension Push: UNUserNotificationCenterDelegate {
             return
         }
         let prompt = AgentPromptNotice.answers(info)
+        let reply = response.actionIdentifier == AgentReplyNotice.replyAction ? (response as? UNTextInputNotificationResponse)?.userText : nil
         let tapped = Tapped(action: response.actionIdentifier, join: info["join"] as? String, grant: info["grant"] as? String,
                             key: info["key"] as? String, pane: info["pane"] as? String, host: info["host"] as? String,
-                            item: prompt?.item, prompt: prompt?.prompt)
+                            item: prompt?.item, prompt: prompt?.prompt, reply: reply)
         nonisolated(unsafe) let request = response.notification.request
         Task { @MainActor in
             await self.handle(tapped, request: request)
@@ -249,6 +254,8 @@ private struct Tapped: Sendable {
     let join: String?, grant: String?, key: String?, pane: String?, host: String?
     /// An agent's permission prompt (AgentPromptNotice): its Needs You item and which prompt.
     let item: String?, prompt: String?
+    /// Reply's text: a message to the agent in `pane`.
+    var reply: String? = nil
 
     /// The Mac has what it answers (a connection's state comes just after it connects).
     @MainActor func asks(_ m: AppModel) -> Bool {
@@ -283,6 +290,8 @@ extension Push {
         // (the action opened the app, which asks).
         if appLocked {
             if t.grant != nil || t.join != nil || t.prompt != nil { openNeedsYou = true }
+            // A reply is typed again there, in its conversation.
+            if t.reply != nil { openPane = t.pane }
             return
         }
         // Answer from the notification: wait (briefly) for the Mac, and what
@@ -326,7 +335,31 @@ extension Push {
                 return
             }
         }
+        if let text = t.reply?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty, let pane = t.pane {
+            switch await Self.reply(text, to: pane, on: model) {
+            case .answered: break
+            case .refused:
+                await Self.repost(request, saying: AgentReplyNotice.answerInApp)
+                return
+            case .unsent:
+                Self.log.error("Couldn't send a reply from a notification; notification put back")
+                await Self.repost(request)
+                return
+            }
+        }
         try? await Task.sleep(for: .milliseconds(500)) // let the answer go out
+    }
+
+    /// Sends a notification's Reply to the agent in `pane`, unless its
+    /// screen shows a question or a permission (typing would answer that).
+    static func reply(_ text: String, to pane: String, on model: AppModel) async -> NotificationAnswer {
+        guard model.panes[pane] != nil else { return .refused }
+        let s = model.acquireAgent(pane)
+        defer { model.releaseAgent(pane) }
+        for _ in 0..<25 where !s.heard { try? await Task.sleep(for: .milliseconds(200)) }
+        guard s.heard else { return .unsent }
+        guard s.prompt.kind == .none else { return .refused }
+        return await s.send(text) ? .answered : .unsent
     }
 }
 

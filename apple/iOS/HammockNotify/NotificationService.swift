@@ -35,7 +35,8 @@ final class NotificationService: UNNotificationServiceExtension {
         content.subtitle = note["s"] as? String ?? ""
         content.body = note["b"] as? String ?? ""
         let category = note["c"] as? String ?? ""
-        content.categoryIdentifier = category
+        // An agent that finished or waits on you, with no actions of its own: Reply.
+        content.categoryIdentifier = AgentReplyNotice.offers(note) ? AgentReplyNotice.category : category
         // The count on Hammock's icon, as the Mac counts it (none from an
         // older Mac: the icon keeps its number).
         content.badge = note["n"] as? NSNumber
